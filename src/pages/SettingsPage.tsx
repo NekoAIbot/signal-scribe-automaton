@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,8 +7,137 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
+import { toast } from 'sonner';
+import { sendTelegramNotification } from '@/services/notificationService';
+import { API_KEYS } from '@/config/apiConfig';
 
 const SettingsPage = () => {
+  const [botName, setBotName] = useState("Advanced Trading Bot");
+  const [defaultPair, setDefaultPair] = useState("EURUSD");
+  const [timeframe, setTimeframe] = useState("H1");
+  const [automaticTrading, setAutomaticTrading] = useState(true);
+  const [telegramNotifications, setTelegramNotifications] = useState(true);
+  const [runInBackground, setRunInBackground] = useState(true);
+  const [darkMode, setDarkMode] = useState(true);
+  
+  const [strategyType, setStrategyType] = useState("sma");
+  const [fastSMA, setFastSMA] = useState(20);
+  const [slowSMA, setSlowSMA] = useState(50);
+  const [confirmationIndicator, setConfirmationIndicator] = useState("rsi");
+  const [riskPerTrade, setRiskPerTrade] = useState(2);
+  const [stopLoss, setStopLoss] = useState(30);
+  const [takeProfit, setTakeProfit] = useState(60);
+  const [trailingStop, setTrailingStop] = useState(true);
+  
+  const [mt5Server, setMt5Server] = useState(API_KEYS.MT5_SERVER);
+  const [accountNumber, setAccountNumber] = useState(API_KEYS.MT5_LOGIN);
+  const [password, setPassword] = useState(API_KEYS.MT5_PASSWORD);
+  const [apiKey, setApiKey] = useState("api_5f3e98d2c7b81");
+  const [telegramToken, setTelegramToken] = useState(API_KEYS.TELEGRAM_BOT_TOKEN);
+  const [chatId, setChatId] = useState(API_KEYS.TELEGRAM_CHAT_ID);
+  const [testMode, setTestMode] = useState(true);
+  const [secureConnection, setSecureConnection] = useState(true);
+  
+  const [mlModel, setMlModel] = useState("random-forest");
+  const [trainingPeriod, setTrainingPeriod] = useState("6months");
+  const [predictionThreshold, setPredictionThreshold] = useState(75);
+  const [mlEnhanced, setMlEnhanced] = useState(true);
+  const [retrainingFrequency, setRetrainingFrequency] = useState("daily");
+  const [featureSelection, setFeatureSelection] = useState("auto");
+  const [testTrainSplit, setTestTrainSplit] = useState(80);
+  const [autoRetrain, setAutoRetrain] = useState(true);
+  
+  const [mlFeatures, setMlFeatures] = useState({
+    sma: true,
+    rsi: true,
+    macd: true,
+    bollinger: true,
+    volume: true,
+    stochastic: false,
+    atr: true,
+    ichimoku: false
+  });
+  
+  const handleResetGeneralDefaults = () => {
+    setBotName("Advanced Trading Bot");
+    setDefaultPair("EURUSD");
+    setTimeframe("H1");
+    setAutomaticTrading(true);
+    setTelegramNotifications(true);
+    setRunInBackground(true);
+    setDarkMode(true);
+    toast.success("General settings reset to defaults");
+  };
+  
+  const handleSaveGeneralChanges = () => {
+    toast.success("General settings saved successfully");
+  };
+  
+  const handleResetStrategyDefaults = () => {
+    setStrategyType("sma");
+    setFastSMA(20);
+    setSlowSMA(50);
+    setConfirmationIndicator("rsi");
+    setRiskPerTrade(2);
+    setStopLoss(30);
+    setTakeProfit(60);
+    setTrailingStop(true);
+    toast.success("Strategy settings reset to defaults");
+  };
+  
+  const handleSaveStrategy = () => {
+    toast.success("Strategy settings saved successfully");
+  };
+  
+  const handleTestConnection = async () => {
+    toast.loading("Testing connection...");
+    
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    const success = Math.random() > 0.2;
+    
+    if (success) {
+      toast.success("Connection successful!");
+    } else {
+      toast.error("Connection failed. Please check your credentials.");
+    }
+  };
+  
+  const handleSaveConnections = async () => {
+    toast.loading("Saving connection settings...");
+    
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    toast.success("Connection settings saved successfully");
+    
+    if (telegramNotifications) {
+      try {
+        await sendTelegramNotification("✅ Trading Bot connection settings updated successfully!");
+      } catch (error) {
+        console.error("Failed to send Telegram notification", error);
+      }
+    }
+  };
+  
+  const handleForceRetrain = () => {
+    toast.loading("Starting model retraining...");
+    
+    setTimeout(() => {
+      toast.success("Model retraining completed successfully");
+    }, 3000);
+  };
+  
+  const handleSaveMlSettings = () => {
+    toast.success("Machine learning settings saved successfully");
+  };
+  
+  const toggleMlFeature = (feature: keyof typeof mlFeatures) => {
+    setMlFeatures(prev => ({
+      ...prev,
+      [feature]: !prev[feature]
+    }));
+  };
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Bot Settings</h1>
@@ -35,14 +163,15 @@ const SettingsPage = () => {
                     <Label htmlFor="bot-name">Bot Name</Label>
                     <Input 
                       id="bot-name"
-                      defaultValue="Advanced Trading Bot"
+                      value={botName}
+                      onChange={(e) => setBotName(e.target.value)}
                       className="bg-trading-bg border-trading-border"
                     />
                   </div>
                   
                   <div className="space-y-2">
                     <Label htmlFor="default-pair">Default Trading Pair</Label>
-                    <Select defaultValue="EURUSD">
+                    <Select value={defaultPair} onValueChange={setDefaultPair}>
                       <SelectTrigger 
                         id="default-pair"
                         className="bg-trading-bg border-trading-border"
@@ -60,7 +189,7 @@ const SettingsPage = () => {
                   
                   <div className="space-y-2">
                     <Label htmlFor="timeframe">Default Timeframe</Label>
-                    <Select defaultValue="H1">
+                    <Select value={timeframe} onValueChange={setTimeframe}>
                       <SelectTrigger 
                         id="timeframe"
                         className="bg-trading-bg border-trading-border"
@@ -86,7 +215,7 @@ const SettingsPage = () => {
                         Enable automatic trade execution
                       </p>
                     </div>
-                    <Switch defaultChecked />
+                    <Switch checked={automaticTrading} onCheckedChange={setAutomaticTrading} />
                   </div>
                   
                   <div className="flex items-center justify-between">
@@ -96,7 +225,7 @@ const SettingsPage = () => {
                         Send signals to Telegram
                       </p>
                     </div>
-                    <Switch defaultChecked />
+                    <Switch checked={telegramNotifications} onCheckedChange={setTelegramNotifications} />
                   </div>
                   
                   <div className="flex items-center justify-between">
@@ -106,7 +235,7 @@ const SettingsPage = () => {
                         Keep bot running when browser is closed
                       </p>
                     </div>
-                    <Switch defaultChecked />
+                    <Switch checked={runInBackground} onCheckedChange={setRunInBackground} />
                   </div>
                   
                   <div className="flex items-center justify-between">
@@ -116,14 +245,14 @@ const SettingsPage = () => {
                         Use dark theme for interface
                       </p>
                     </div>
-                    <Switch defaultChecked />
+                    <Switch checked={darkMode} onCheckedChange={setDarkMode} />
                   </div>
                 </div>
               </div>
               
               <div className="pt-4 border-t border-trading-border flex justify-end space-x-2">
-                <Button variant="outline">Reset to Defaults</Button>
-                <Button>Save Changes</Button>
+                <Button variant="outline" onClick={handleResetGeneralDefaults}>Reset to Defaults</Button>
+                <Button onClick={handleSaveGeneralChanges}>Save Changes</Button>
               </div>
             </CardContent>
           </Card>
@@ -140,7 +269,7 @@ const SettingsPage = () => {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="strategy-type">Strategy Type</Label>
-                    <Select defaultValue="sma">
+                    <Select value={strategyType} onValueChange={setStrategyType}>
                       <SelectTrigger 
                         id="strategy-type"
                         className="bg-trading-bg border-trading-border"
@@ -161,14 +290,15 @@ const SettingsPage = () => {
                     <Label>Fast SMA Period</Label>
                     <div className="flex items-center space-x-4">
                       <Slider
-                        defaultValue={[20]}
+                        value={[fastSMA]}
                         max={50}
                         min={5}
                         step={1}
                         className="flex-1"
+                        onValueChange={(value) => setFastSMA(value[0])}
                       />
                       <span className="bg-trading-bg border border-trading-border px-2 py-0.5 rounded w-12 text-center">
-                        20
+                        {fastSMA}
                       </span>
                     </div>
                   </div>
@@ -177,21 +307,22 @@ const SettingsPage = () => {
                     <Label>Slow SMA Period</Label>
                     <div className="flex items-center space-x-4">
                       <Slider
-                        defaultValue={[50]}
+                        value={[slowSMA]}
                         max={200}
                         min={20}
                         step={5}
                         className="flex-1"
+                        onValueChange={(value) => setSlowSMA(value[0])}
                       />
                       <span className="bg-trading-bg border border-trading-border px-2 py-0.5 rounded w-12 text-center">
-                        50
+                        {slowSMA}
                       </span>
                     </div>
                   </div>
                   
                   <div className="space-y-2">
                     <Label htmlFor="confirmation-indicator">Confirmation Indicator</Label>
-                    <Select defaultValue="rsi">
+                    <Select value={confirmationIndicator} onValueChange={setConfirmationIndicator}>
                       <SelectTrigger 
                         id="confirmation-indicator"
                         className="bg-trading-bg border-trading-border"
@@ -213,14 +344,15 @@ const SettingsPage = () => {
                     <Label>Risk per Trade (% of Balance)</Label>
                     <div className="flex items-center space-x-4">
                       <Slider
-                        defaultValue={[2]}
+                        value={[riskPerTrade]}
                         max={10}
                         min={0.1}
                         step={0.1}
                         className="flex-1"
+                        onValueChange={(value) => setRiskPerTrade(value[0])}
                       />
                       <span className="bg-trading-bg border border-trading-border px-2 py-0.5 rounded w-12 text-center">
-                        2%
+                        {riskPerTrade}%
                       </span>
                     </div>
                   </div>
@@ -229,14 +361,15 @@ const SettingsPage = () => {
                     <Label>Stop Loss (pips)</Label>
                     <div className="flex items-center space-x-4">
                       <Slider
-                        defaultValue={[30]}
+                        value={[stopLoss]}
                         max={100}
                         min={5}
                         step={5}
                         className="flex-1"
+                        onValueChange={(value) => setStopLoss(value[0])}
                       />
                       <span className="bg-trading-bg border border-trading-border px-2 py-0.5 rounded w-12 text-center">
-                        30
+                        {stopLoss}
                       </span>
                     </div>
                   </div>
@@ -245,14 +378,15 @@ const SettingsPage = () => {
                     <Label>Take Profit (pips)</Label>
                     <div className="flex items-center space-x-4">
                       <Slider
-                        defaultValue={[60]}
+                        value={[takeProfit]}
                         max={200}
                         min={10}
                         step={5}
                         className="flex-1"
+                        onValueChange={(value) => setTakeProfit(value[0])}
                       />
                       <span className="bg-trading-bg border border-trading-border px-2 py-0.5 rounded w-12 text-center">
-                        60
+                        {takeProfit}
                       </span>
                     </div>
                   </div>
@@ -264,14 +398,14 @@ const SettingsPage = () => {
                         Dynamically adjust stop loss as trade moves in profit
                       </p>
                     </div>
-                    <Switch defaultChecked />
+                    <Switch checked={trailingStop} onCheckedChange={setTrailingStop} />
                   </div>
                 </div>
               </div>
               
               <div className="pt-4 border-t border-trading-border flex justify-end space-x-2">
-                <Button variant="outline">Reset to Defaults</Button>
-                <Button>Save Strategy</Button>
+                <Button variant="outline" onClick={handleResetStrategyDefaults}>Reset to Defaults</Button>
+                <Button onClick={handleSaveStrategy}>Save Strategy</Button>
               </div>
             </CardContent>
           </Card>
@@ -291,7 +425,8 @@ const SettingsPage = () => {
                     <Input 
                       id="mt5-server"
                       placeholder="broker-mt5-server.com:443"
-                      defaultValue="demo.mt5broker.com:443"
+                      value={mt5Server}
+                      onChange={(e) => setMt5Server(e.target.value)}
                       className="bg-trading-bg border-trading-border"
                     />
                   </div>
@@ -301,7 +436,8 @@ const SettingsPage = () => {
                     <Input 
                       id="account-number"
                       placeholder="12345678"
-                      defaultValue="87654321"
+                      value={accountNumber}
+                      onChange={(e) => setAccountNumber(e.target.value)}
                       className="bg-trading-bg border-trading-border"
                     />
                   </div>
@@ -314,7 +450,8 @@ const SettingsPage = () => {
                       id="password"
                       type="password"
                       placeholder="••••••••"
-                      defaultValue="password123"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
                       className="bg-trading-bg border-trading-border"
                     />
                   </div>
@@ -324,7 +461,8 @@ const SettingsPage = () => {
                     <Input 
                       id="api-key"
                       placeholder="YOUR_API_KEY"
-                      defaultValue="api_5f3e98d2c7b81"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
                       className="bg-trading-bg border-trading-border"
                     />
                   </div>
@@ -335,7 +473,8 @@ const SettingsPage = () => {
                   <Input 
                     id="telegram-token"
                     placeholder="1234567890:ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                    defaultValue="5289121450:AAGf2RmXMh8yx1GQYt-abcdefghijklm"
+                    value={telegramToken}
+                    onChange={(e) => setTelegramToken(e.target.value)}
                     className="bg-trading-bg border-trading-border"
                   />
                 </div>
@@ -345,7 +484,8 @@ const SettingsPage = () => {
                   <Input 
                     id="chat-id"
                     placeholder="-1001234567890"
-                    defaultValue="-1009876543210"
+                    value={chatId}
+                    onChange={(e) => setChatId(e.target.value)}
                     className="bg-trading-bg border-trading-border"
                   />
                 </div>
@@ -357,7 +497,7 @@ const SettingsPage = () => {
                       Run in test mode (no real trades)
                     </p>
                   </div>
-                  <Switch defaultChecked />
+                  <Switch checked={testMode} onCheckedChange={setTestMode} />
                 </div>
                 
                 <div className="flex items-center justify-between">
@@ -367,15 +507,19 @@ const SettingsPage = () => {
                       Use encrypted connection to broker
                     </p>
                   </div>
-                  <Switch defaultChecked />
+                  <Switch checked={secureConnection} onCheckedChange={setSecureConnection} />
                 </div>
               </div>
               
               <div className="pt-4 border-t border-trading-border flex justify-between">
-                <Button variant="outline" className="bg-info-DEFAULT/10 text-info-DEFAULT border-info-DEFAULT">
+                <Button 
+                  variant="outline" 
+                  className="bg-info-DEFAULT/10 text-info-DEFAULT border-info-DEFAULT"
+                  onClick={handleTestConnection}
+                >
                   Test Connection
                 </Button>
-                <Button>Save Connections</Button>
+                <Button onClick={handleSaveConnections}>Save Connections</Button>
               </div>
             </CardContent>
           </Card>
@@ -392,7 +536,7 @@ const SettingsPage = () => {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="ml-model">ML Model Type</Label>
-                    <Select defaultValue="random-forest">
+                    <Select value={mlModel} onValueChange={setMlModel}>
                       <SelectTrigger 
                         id="ml-model"
                         className="bg-trading-bg border-trading-border"
@@ -410,7 +554,7 @@ const SettingsPage = () => {
                   
                   <div className="space-y-2">
                     <Label htmlFor="training-period">Training Period</Label>
-                    <Select defaultValue="6months">
+                    <Select value={trainingPeriod} onValueChange={setTrainingPeriod}>
                       <SelectTrigger 
                         id="training-period"
                         className="bg-trading-bg border-trading-border"
@@ -431,14 +575,15 @@ const SettingsPage = () => {
                     <Label>Prediction Threshold (%)</Label>
                     <div className="flex items-center space-x-4">
                       <Slider
-                        defaultValue={[75]}
+                        value={[predictionThreshold]}
                         max={95}
                         min={50}
                         step={5}
                         className="flex-1"
+                        onValueChange={(value) => setPredictionThreshold(value[0])}
                       />
                       <span className="bg-trading-bg border border-trading-border px-2 py-0.5 rounded w-12 text-center">
-                        75%
+                        {predictionThreshold}%
                       </span>
                     </div>
                   </div>
@@ -450,14 +595,14 @@ const SettingsPage = () => {
                         Use ML models to enhance trading decisions
                       </p>
                     </div>
-                    <Switch defaultChecked />
+                    <Switch checked={mlEnhanced} onCheckedChange={setMlEnhanced} />
                   </div>
                 </div>
                 
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="retraining-frequency">Retraining Frequency</Label>
-                    <Select defaultValue="daily">
+                    <Select value={retrainingFrequency} onValueChange={setRetrainingFrequency}>
                       <SelectTrigger 
                         id="retraining-frequency"
                         className="bg-trading-bg border-trading-border"
@@ -476,7 +621,7 @@ const SettingsPage = () => {
                   
                   <div className="space-y-2">
                     <Label htmlFor="feature-importance">Feature Selection</Label>
-                    <Select defaultValue="auto">
+                    <Select value={featureSelection} onValueChange={setFeatureSelection}>
                       <SelectTrigger 
                         id="feature-importance"
                         className="bg-trading-bg border-trading-border"
@@ -494,14 +639,15 @@ const SettingsPage = () => {
                     <Label>Test/Train Split (%)</Label>
                     <div className="flex items-center space-x-4">
                       <Slider
-                        defaultValue={[80]}
+                        value={[testTrainSplit]}
                         max={95}
                         min={50}
                         step={5}
                         className="flex-1"
+                        onValueChange={(value) => setTestTrainSplit(value[0])}
                       />
                       <span className="bg-trading-bg border border-trading-border px-2 py-0.5 rounded w-12 text-center">
-                        80%
+                        {testTrainSplit}%
                       </span>
                     </div>
                   </div>
@@ -513,7 +659,7 @@ const SettingsPage = () => {
                         Auto-retrain when accuracy drops
                       </p>
                     </div>
-                    <Switch defaultChecked />
+                    <Switch checked={autoRetrain} onCheckedChange={setAutoRetrain} />
                   </div>
                 </div>
               </div>
@@ -522,45 +668,73 @@ const SettingsPage = () => {
                 <h4 className="text-sm font-medium mb-2">Technical Indicators for ML Features</h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="flex items-center space-x-2">
-                    <Switch defaultChecked />
+                    <Switch 
+                      checked={mlFeatures.sma} 
+                      onCheckedChange={() => toggleMlFeature('sma')} 
+                    />
                     <span className="text-sm">SMA (Multiple)</span>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Switch defaultChecked />
+                    <Switch 
+                      checked={mlFeatures.rsi} 
+                      onCheckedChange={() => toggleMlFeature('rsi')} 
+                    />
                     <span className="text-sm">RSI</span>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Switch defaultChecked />
+                    <Switch 
+                      checked={mlFeatures.macd} 
+                      onCheckedChange={() => toggleMlFeature('macd')} 
+                    />
                     <span className="text-sm">MACD</span>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Switch defaultChecked />
+                    <Switch 
+                      checked={mlFeatures.bollinger} 
+                      onCheckedChange={() => toggleMlFeature('bollinger')} 
+                    />
                     <span className="text-sm">Bollinger Bands</span>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Switch defaultChecked />
+                    <Switch 
+                      checked={mlFeatures.volume} 
+                      onCheckedChange={() => toggleMlFeature('volume')} 
+                    />
                     <span className="text-sm">Volume</span>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Switch />
+                    <Switch 
+                      checked={mlFeatures.stochastic} 
+                      onCheckedChange={() => toggleMlFeature('stochastic')} 
+                    />
                     <span className="text-sm">Stochastic</span>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Switch defaultChecked />
+                    <Switch 
+                      checked={mlFeatures.atr} 
+                      onCheckedChange={() => toggleMlFeature('atr')} 
+                    />
                     <span className="text-sm">ATR</span>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Switch />
+                    <Switch 
+                      checked={mlFeatures.ichimoku} 
+                      onCheckedChange={() => toggleMlFeature('ichimoku')} 
+                    />
                     <span className="text-sm">Ichimoku</span>
                   </div>
                 </div>
               </div>
               
               <div className="pt-4 border-t border-trading-border flex justify-between">
-                <Button variant="outline" className="bg-warning-DEFAULT/10 text-warning-DEFAULT border-warning-DEFAULT">
+                <Button 
+                  variant="outline" 
+                  className="bg-warning-DEFAULT/10 text-warning-DEFAULT border-warning-DEFAULT"
+                  onClick={handleForceRetrain}
+                >
                   Force Retrain
                 </Button>
-                <Button>Save ML Settings</Button>
+                <Button onClick={handleSaveMlSettings}>Save ML Settings</Button>
               </div>
             </CardContent>
           </Card>

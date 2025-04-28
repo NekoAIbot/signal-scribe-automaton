@@ -1,9 +1,11 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import { broadcastSignal } from '@/services/notificationService';
 
 interface TradingSignal {
   id: number;
@@ -12,6 +14,7 @@ interface TradingSignal {
   price: number;
   time: string;
   status: 'new' | 'executing' | 'executed' | 'failed';
+  strategy?: string;
 }
 
 const mockSignals: TradingSignal[] = [
@@ -22,6 +25,7 @@ const mockSignals: TradingSignal[] = [
     price: 1.05423,
     time: '2023-04-21T09:30:00',
     status: 'new',
+    strategy: 'SMA Crossover',
   },
   {
     id: 2,
@@ -30,6 +34,7 @@ const mockSignals: TradingSignal[] = [
     price: 1.24356,
     time: '2023-04-21T09:15:00',
     status: 'executing',
+    strategy: 'RSI Divergence',
   },
   {
     id: 3,
@@ -38,6 +43,7 @@ const mockSignals: TradingSignal[] = [
     price: 153.742,
     time: '2023-04-21T09:00:00',
     status: 'executed',
+    strategy: 'Bollinger Breakout',
   },
   {
     id: 4,
@@ -46,6 +52,7 @@ const mockSignals: TradingSignal[] = [
     price: 0.65832,
     time: '2023-04-21T08:45:00',
     status: 'failed',
+    strategy: 'MACD Signal',
   },
 ];
 
@@ -55,11 +62,51 @@ const formatTime = (timeString: string) => {
 };
 
 export function TradingSignals() {
+  const [signals, setSignals] = useState<TradingSignal[]>(mockSignals);
+
+  const handleViewAll = () => {
+    toast.info("Navigating to signals page");
+    // In a real app, we would navigate to the signals page
+  };
+
+  const executeSignal = async (id: number) => {
+    // Find the signal to execute
+    const signalToExecute = signals.find(signal => signal.id === id);
+    if (!signalToExecute) return;
+
+    // Update the status to executing
+    setSignals(signals.map(signal => 
+      signal.id === id ? { ...signal, status: 'executing' as const } : signal
+    ));
+
+    toast.info(`Executing ${signalToExecute.type} signal for ${signalToExecute.symbol}`);
+
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Update to executed
+    setSignals(signals.map(signal => 
+      signal.id === id ? { ...signal, status: 'executed' as const } : signal
+    ));
+
+    // Send notification
+    if (signalToExecute.strategy) {
+      await broadcastSignal({
+        symbol: signalToExecute.symbol,
+        type: signalToExecute.type,
+        price: signalToExecute.price,
+        strategy: signalToExecute.strategy
+      });
+    }
+
+    toast.success(`Signal for ${signalToExecute.symbol} executed successfully`);
+  };
+
   return (
     <Card className="bg-trading-card border-trading-border">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-base font-medium">Latest Signals</CardTitle>
-        <Button variant="outline" size="sm">View All</Button>
+        <Button variant="outline" size="sm" onClick={handleViewAll}>View All</Button>
       </CardHeader>
       
       <CardContent className="p-0">
@@ -72,10 +119,11 @@ export function TradingSignals() {
                 <th className="px-4 py-2 text-right font-medium text-muted-foreground">Price</th>
                 <th className="px-4 py-2 text-right font-medium text-muted-foreground">Time</th>
                 <th className="px-4 py-2 text-right font-medium text-muted-foreground">Status</th>
+                <th className="px-4 py-2 text-right font-medium text-muted-foreground">Action</th>
               </tr>
             </thead>
             <tbody>
-              {mockSignals.map((signal) => (
+              {signals.map((signal) => (
                 <tr 
                   key={signal.id} 
                   className="border-b border-trading-border hover:bg-trading-bg/50"
@@ -100,6 +148,18 @@ export function TradingSignals() {
                     >
                       {signal.status}
                     </Badge>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={signal.status !== 'new'}
+                      onClick={() => executeSignal(signal.id)}
+                    >
+                      {signal.status === 'new' ? 'Execute' : 
+                       signal.status === 'executing' ? 'Processing...' : 
+                       signal.status === 'executed' ? 'Done' : 'Failed'}
+                    </Button>
                   </td>
                 </tr>
               ))}
