@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
@@ -16,6 +16,7 @@ export function Layout() {
   
   // Connect to WebSocket for real-time data
   const { isConnected, reconnect } = useWebSocketMarketData();
+  const prevConnectedRef = useRef(isConnected);
   
   const toggleSidebar = () => {
     setSidebarCollapsed(!sidebarCollapsed);
@@ -28,18 +29,20 @@ export function Layout() {
     }
   }, [location.pathname, isMobile]);
   
-  // Notify when WebSocket connection changes
+  // Notify only when WebSocket connection status changes
   useEffect(() => {
-    if (isConnected) {
-      console.log('WebSocket connected');
-    } else {
-      console.log('WebSocket disconnected');
+    if (prevConnectedRef.current !== isConnected) {
+      if (isConnected) {
+        console.log('WebSocket connected');
+      } else {
+        console.log('WebSocket disconnected');
+      }
+      prevConnectedRef.current = isConnected;
     }
   }, [isConnected]);
   
   // Handle connection issues
   useEffect(() => {
-    // This is a dummy check - in a real app you would handle WebSocket reconnection logic
     if (!isConnected && isAuthenticated) {
       const timer = setTimeout(() => {
         reconnect();
