@@ -52,14 +52,23 @@ export const useAuth = () => {
       // In a real app, store this code securely in a database
       setVerificationCodes(prev => ({...prev, [email]: verificationCode}));
       
-      // Send verification email
-      await sendEmailNotification(
+      // Since we can't actually send emails from the frontend,
+      // we'll directly show the code to the user via a toast
+      toast.success(`Your verification code is: ${verificationCode}`, {
+        duration: 10000,
+      });
+      
+      console.log(`Verification code for ${email}: ${verificationCode}`);
+      
+      // Attempt to simulate email (this won't actually work in frontend-only)
+      sendEmailNotification(
         'Your Trading App Verification Code',
         `Your verification code is: ${verificationCode}. Please use this to complete your login.`,
         email
-      );
+      ).catch(error => {
+        console.log('Email sending simulated:', error);
+      });
       
-      toast.success('Registration successful. Check your email for verification code.');
       setAuthState(prev => ({ ...prev, loading: false }));
       
       return { success: true, code: verificationCode };

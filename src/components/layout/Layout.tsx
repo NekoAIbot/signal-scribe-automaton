@@ -15,8 +15,9 @@ export function Layout() {
   const location = useLocation();
   
   // Connect to WebSocket for real-time data
-  const { isConnected, reconnect } = useWebSocketMarketData();
+  const { isConnected, usingMockData, reconnect } = useWebSocketMarketData();
   const prevConnectedRef = useRef(isConnected);
+  const connectionNotifiedRef = useRef(false);
   
   const toggleSidebar = () => {
     setSidebarCollapsed(!sidebarCollapsed);
@@ -29,24 +30,28 @@ export function Layout() {
     }
   }, [location.pathname, isMobile]);
   
-  // Notify only when WebSocket connection status changes
+  // Notify only on initial connection
   useEffect(() => {
-    if (prevConnectedRef.current !== isConnected) {
-      if (isConnected) {
-        console.log('WebSocket connected');
+    if (isConnected && !connectionNotifiedRef.current) {
+      if (usingMockData) {
+        console.log('Connected using mock market data');
       } else {
-        console.log('WebSocket disconnected');
+        console.log('WebSocket connected to live data');
       }
-      prevConnectedRef.current = isConnected;
+      connectionNotifiedRef.current = true;
+    } else if (!isConnected && prevConnectedRef.current) {
+      console.log('WebSocket disconnected');
     }
-  }, [isConnected]);
+    
+    prevConnectedRef.current = isConnected;
+  }, [isConnected, usingMockData]);
   
-  // Handle connection issues
+  // Handle connection issues (with reduced frequency)
   useEffect(() => {
-    if (!isConnected && isAuthenticated) {
+    if (!isConnected && isAuthenticated && connectionNotifiedRef.current) {
       const timer = setTimeout(() => {
         reconnect();
-      }, 3000);
+      }, 5000);
       
       return () => clearTimeout(timer);
     }

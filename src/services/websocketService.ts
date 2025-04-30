@@ -1,90 +1,209 @@
 
-import { useState, useEffect, useRef } from 'react';
-import { toast } from 'sonner';
-import { API_KEYS } from '@/config/apiConfig';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { API_KEYS, CONFIG_FLAGS } from '@/config/apiConfig';
 
-interface WebSocketMessage {
-  type: string;
-  data: any;
+// Mock market data for development
+const MOCK_DATA = {
+  EURUSD: { bid: 1.0923, ask: 1.0925 },
+  GBPUSD: { bid: 1.2651, ask: 1.2654 },
+  USDJPY: { bid: 110.87, ask: 110.89 },
+  AUDUSD: { bid: 0.7312, ask: 0.7315 },
+  USDCAD: { bid: 1.2567, ask: 1.2570 },
+};
+
+interface MarketData {
+  [symbol: string]: {
+    bid: number;
+    ask: number;
+    timestamp?: number;
+  };
 }
 
-export const useWebSocketMarketData = (symbols: string[] = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD']) => {
+export const useWebSocketMarketData = () => {
   const [isConnected, setIsConnected] = useState(false);
-  const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null);
-  const [error, setError] = useState<Error | null>(null);
-  const reconnectAttempts = useRef(0);
-  const maxReconnectAttempts = 5;
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [marketData, setMarketData] = useState<MarketData>(MOCK_DATA);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<number | null>(null);
+  const connectAttemptRef = useRef(0);
+  const MAX_RECONNECT_ATTEMPTS = 5;
+  const [shouldConnect, setShouldConnect] = useState(true);
   
-  useEffect(() => {
-    // This is a simulation of WebSocket connection since we don't have a real WebSocket endpoint
-    console.log('Connecting to WebSocket for market data...');
-    
-    if (!isConnected && reconnectAttempts.current < maxReconnectAttempts) {
-      const simulatedConnect = setTimeout(() => {
-        setIsConnected(true);
-        reconnectAttempts.current = 0;
-      }, 1000);
-      
-      return () => clearTimeout(simulatedConnect);
+  // Track if we're using mock data
+  const [usingMockData, setUsingMockData] = useState(CONFIG_FLAGS.USE_MOCK_MT5);
+  
+  // Only log connection state changes, not on every render
+  const prevConnectedRef = useRef(isConnected);
+  
+  const connect = useCallback(() => {
+    if (!shouldConnect || wsRef.current?.readyState === WebSocket.OPEN) {
+      return;
     }
     
-    // Only set up the message interval if connected
-    if (isConnected) {
-      // Simulate incoming messages
-      intervalRef.current = setInterval(() => {
-        const randomSymbol = symbols[Math.floor(Math.random() * symbols.length)];
-        const currentPrice = randomSymbol === 'EUR/USD' ? 1.05432 : 
-                            randomSymbol === 'GBP/USD' ? 1.24356 : 
-                            randomSymbol === 'USD/JPY' ? 153.742 : 0.65832;
-        
-        const randomChange = (Math.random() * 0.002) - 0.001;
-        const newPrice = currentPrice + randomChange;
-        
-        const message: WebSocketMessage = {
-          type: 'price_update',
-          data: {
-            symbol: randomSymbol,
-            price: newPrice,
-            change: randomChange > 0 ? 0.01 : -0.01,
-            volume: Math.floor(Math.random() * 1000) + 500,
-            timestamp: new Date().toISOString()
-          }
-        };
-        
-        setLastMessage(message);
-      }, 3000);
+    // For demo, prefer mock data to avoid hitting API limits
+    if (CONFIG_FLAGS.USE_MOCK_MT5) {
+      console.log('Using mock market data');
+      setUsingMockData(true);
+      setIsConnected(true);
+      return;
+    }
+    
+    try {
+      // Replace with your actual WebSocket endpoint
+      const wsEndpoint = `wss://ws.twelvedata.com/v1/quotes/price?apikey=${API_KEYS.TWELVEDATA_API_KEY}`;
       
-      return () => {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
+      if (connectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
+        console.log('Maximum reconnection attempts reached, using mock data');
+        setUsingMockData(true);
+        setIsConnected(true);
+        return;
+      }
+      
+      console.log('Connecting to WebSocket for market data...');
+      wsRef.current = new WebSocket(wsEndpoint);
+      
+      wsRef.current.onopen = () => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          connectAttemptRef.current = 0;
+          setIsConnected(true);
+          setUsingMockData(false);
+          
+          // Subscribe to forex symbols
+          const symbols = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD'];
+          wsRef.current.send(JSON.stringify({
+            action: 'subscribe',
+            params: {
+              symbols: symbols.join(',')
+            }
+          }));
         }
       };
+      
+      wsRef.current.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data && data.symbol) {
+            const normalizedSymbol = data.symbol.replace('/', '');
+            setMarketData(prev => ({
+              ...prev,
+              [normalizedSymbol]: {
+                bid: parseFloat(data.price) - 0.0002,
+                ask: parseFloat(data.price) + 0.0002,
+                timestamp: Date.now()
+              }
+            }));
+          }
+        } catch (error) {
+          console.error('Error processing WebSocket message:', error);
+        }
+      };
+      
+      wsRef.current.onclose = () => {
+        if (prevConnectedRef.current !== false) {
+          setIsConnected(false);
+        }
+      };
+      
+      wsRef.current.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        connectAttemptRef.current++;
+        setIsConnected(false);
+      };
+    } catch (error) {
+      console.error('Error creating WebSocket:', error);
+      setIsConnected(false);
     }
-  }, [isConnected, symbols]);
+  }, [shouldConnect]);
   
-  // Provide methods to work with WebSocket
-  const reconnect = () => {
+  const disconnect = useCallback(() => {
+    console.log('Disconnecting WebSocket...');
+    
+    if (reconnectTimeoutRef.current) {
+      window.clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    
+    // Only update state if connected (prevents redundant renders)
     if (isConnected) {
       setIsConnected(false);
     }
     
-    reconnectAttempts.current += 1;
-    if (reconnectAttempts.current <= maxReconnectAttempts) {
-      setTimeout(() => {
-        setIsConnected(true);
-        reconnectAttempts.current = 0;
-        toast.success('WebSocket reconnected');
-      }, 1000);
-    } else {
-      toast.error('Failed to reconnect after multiple attempts');
+    setShouldConnect(false);
+  }, [isConnected]);
+  
+  const reconnect = useCallback(() => {
+    setShouldConnect(true);
+    
+    if (reconnectTimeoutRef.current) {
+      window.clearTimeout(reconnectTimeoutRef.current);
     }
-  };
+    
+    reconnectTimeoutRef.current = window.setTimeout(() => {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      connect();
+    }, 1000);
+  }, [connect]);
+  
+  useEffect(() => {
+    // Update previous connection state ref
+    if (prevConnectedRef.current !== isConnected) {
+      prevConnectedRef.current = isConnected;
+    }
+  }, [isConnected]);
+  
+  useEffect(() => {
+    if (shouldConnect) {
+      connect();
+    }
+    
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+      
+      if (reconnectTimeoutRef.current) {
+        window.clearTimeout(reconnectTimeoutRef.current);
+      }
+    };
+  }, [connect, shouldConnect]);
+  
+  // Simulate market data updates for mock mode
+  useEffect(() => {
+    if (usingMockData) {
+      const interval = setInterval(() => {
+        setMarketData(prev => {
+          const updated = { ...prev };
+          Object.keys(updated).forEach(symbol => {
+            const change = (Math.random() - 0.5) * 0.001;
+            const midPrice = (updated[symbol].bid + updated[symbol].ask) / 2;
+            const newMid = midPrice + change;
+            updated[symbol] = {
+              bid: newMid - 0.0002,
+              ask: newMid + 0.0002,
+              timestamp: Date.now()
+            };
+          });
+          return updated;
+        });
+      }, 3000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [usingMockData]);
   
   return {
     isConnected,
-    lastMessage,
-    error,
-    reconnect
+    marketData,
+    connect,
+    disconnect,
+    reconnect,
+    usingMockData
   };
 };
