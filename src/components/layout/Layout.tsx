@@ -41,20 +41,26 @@ export function Layout() {
       connectionNotifiedRef.current = true;
     } else if (!isConnected && prevConnectedRef.current) {
       console.log('WebSocket disconnected');
+      connectionNotifiedRef.current = false; // Reset so we can notify on reconnect
     }
     
     prevConnectedRef.current = isConnected;
   }, [isConnected, usingMockData]);
   
-  // Handle connection issues (with reduced frequency)
+  // Handle connection issues with reduced frequency and only when needed
   useEffect(() => {
-    if (!isConnected && isAuthenticated && connectionNotifiedRef.current) {
-      const timer = setTimeout(() => {
+    let timer: NodeJS.Timeout | null = null;
+    
+    if (!isConnected && isAuthenticated) {
+      timer = setTimeout(() => {
+        console.log('Attempting to reconnect WebSocket...');
         reconnect();
-      }, 5000);
-      
-      return () => clearTimeout(timer);
+      }, 15000); // Increased to 15 seconds to reduce reconnection attempts
     }
+    
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
   }, [isConnected, isAuthenticated, reconnect]);
   
   return (

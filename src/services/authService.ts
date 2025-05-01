@@ -36,8 +36,14 @@ export const useAuth = () => {
     loading: false
   });
 
-  // Store verification codes (in a real app, this would be in a database)
-  const [verificationCodes, setVerificationCodes] = useState<Record<string, string>>({});
+  // Store verification codes in localStorage for persistence
+  const getVerificationCodes = (): Record<string, string> => {
+    return JSON.parse(localStorage.getItem('verification_codes') || '{}');
+  };
+  
+  const setVerificationCodesInStorage = (codes: Record<string, string>) => {
+    localStorage.setItem('verification_codes', JSON.stringify(codes));
+  };
 
   const register = async (name: string, email: string, password: string): Promise<{success: boolean, code?: string}> => {
     try {
@@ -49,11 +55,12 @@ export const useAuth = () => {
       // Generate verification code
       const verificationCode = generateVerificationCode();
       
-      // In a real app, store this code securely in a database
-      setVerificationCodes(prev => ({...prev, [email]: verificationCode}));
+      // Store verification code in localStorage for persistence
+      const currentCodes = getVerificationCodes();
+      currentCodes[email] = verificationCode;
+      setVerificationCodesInStorage(currentCodes);
       
-      // Since we can't actually send emails from the frontend,
-      // we'll directly show the code to the user via a toast
+      // Show verification code via toast
       toast.success(`Your verification code is: ${verificationCode}`, {
         duration: 10000,
       });
@@ -87,9 +94,18 @@ export const useAuth = () => {
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // For demo, always succeed if proper format and verification code matches
-      // In a real app, verify against database
-      const expectedCode = verificationCodes[email] || '123456'; // Fallback for demo
+      // Get verification code from storage
+      const storedCodes = getVerificationCodes();
+      const expectedCode = storedCodes[email];
+      
+      console.log("Verification attempt:", { email, providedCode: verificationCode, expectedCode });
+      
+      // Check if code exists and matches
+      if (!expectedCode) {
+        toast.error("No verification code found for this email. Please register first.");
+        setAuthState(prev => ({ ...prev, loading: false }));
+        return false;
+      }
       
       if (email && password && email.includes('@') && verificationCode === expectedCode) {
         const user = {
