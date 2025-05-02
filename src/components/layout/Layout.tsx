@@ -17,7 +17,8 @@ export function Layout() {
   // Connect to WebSocket for real-time data
   const { isConnected, usingMockData, reconnect } = useWebSocketMarketData();
   const prevConnectedRef = useRef(isConnected);
-  const connectionNotifiedRef = useRef(false);
+  const notificationDisplayedRef = useRef(false);
+  const lastReconnectAttemptRef = useRef(0);
   
   const toggleSidebar = () => {
     setSidebarCollapsed(!sidebarCollapsed);
@@ -30,32 +31,36 @@ export function Layout() {
     }
   }, [location.pathname, isMobile]);
   
-  // Notify only on initial connection
+  // Handle WebSocket connection status notifications only on significant changes
   useEffect(() => {
-    if (isConnected && !connectionNotifiedRef.current) {
-      if (usingMockData) {
-        console.log('Connected using mock market data');
-      } else {
-        console.log('WebSocket connected to live data');
+    // Only notify on significant connection state changes to reduce notification spam
+    if (isConnected && !notificationDisplayedRef.current) {
+      notificationDisplayedRef.current = true;
+      // Only show toast if it's a real connection, not on initial load
+      if (prevConnectedRef.current === false) {
+        toast.success(usingMockData ? 'Connected to market data (mock)' : 'Connected to live market data');
       }
-      connectionNotifiedRef.current = true;
     } else if (!isConnected && prevConnectedRef.current) {
-      console.log('WebSocket disconnected');
-      connectionNotifiedRef.current = false; // Reset so we can notify on reconnect
+      // Reset notification flag only when disconnected after being connected
+      notificationDisplayedRef.current = false;
     }
     
     prevConnectedRef.current = isConnected;
   }, [isConnected, usingMockData]);
   
-  // Handle connection issues with reduced frequency and only when needed
+  // Handle connection issues with reduced frequency
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
     
     if (!isConnected && isAuthenticated) {
-      timer = setTimeout(() => {
-        console.log('Attempting to reconnect WebSocket...');
-        reconnect();
-      }, 15000); // Increased to 15 seconds to reduce reconnection attempts
+      const now = Date.now();
+      // Only attempt reconnect at most once every 30 seconds
+      if (now - lastReconnectAttemptRef.current > 30000) {
+        lastReconnectAttemptRef.current = now;
+        timer = setTimeout(() => {
+          reconnect();
+        }, 15000); // 15 seconds to reduce reconnection attempts
+      }
     }
     
     return () => {

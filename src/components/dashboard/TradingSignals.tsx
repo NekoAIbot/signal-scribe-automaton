@@ -6,55 +6,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { broadcastSignal } from '@/services/notificationService';
-
-interface TradingSignal {
-  id: number;
-  symbol: string;
-  type: 'BUY' | 'SELL';
-  price: number;
-  time: string;
-  status: 'new' | 'executing' | 'executed' | 'failed';
-  strategy?: string;
-}
-
-const mockSignals: TradingSignal[] = [
-  {
-    id: 1,
-    symbol: 'EUR/USD',
-    type: 'BUY',
-    price: 1.05423,
-    time: '2023-04-21T09:30:00',
-    status: 'new',
-    strategy: 'SMA Crossover',
-  },
-  {
-    id: 2,
-    symbol: 'GBP/USD',
-    type: 'SELL',
-    price: 1.24356,
-    time: '2023-04-21T09:15:00',
-    status: 'executing',
-    strategy: 'RSI Divergence',
-  },
-  {
-    id: 3,
-    symbol: 'USD/JPY',
-    type: 'BUY',
-    price: 153.742,
-    time: '2023-04-21T09:00:00',
-    status: 'executed',
-    strategy: 'Bollinger Breakout',
-  },
-  {
-    id: 4,
-    symbol: 'AUD/USD',
-    type: 'SELL',
-    price: 0.65832,
-    time: '2023-04-21T08:45:00',
-    status: 'failed',
-    strategy: 'MACD Signal',
-  },
-];
+import { useTradingSignals } from '@/services/marketDataService';
+import { executeMT5Trade, TradeSignal } from '@/services/signalGenerationService';
+import { API_KEYS } from '@/config/apiConfig';
 
 const formatTime = (timeString: string) => {
   const date = new Date(timeString);
@@ -62,45 +16,76 @@ const formatTime = (timeString: string) => {
 };
 
 export function TradingSignals() {
-  const [signals, setSignals] = useState<TradingSignal[]>(mockSignals);
+  const { data: signals = [], isLoading, refetch } = useTradingSignals();
+  const [executingSignals, setExecutingSignals] = useState<Record<number, boolean>>({});
 
   const handleViewAll = () => {
     toast.info("Navigating to signals page");
-    // In a real app, we would navigate to the signals page
+    // In a real app, we would navigate to the signals page using router
+    window.location.href = "/signals";
   };
 
-  const executeSignal = async (id: number) => {
-    // Find the signal to execute
-    const signalToExecute = signals.find(signal => signal.id === id);
-    if (!signalToExecute) return;
+  const executeSignal = async (signal: TradeSignal) => {
+    if (executingSignals[signal.id]) return;
 
-    // Update the status to executing
-    setSignals(signals.map(signal => 
-      signal.id === id ? { ...signal, status: 'executing' as const } : signal
-    ));
-
-    toast.info(`Executing ${signalToExecute.type} signal for ${signalToExecute.symbol}`);
-
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    // Update to executed
-    setSignals(signals.map(signal => 
-      signal.id === id ? { ...signal, status: 'executed' as const } : signal
-    ));
-
-    // Send notification
-    if (signalToExecute.strategy) {
-      await broadcastSignal({
-        symbol: signalToExecute.symbol,
-        type: signalToExecute.type,
-        price: signalToExecute.price,
-        strategy: signalToExecute.strategy
+    try {
+      // Mark signal as executing
+      setExecutingSignals(prev => ({ ...prev, [signal.id]: true }));
+      
+      // Display risk warning
+      toast.warning("Trading involves significant risk of loss. Only trade with risk capital.", {
+        duration: 6000,
       });
-    }
 
-    toast.success(`Signal for ${signalToExecute.symbol} executed successfully`);
+      // Update the signal status
+      const updatedSignal = { ...signal, status: 'executing' as const };
+      
+      // Execute on MT5 (using default credentials from config)
+      const mt5Account = {
+        login: API_KEYS.MT5_LOGIN,
+        password: API_KEYS.MT5_PASSWORD,
+        server: API_KEYS.MT5_SERVER
+      };
+      
+      const success = await executeMT5Trade(updatedSignal, mt5Account);
+      
+      // Broadcast signal to notification channels
+      if (success) {
+        await broadcastSignal({
+          symbol: signal.symbol,
+          type: signal.type,
+          price: signal.price,
+          strategy: signal.strategy || 'Technical Analysis'
+        });
+        
+        toast.success(`Signal for ${signal.symbol} executed successfully`);
+        
+        // Update signal in state
+        refetch();
+      } else {
+        toast.error(`Failed to execute signal for ${signal.symbol}`);
+      }
+    } catch (error) {
+      console.error(`Error executing signal:`, error);
+      toast.error(`Error executing trade: ${(error as Error).message}`);
+    } finally {
+      // Clear executing state
+      setExecutingSignals(prev => ({ ...prev, [signal.id]: false }));
+    }
   };
+
+  if (isLoading) {
+    return (
+      <Card className="bg-trading-card border-trading-border">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-base font-medium">Latest Signals</CardTitle>
+        </CardHeader>
+        <CardContent className="p-6 text-center">
+          Loading trading signals...
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="bg-trading-card border-trading-border">
@@ -111,60 +96,68 @@ export function TradingSignals() {
       
       <CardContent className="p-0">
         <div className="overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-trading-border bg-trading-bg">
-                <th className="px-4 py-2 text-left font-medium text-muted-foreground">Symbol</th>
-                <th className="px-4 py-2 text-left font-medium text-muted-foreground">Type</th>
-                <th className="px-4 py-2 text-right font-medium text-muted-foreground">Price</th>
-                <th className="px-4 py-2 text-right font-medium text-muted-foreground">Time</th>
-                <th className="px-4 py-2 text-right font-medium text-muted-foreground">Status</th>
-                <th className="px-4 py-2 text-right font-medium text-muted-foreground">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {signals.map((signal) => (
-                <tr 
-                  key={signal.id} 
-                  className="border-b border-trading-border hover:bg-trading-bg/50"
-                >
-                  <td className="px-4 py-3 font-medium">{signal.symbol}</td>
-                  <td className="px-4 py-3">
-                    <Badge variant={signal.type === 'BUY' ? 'success' : 'destructive'}>
-                      {signal.type}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-right">{signal.price.toFixed(5)}</td>
-                  <td className="px-4 py-3 text-right text-muted-foreground">{formatTime(signal.time)}</td>
-                  <td className="px-4 py-3 text-right">
-                    <Badge 
-                      variant="outline" 
-                      className={cn(
-                        signal.status === 'new' && "border-info-DEFAULT text-info-DEFAULT",
-                        signal.status === 'executing' && "border-warning-DEFAULT text-warning-DEFAULT",
-                        signal.status === 'executed' && "border-success-DEFAULT text-success-DEFAULT",
-                        signal.status === 'failed' && "border-danger-DEFAULT text-danger-DEFAULT"
-                      )}
-                    >
-                      {signal.status}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={signal.status !== 'new'}
-                      onClick={() => executeSignal(signal.id)}
-                    >
-                      {signal.status === 'new' ? 'Execute' : 
-                       signal.status === 'executing' ? 'Processing...' : 
-                       signal.status === 'executed' ? 'Done' : 'Failed'}
-                    </Button>
-                  </td>
+          {signals.length > 0 ? (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-trading-border bg-trading-bg">
+                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Symbol</th>
+                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Type</th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Price</th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Time</th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Status</th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {signals.slice(0, 5).map((signal) => (
+                  <tr 
+                    key={signal.id} 
+                    className="border-b border-trading-border hover:bg-trading-bg/50"
+                  >
+                    <td className="px-4 py-3 font-medium">{signal.symbol}</td>
+                    <td className="px-4 py-3">
+                      <Badge variant={signal.type === 'BUY' ? 'success' : 'destructive'}>
+                        {signal.type}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-right">{signal.price.toFixed(5)}</td>
+                    <td className="px-4 py-3 text-right text-muted-foreground">{formatTime(signal.time)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <Badge 
+                        variant="outline" 
+                        className={cn(
+                          signal.status === 'new' && "border-info-DEFAULT text-info-DEFAULT",
+                          signal.status === 'executing' && "border-warning-DEFAULT text-warning-DEFAULT",
+                          signal.status === 'executed' && "border-success-DEFAULT text-success-DEFAULT",
+                          signal.status === 'failed' && "border-danger-DEFAULT text-danger-DEFAULT"
+                        )}
+                      >
+                        {signal.status}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={signal.status !== 'new' || executingSignals[signal.id]}
+                        onClick={() => executeSignal(signal)}
+                      >
+                        {signal.status === 'new' ? (executingSignals[signal.id] ? 'Processing...' : 'Execute') : 
+                         signal.status === 'executing' ? 'Processing...' : 
+                         signal.status === 'executed' ? 'Done' : 'Failed'}
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="p-6 text-center text-muted-foreground">
+              No trading signals available at the moment. 
+              <br />
+              Signals will appear as market conditions change.
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

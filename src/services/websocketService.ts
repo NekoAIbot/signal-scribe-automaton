@@ -27,12 +27,11 @@ export const useWebSocketMarketData = () => {
   const connectAttemptRef = useRef(0);
   const MAX_RECONNECT_ATTEMPTS = 5;
   const [shouldConnect, setShouldConnect] = useState(true);
-  
-  // Track if we're using mock data
   const [usingMockData, setUsingMockData] = useState(CONFIG_FLAGS.USE_MOCK_MT5);
-  
-  // Only log connection state changes, not on every render
   const prevConnectedRef = useRef(isConnected);
+  const connectionNotifiedRef = useRef(false);
+  const messageRateRef = useRef(0);
+  const lastNotificationTime = useRef(Date.now());
   
   const connect = useCallback(() => {
     if (!shouldConnect || wsRef.current?.readyState === WebSocket.OPEN) {
@@ -41,7 +40,6 @@ export const useWebSocketMarketData = () => {
     
     // For demo, prefer mock data to avoid hitting API limits
     if (CONFIG_FLAGS.USE_MOCK_MT5) {
-      console.log('Using mock market data');
       setUsingMockData(true);
       setIsConnected(true);
       return;
@@ -58,7 +56,12 @@ export const useWebSocketMarketData = () => {
         return;
       }
       
-      console.log('Connecting to WebSocket for market data...');
+      // Only log connection attempts with appropriate spacing
+      if (Date.now() - lastNotificationTime.current > 60000) {
+        console.log('Connecting to WebSocket for market data...');
+        lastNotificationTime.current = Date.now();
+      }
+      
       wsRef.current = new WebSocket(wsEndpoint);
       
       wsRef.current.onopen = () => {
@@ -82,6 +85,12 @@ export const useWebSocketMarketData = () => {
         try {
           const data = JSON.parse(event.data);
           if (data && data.symbol) {
+            // Rate limiting logs 
+            messageRateRef.current++;
+            if (messageRateRef.current % 100 === 0) {
+              console.log(`Received ${messageRateRef.current} market data updates`);
+            }
+            
             const normalizedSymbol = data.symbol.replace('/', '');
             setMarketData(prev => ({
               ...prev,
@@ -104,19 +113,15 @@ export const useWebSocketMarketData = () => {
       };
       
       wsRef.current.onerror = (error) => {
-        console.error('WebSocket error:', error);
         connectAttemptRef.current++;
         setIsConnected(false);
       };
     } catch (error) {
-      console.error('Error creating WebSocket:', error);
       setIsConnected(false);
     }
   }, [shouldConnect]);
   
   const disconnect = useCallback(() => {
-    console.log('Disconnecting WebSocket...');
-    
     if (reconnectTimeoutRef.current) {
       window.clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
@@ -155,8 +160,17 @@ export const useWebSocketMarketData = () => {
     // Update previous connection state ref
     if (prevConnectedRef.current !== isConnected) {
       prevConnectedRef.current = isConnected;
+      
+      // Only log significant connection state changes
+      if (isConnected && !connectionNotifiedRef.current) {
+        console.log(usingMockData ? 'Using mock market data' : 'WebSocket connected to live data');
+        connectionNotifiedRef.current = true;
+      } else if (!isConnected && connectionNotifiedRef.current) {
+        console.log('WebSocket disconnected');
+        connectionNotifiedRef.current = false;
+      }
     }
-  }, [isConnected]);
+  }, [isConnected, usingMockData]);
   
   useEffect(() => {
     if (shouldConnect) {

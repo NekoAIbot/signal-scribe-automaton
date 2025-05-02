@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,87 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Search, Download } from "lucide-react";
 import { toast } from "sonner";
 import { broadcastSignal } from '@/services/notificationService';
-
-interface TradingSignal {
-  id: number;
-  symbol: string;
-  type: 'BUY' | 'SELL';
-  price: number;
-  time: string;
-  status: 'new' | 'executing' | 'executed' | 'failed';
-  strategy: string;
-  stopLoss?: number;
-  takeProfit?: number;
-}
-
-const initialMockSignals: TradingSignal[] = [
-  {
-    id: 1,
-    symbol: 'EUR/USD',
-    type: 'BUY',
-    price: 1.05423,
-    time: '2023-04-21T09:30:00',
-    status: 'new',
-    strategy: 'SMA Crossover',
-    stopLoss: 1.05200,
-    takeProfit: 1.05700,
-  },
-  {
-    id: 2,
-    symbol: 'GBP/USD',
-    type: 'SELL',
-    price: 1.24356,
-    time: '2023-04-21T09:15:00',
-    status: 'executing',
-    strategy: 'RSI Divergence',
-    stopLoss: 1.24600,
-    takeProfit: 1.24000,
-  },
-  {
-    id: 3,
-    symbol: 'USD/JPY',
-    type: 'BUY',
-    price: 153.742,
-    time: '2023-04-21T09:00:00',
-    status: 'executed',
-    strategy: 'Bollinger Breakout',
-    stopLoss: 153.500,
-    takeProfit: 154.200,
-  },
-  {
-    id: 4,
-    symbol: 'AUD/USD',
-    type: 'SELL',
-    price: 0.65832,
-    time: '2023-04-21T08:45:00',
-    status: 'failed',
-    strategy: 'MACD Signal',
-    stopLoss: 0.66000,
-    takeProfit: 0.65500,
-  },
-  {
-    id: 5,
-    symbol: 'USD/CAD',
-    type: 'BUY',
-    price: 1.36520,
-    time: '2023-04-21T08:30:00',
-    status: 'executed',
-    strategy: 'Price Action',
-    stopLoss: 1.36300,
-    takeProfit: 1.36800,
-  },
-  {
-    id: 6,
-    symbol: 'NZD/USD',
-    type: 'SELL',
-    price: 0.59123,
-    time: '2023-04-21T08:15:00',
-    status: 'new',
-    strategy: 'SMA Crossover',
-    stopLoss: 0.59300,
-    takeProfit: 0.58800,
-  },
-];
+import { useTradingSignals } from '@/services/marketDataService';
+import { executeMT5Trade, TradeSignal } from '@/services/signalGenerationService';
+import { API_KEYS } from '@/config/apiConfig';
 
 const formatDate = (timeString: string) => {
   const date = new Date(timeString);
@@ -96,15 +18,22 @@ const formatDate = (timeString: string) => {
 };
 
 const SignalsPage = () => {
-  const [signals, setSignals] = useState<TradingSignal[]>(initialMockSignals);
+  const { data: initialSignals = [], isLoading, refetch } = useTradingSignals();
+  const [signals, setSignals] = useState<TradeSignal[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('all');
+  const [executingSignals, setExecutingSignals] = useState<Record<number, boolean>>({});
+  
+  // Update local signals when data changes
+  useEffect(() => {
+    setSignals(initialSignals);
+  }, [initialSignals]);
   
   // Filter signals based on search term and active tab
   const filteredSignals = signals.filter(signal => {
     const matchesSearch = searchTerm === '' || 
       signal.symbol.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      signal.strategy.toLowerCase().includes(searchTerm.toLowerCase());
+      (signal.strategy && signal.strategy.toLowerCase().includes(searchTerm.toLowerCase()));
       
     const matchesTab = activeTab === 'all' || 
                       (activeTab === 'buy' && signal.type === 'BUY') ||
@@ -115,40 +44,62 @@ const SignalsPage = () => {
   });
   
   // Execute a signal
-  const executeSignal = async (id: number) => {
-    // Find the signal to execute
-    const signalToExecute = signals.find(signal => signal.id === id);
-    if (!signalToExecute) return;
-
-    // Update the status to executing
-    setSignals(signals.map(signal => 
-      signal.id === id ? { ...signal, status: 'executing' as const } : signal
-    ));
-
-    toast.info(`Executing ${signalToExecute.type} signal for ${signalToExecute.symbol}`);
-
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    // Update to executed (80% success rate)
-    const success = Math.random() > 0.2;
+  const executeSignal = async (signal: TradeSignal) => {
+    // Prevent duplicate execution
+    if (executingSignals[signal.id]) return;
     
-    setSignals(signals.map(signal => 
-      signal.id === id ? { ...signal, status: success ? 'executed' as const : 'failed' as const } : signal
-    ));
-
-    // Send notification
-    if (success) {
-      await broadcastSignal({
-        symbol: signalToExecute.symbol,
-        type: signalToExecute.type,
-        price: signalToExecute.price,
-        strategy: signalToExecute.strategy
-      });
+    try {
+      // Mark as executing in UI
+      setExecutingSignals(prev => ({ ...prev, [signal.id]: true }));
       
-      toast.success(`Signal for ${signalToExecute.symbol} executed successfully`);
-    } else {
-      toast.error(`Failed to execute signal for ${signalToExecute.symbol}`);
+      // Display risk warning
+      toast.warning(`Risk Warning: Trading involves risk of loss. Only trade with capital you can afford to lose.`, {
+        duration: 5000
+      });
+
+      // Update the status to executing
+      setSignals(signals.map(s => 
+        s.id === signal.id ? { ...s, status: 'executing' as const } : s
+      ));
+
+      // Execute on MT5 (using default credentials from config)
+      const mt5Account = {
+        login: API_KEYS.MT5_LOGIN,
+        password: API_KEYS.MT5_PASSWORD,
+        server: API_KEYS.MT5_SERVER
+      };
+      
+      const success = await executeMT5Trade(signal, mt5Account);
+
+      // Update to executed or failed based on result
+      setSignals(signals.map(s => 
+        s.id === signal.id ? { ...s, status: success ? 'executed' as const : 'failed' as const } : s
+      ));
+
+      // Send notification if successful
+      if (success) {
+        await broadcastSignal({
+          symbol: signal.symbol,
+          type: signal.type,
+          price: signal.price,
+          strategy: signal.strategy
+        });
+        
+        toast.success(`Signal for ${signal.symbol} executed successfully`);
+      } else {
+        toast.error(`Failed to execute signal for ${signal.symbol}`);
+      }
+    } catch (error) {
+      console.error("Error executing signal:", error);
+      toast.error(`Error: ${(error as Error).message}`);
+      
+      // Update status to failed
+      setSignals(signals.map(s => 
+        s.id === signal.id ? { ...s, status: 'failed' as const } : s
+      ));
+    } finally {
+      // Clear executing state
+      setExecutingSignals(prev => ({ ...prev, [signal.id]: false }));
     }
   };
   
@@ -156,7 +107,7 @@ const SignalsPage = () => {
   const exportSignals = () => {
     try {
       // Create CSV content
-      const headers = ["Symbol", "Type", "Price", "Stop Loss", "Take Profit", "Time", "Status", "Strategy"];
+      const headers = ["Symbol", "Type", "Price", "Stop Loss", "Take Profit 1", "Take Profit 2", "Take Profit 3", "Take Profit 4", "Time", "Status", "Strategy"];
       
       const csvContent = [
         headers.join(','),
@@ -165,10 +116,13 @@ const SignalsPage = () => {
           signal.type,
           signal.price.toFixed(5),
           signal.stopLoss?.toFixed(5) || "-",
-          signal.takeProfit?.toFixed(5) || "-",
+          signal.takeProfit1?.toFixed(5) || "-",
+          signal.takeProfit2?.toFixed(5) || "-",
+          signal.takeProfit3?.toFixed(5) || "-",
+          signal.takeProfit4?.toFixed(5) || "-",
           formatDate(signal.time),
           signal.status,
-          signal.strategy
+          signal.strategy || "-"
         ].join(','))
       ].join('\n');
       
@@ -188,6 +142,19 @@ const SignalsPage = () => {
       toast.error('Failed to export signals');
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold">Trading Signals</h1>
+        <Card className="bg-trading-card border-trading-border">
+          <CardContent className="p-6 flex justify-center items-center">
+            Loading trading signals...
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
   
   return (
     <div className="space-y-6">
@@ -241,7 +208,7 @@ const SignalsPage = () => {
                         <th className="px-4 py-3 text-left font-medium text-muted-foreground">Strategy</th>
                         <th className="px-4 py-3 text-right font-medium text-muted-foreground">Price</th>
                         <th className="px-4 py-3 text-right font-medium text-muted-foreground hidden md:table-cell">Stop Loss</th>
-                        <th className="px-4 py-3 text-right font-medium text-muted-foreground hidden md:table-cell">Take Profit</th>
+                        <th className="px-4 py-3 text-right font-medium text-muted-foreground hidden lg:table-cell">TP1 / TP4</th>
                         <th className="px-4 py-3 text-right font-medium text-muted-foreground">Time</th>
                         <th className="px-4 py-3 text-right font-medium text-muted-foreground">Status</th>
                         <th className="px-4 py-3 text-right font-medium text-muted-foreground">Action</th>
@@ -266,8 +233,8 @@ const SignalsPage = () => {
                           <td className="px-4 py-3 text-right text-danger-DEFAULT hidden md:table-cell">
                             {signal.stopLoss?.toFixed(5)}
                           </td>
-                          <td className="px-4 py-3 text-right text-success-DEFAULT hidden md:table-cell">
-                            {signal.takeProfit?.toFixed(5)}
+                          <td className="px-4 py-3 text-right text-success-DEFAULT hidden lg:table-cell">
+                            {signal.takeProfit1?.toFixed(5)} / {signal.takeProfit4?.toFixed(5)}
                           </td>
                           <td className="px-4 py-3 text-right text-muted-foreground">{formatDate(signal.time)}</td>
                           <td className="px-4 py-3 text-right">
@@ -290,12 +257,13 @@ const SignalsPage = () => {
                             <Button
                               variant="outline"
                               size="sm"
-                              disabled={signal.status !== 'new'}
-                              onClick={() => executeSignal(signal.id)}
+                              disabled={signal.status !== 'new' || executingSignals[signal.id]}
+                              onClick={() => executeSignal(signal)}
                             >
-                              {signal.status === 'new' ? 'Execute' : 
-                               signal.status === 'executing' ? 'Processing...' : 
-                               signal.status === 'executed' ? 'Done' : 'Failed'}
+                              {signal.status === 'new' ? 
+                                (executingSignals[signal.id] ? 'Processing...' : 'Execute') : 
+                                signal.status === 'executing' ? 'Processing...' : 
+                                signal.status === 'executed' ? 'Done' : 'Failed'}
                             </Button>
                           </td>
                         </tr>

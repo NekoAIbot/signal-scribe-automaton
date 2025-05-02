@@ -5,6 +5,7 @@ import { TrendingUp, TrendingDown, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useQueryClient } from '@tanstack/react-query';
 
 interface MarketCardProps {
   symbol: string;
@@ -17,13 +18,15 @@ interface MarketCardProps {
 
 export function MarketCard({ symbol, price, change, volume, timestamp, onRefresh }: MarketCardProps) {
   const isPositive = change >= 0;
+  const queryClient = useQueryClient();
   
   const handleRefresh = () => {
     if (onRefresh) {
       onRefresh();
     } else {
       toast.info(`Refreshing data for ${symbol}...`);
-      // Simulate refresh if no onRefresh function provided
+      // Invalidate query to trigger a refetch
+      queryClient.invalidateQueries({ queryKey: ['marketData'] });
       setTimeout(() => toast.success(`${symbol} data refreshed`), 500);
     }
   };
