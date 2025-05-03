@@ -1,9 +1,15 @@
+
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import { API_KEYS, CONFIG_FLAGS } from "@/config/apiConfig";
 import { useWebSocketMarketData } from "./websocketService";
-import { generateTradingSignals, updateHistoricalPrices, TradeSignal } from "./signalGenerationService";
+import { 
+  generateTradingSignals, 
+  updateHistoricalPrices, 
+  TradeSignal, 
+  getHistoricalPrices 
+} from "./signalGenerationService";
 
 export interface MarketData {
   symbol: string;
@@ -127,7 +133,7 @@ export const useTradingSignals = () => {
   
   // Generate signals and update the state
   const generateSignals = useCallback(() => {
-    const historicalPrices = require('./signalGenerationService').getHistoricalPrices();
+    const historicalPrices = getHistoricalPrices();
     
     if (isConnected && Object.keys(wsMarketData).length > 0 && Object.values(historicalPrices).some(prices => prices.length > 30)) {
       const signals = generateTradingSignals(wsMarketData, historicalPrices);
@@ -179,7 +185,7 @@ export const useTradingSignals = () => {
     queryKey: ['tradingSignals'],
     queryFn: async () => {
       // Initial set of signals
-      const historicalPrices = require('./signalGenerationService').getHistoricalPrices();
+      const historicalPrices = getHistoricalPrices();
       return generateTradingSignals(wsMarketData, historicalPrices);
     },
     refetchInterval: 60000, // Refresh every minute
