@@ -3,11 +3,12 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Settings } from 'lucide-react';
+import { Settings, Brain } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { toast } from 'sonner';
 import { useWebSocketMarketData } from '@/services/websocketService';
-import { useTradingSignals } from '@/services/marketDataService';
+import { useQuery } from '@tanstack/react-query';
+import { getEnhancedSignals, getAIInsights, getActiveModels } from '@/services/aiSignalService';
 import { API_LIMITS } from '@/config/apiConfig';
 
 export function TradingStatus() {
@@ -18,9 +19,25 @@ export function TradingStatus() {
   const [apiRequests, setApiRequests] = useState(0);
   const [activeTrades, setActiveTrades] = useState(0);
   const [pendingSignals, setPendingSignals] = useState(0);
+  const [activeModel, setActiveModel] = useState<string>('Transformer');
   
   const { isConnected, usingMockData } = useWebSocketMarketData();
-  const { data: tradingSignals = [] } = useTradingSignals();
+  const { data: tradingSignals = [] } = useQuery({
+    queryKey: ['enhancedSignals'],
+    queryFn: getEnhancedSignals,
+    refetchInterval: 10000,
+  });
+
+  const { data: mlModels = [] } = useQuery({
+    queryKey: ['mlModels'],
+    queryFn: getActiveModels,
+  });
+
+  const { data: aiInsights, refetch: refetchInsights } = useQuery({
+    queryKey: ['aiInsights'],
+    queryFn: getAIInsights,
+    refetchInterval: 30000,
+  });
   
   const startTime = React.useRef(new Date().getTime());
   
@@ -32,6 +49,7 @@ export function TradingStatus() {
     if (!isActive) {
       // Reset start time when reactivating
       startTime.current = new Date().getTime();
+      refetchInsights();
     }
   };
 
@@ -90,10 +108,17 @@ export function TradingStatus() {
     setActiveTrades(active);
   }, [tradingSignals]);
   
+  // Set active model from the database
+  useEffect(() => {
+    if (mlModels.length > 0) {
+      setActiveModel(mlModels[0].type);
+    }
+  }, [mlModels]);
+  
   return (
     <Card className="bg-trading-card border-trading-border">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-base font-medium">Trading Bot Status</CardTitle>
+        <CardTitle className="text-base font-medium">AI Trading System Status</CardTitle>
         <Button variant="ghost" size="icon" onClick={openSettings}>
           <Settings className="h-4 w-4" />
         </Button>
@@ -125,13 +150,43 @@ export function TradingStatus() {
         </div>
         
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium">Data Source:</span>
-          <Badge variant={usingMockData ? "outline" : "default"}>
-            {usingMockData ? "Mock Data" : "Live Feed"}
+          <span className="text-sm font-medium flex items-center gap-1">
+            <Brain className="h-4 w-4" /> AI Model:
+          </span>
+          <Badge variant="default" className="bg-primary">
+            {activeModel}
+          </Badge>
+        </div>
+        
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-medium">Market Prediction:</span>
+          <Badge variant={aiInsights?.marketPrediction === "Bullish" ? "success" : "destructive"}>
+            {aiInsights?.marketPrediction || "Analyzing"}
+          </Badge>
+        </div>
+        
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-medium">Risk Level:</span>
+          <Badge variant="outline" className={
+            aiInsights?.riskAssessment === "High" 
+              ? "border-danger-DEFAULT text-danger-DEFAULT" 
+              : aiInsights?.riskAssessment === "Medium"
+              ? "border-warning-DEFAULT text-warning-DEFAULT"
+              : "border-success-DEFAULT text-success-DEFAULT"
+          }>
+            {aiInsights?.riskAssessment || "Low"}
           </Badge>
         </div>
         
         <div className="space-y-4 mt-4">
+          <div>
+            <div className="flex justify-between mb-1">
+              <span className="text-sm">AI Confidence</span>
+              <span className="text-sm font-medium">{aiInsights?.confidenceLevel || 0}%</span>
+            </div>
+            <Progress value={aiInsights?.confidenceLevel || 0} className="h-2" />
+          </div>
+          
           <div>
             <div className="flex justify-between mb-1">
               <span className="text-sm">CPU Usage</span>

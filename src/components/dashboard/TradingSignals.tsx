@@ -6,40 +6,61 @@ import { Button } from "@/components/ui/button";
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { broadcastSignal } from '@/services/notificationService';
-import { useTradingSignals } from '@/services/marketDataService';
-import { executeMT5Trade, TradeSignal } from '@/services/signalGenerationService';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getEnhancedSignals } from '@/services/aiSignalService';
+import { executeMT5Trade } from '@/services/signalGenerationService';
 import { API_KEYS } from '@/config/apiConfig';
+import { EnhancedSignal } from '@/services/aiSignalService';
 
 const formatTime = (timeString: string) => {
   const date = new Date(timeString);
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
+// Helper function to format confidence level
+const getConfidenceBadge = (confidence: number | undefined) => {
+  if (!confidence) return null;
+  
+  let variant = 'outline';
+  let className = '';
+  
+  if (confidence >= 0.8) {
+    className = "border-success-DEFAULT text-success-DEFAULT";
+  } else if (confidence >= 0.6) {
+    className = "border-info-DEFAULT text-info-DEFAULT";
+  } else if (confidence >= 0.4) {
+    className = "border-warning-DEFAULT text-warning-DEFAULT";
+  } else {
+    className = "border-danger-DEFAULT text-danger-DEFAULT";
+  }
+  
+  return (
+    <Badge variant={variant} className={className}>
+      {Math.floor(confidence * 100)}%
+    </Badge>
+  );
+};
+
 export function TradingSignals() {
-  const { data: signals = [], isLoading, refetch } = useTradingSignals();
-  const [executingSignals, setExecutingSignals] = useState<Record<number, boolean>>({});
+  const queryClient = useQueryClient();
+  const { data: signals = [], isLoading } = useQuery({
+    queryKey: ['enhancedSignals'],
+    queryFn: getEnhancedSignals,
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+  
+  const [executingSignals, setExecutingSignals] = useState<Record<string, boolean>>({});
 
-  const handleViewAll = () => {
-    toast.info("Navigating to signals page");
-    // In a real app, we would navigate to the signals page using router
-    window.location.href = "/signals";
-  };
-
-  const executeSignal = async (signal: TradeSignal) => {
-    if (executingSignals[signal.id]) return;
-
-    try {
-      // Mark signal as executing
-      setExecutingSignals(prev => ({ ...prev, [signal.id]: true }));
+  const executeSignalMutation = useMutation({
+    mutationFn: async (signal: EnhancedSignal) => {
+      // Update the signal status to executing
+      const updatedSignal = { ...signal, status: 'executing' as const };
       
       // Display risk warning
       toast.warning("Trading involves significant risk of loss. Only trade with risk capital.", {
         duration: 6000,
       });
 
-      // Update the signal status
-      const updatedSignal = { ...signal, status: 'executing' as const };
-      
       // Execute on MT5 (using default credentials from config)
       const mt5Account = {
         login: API_KEYS.MT5_LOGIN,
@@ -49,29 +70,45 @@ export function TradingSignals() {
       
       const success = await executeMT5Trade(updatedSignal, mt5Account);
       
-      // Broadcast signal to notification channels
-      if (success) {
-        await broadcastSignal({
-          symbol: signal.symbol,
-          type: signal.type,
-          price: signal.price,
-          strategy: signal.strategy || 'Technical Analysis'
-        });
-        
-        toast.success(`Signal for ${signal.symbol} executed successfully`);
-        
-        // Update signal in state
-        refetch();
-      } else {
-        toast.error(`Failed to execute signal for ${signal.symbol}`);
+      if (!success) {
+        throw new Error(`Failed to execute signal for ${signal.symbol}`);
       }
-    } catch (error) {
+      
+      // Broadcast signal to notification channels
+      await broadcastSignal({
+        symbol: signal.symbol,
+        type: signal.type,
+        price: signal.price,
+        strategy: signal.strategy_name || 'AI Enhanced Strategy'
+      });
+      
+      return signal.id;
+    },
+    onMutate: (signal) => {
+      setExecutingSignals(prev => ({ ...prev, [signal.id]: true }));
+    },
+    onSuccess: (signalId) => {
+      toast.success(`Signal executed successfully`);
+      queryClient.invalidateQueries({ queryKey: ['enhancedSignals'] });
+    },
+    onError: (error, signal) => {
       console.error(`Error executing signal:`, error);
       toast.error(`Error executing trade: ${(error as Error).message}`);
-    } finally {
-      // Clear executing state
+    },
+    onSettled: (_, __, signal) => {
       setExecutingSignals(prev => ({ ...prev, [signal.id]: false }));
     }
+  });
+
+  const handleViewAll = () => {
+    toast.info("Navigating to signals page");
+    // In a real app, we would navigate to the signals page using router
+    window.location.href = "/signals";
+  };
+
+  const executeSignal = (signal: EnhancedSignal) => {
+    if (executingSignals[signal.id] || signal.status !== 'new') return;
+    executeSignalMutation.mutate(signal);
   };
 
   if (isLoading) {
@@ -103,6 +140,7 @@ export function TradingSignals() {
                   <th className="px-4 py-2 text-left font-medium text-muted-foreground">Symbol</th>
                   <th className="px-4 py-2 text-left font-medium text-muted-foreground">Type</th>
                   <th className="px-4 py-2 text-right font-medium text-muted-foreground">Price</th>
+                  <th className="px-2 py-2 text-center font-medium text-muted-foreground">Confidence</th>
                   <th className="px-4 py-2 text-right font-medium text-muted-foreground">Time</th>
                   <th className="px-4 py-2 text-right font-medium text-muted-foreground">Status</th>
                   <th className="px-4 py-2 text-right font-medium text-muted-foreground">Action</th>
@@ -121,7 +159,10 @@ export function TradingSignals() {
                       </Badge>
                     </td>
                     <td className="px-4 py-3 text-right">{signal.price.toFixed(5)}</td>
-                    <td className="px-4 py-3 text-right text-muted-foreground">{formatTime(signal.time)}</td>
+                    <td className="px-2 py-3 text-center">
+                      {getConfidenceBadge(signal.confidence_score)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-muted-foreground">{signal.time ? formatTime(signal.time) : 'Now'}</td>
                     <td className="px-4 py-3 text-right">
                       <Badge 
                         variant="outline" 
