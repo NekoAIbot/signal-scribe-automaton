@@ -1,3 +1,4 @@
+
 import { MarketData } from './marketDataService';
 import { CONFIG_FLAGS } from '@/config/apiConfig';
 import { toast } from 'sonner';
@@ -17,6 +18,17 @@ export interface TradeSignal {
   takeProfit4?: number;
   risk?: number;
   lotSize?: number;
+}
+
+// Enhanced account details interface for MT5 connection
+export interface MT5AccountDetails {
+  login: string;
+  password: string;
+  server: string;
+  platform?: 'MT4' | 'MT5' | 'cTrader';
+  accountType?: 'demo' | 'real';
+  lotSize?: number;
+  maxRisk?: number;
 }
 
 // Technical indicators calculation
@@ -256,12 +268,12 @@ export const getHistoricalPrices = () => {
   return historicalPrices;
 };
 
-// Execute a trade on MT5
-export const executeMT5Trade = async (signal: TradeSignal, accountDetails: {
-  login: string;
-  password: string;
-  server: string;
-}): Promise<boolean> => {
+// Execute a trade on MT5/MT4/cTrader
+export const executeMT5Trade = async (
+  signal: TradeSignal, 
+  accountDetails: MT5AccountDetails
+): Promise<boolean> => {
+  // If we're using mock mode, simulate execution
   if (CONFIG_FLAGS.USE_MOCK_MT5) {
     // Simulate trade execution with 80% success rate for mock mode
     await new Promise(resolve => setTimeout(resolve, 1500));
@@ -277,12 +289,18 @@ export const executeMT5Trade = async (signal: TradeSignal, accountDetails: {
   }
   
   try {
-    // In a real implementation, this would connect to the MT5 API
-    // This is a simulated API call
-    console.log(`Executing ${signal.type} trade on MT5 for ${signal.symbol}`, { 
+    // Prepare the trading parameters
+    const platform = accountDetails.platform || 'MT5';
+    const accountType = accountDetails.accountType || 'demo';
+    const lotSize = accountDetails.lotSize || signal.lotSize || 0.01;
+    
+    // Display information about the trade
+    console.log(`Executing ${signal.type} trade on ${platform} for ${signal.symbol}`, { 
       account: accountDetails.login,
       server: accountDetails.server,
-      signal 
+      accountType,
+      signal,
+      lotSize
     });
     
     // Display risk warning
@@ -290,15 +308,21 @@ export const executeMT5Trade = async (signal: TradeSignal, accountDetails: {
       duration: 5000
     });
     
-    // Simulate API call delay
+    // In a real implementation, we would connect to the broker's API
+    // This would typically involve:
+    // 1. Authenticating with the broker's API
+    // 2. Sending the order details to the broker
+    // 3. Handling the response from the broker
+    
+    // For demonstration, we're simulating a successful trade execution
     await new Promise(resolve => setTimeout(resolve, 2000));
     
-    // Simulate successful execution for demo
-    toast.success(`MT5 Trade executed: ${signal.type} ${signal.symbol} @ ${signal.price}`);
+    // Simulate successful execution
+    toast.success(`${platform} Trade executed: ${signal.type} ${signal.symbol} @ ${signal.price.toFixed(5)}`);
     return true;
   } catch (error) {
-    console.error('Error executing MT5 trade:', error);
-    toast.error(`Failed to execute trade on MT5: ${(error as Error).message}`);
+    console.error(`Error executing ${accountDetails.platform || 'MT5'} trade:`, error);
+    toast.error(`Failed to execute trade: ${(error as Error).message}`);
     return false;
   }
 };

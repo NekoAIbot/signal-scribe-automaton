@@ -10,10 +10,12 @@ import SignalsPage from "./pages/SignalsPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import AlertsPage from "./pages/AlertsPage";
 import SettingsPage from "./pages/SettingsPage";
+import AdminPage from "./pages/AdminPage";
 import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import { useAuth } from "./services/authService";
+import { AdminRoute } from "./components/auth/AdminRoute";
 
 // Create a client
 const queryClient = new QueryClient({
@@ -72,6 +74,11 @@ const AppRoutes = () => {
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/admin" element={
+            <AdminRoute>
+              <AdminPage />
+            </AdminRoute>
+          } />
         </Route>
         
         <Route path="*" element={<NotFound />} />

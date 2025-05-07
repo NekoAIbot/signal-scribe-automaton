@@ -64,9 +64,9 @@ export interface EnhancedSignal {
 // Function to fetch available ML models
 export const getActiveModels = async () => {
   try {
-    // Using type assertion to bypass TypeScript errors
-    const { data, error } = await (supabase
-      .from('ml_models') as any)
+    // Using explicit type casting to work around TypeScript errors
+    const { data, error } = await supabase
+      .from('ml_models' as any)
       .select('*')
       .eq('is_active', true);
       
@@ -82,9 +82,9 @@ export const getActiveModels = async () => {
 // Function to fetch active trading strategies
 export const getActiveStrategies = async () => {
   try {
-    // Using type assertion to bypass TypeScript errors
-    const { data, error } = await (supabase
-      .from('trading_strategies') as any)
+    // Using explicit type casting to work around TypeScript errors
+    const { data, error } = await supabase
+      .from('trading_strategies' as any)
       .select('*')
       .eq('is_active', true);
       
@@ -100,9 +100,9 @@ export const getActiveStrategies = async () => {
 // Function to fetch market sentiment data
 export const getMarketSentiment = async (symbol: string) => {
   try {
-    // Using type assertion to bypass TypeScript errors
-    const { data, error } = await (supabase
-      .from('market_sentiment') as any)
+    // Using explicit type casting to work around TypeScript errors
+    const { data, error } = await supabase
+      .from('market_sentiment' as any)
       .select('*')
       .eq('symbol', symbol)
       .order('collected_at', { ascending: false })
@@ -119,9 +119,9 @@ export const getMarketSentiment = async (symbol: string) => {
 // Function to get enhanced signals with AI processing
 export const getEnhancedSignals = async () => {
   try {
-    // Using type assertion to bypass TypeScript errors
-    const { data, error } = await (supabase
-      .from('enhanced_signals') as any)
+    // Using explicit type casting to work around TypeScript errors
+    const { data, error } = await supabase
+      .from('enhanced_signals' as any)
       .select('*')
       .order('time', { ascending: false })
       .limit(10);
@@ -197,9 +197,9 @@ export const generateEnhancedSignal = async (symbol: string, price: number, base
       risk_adjustment: confidenceScore * 0.8 // Risk scales with confidence
     };
     
-    // Insert the signal into the database using type assertion to bypass TypeScript errors
-    const { data, error } = await (supabase
-      .from('enhanced_signals') as any)
+    // Insert the signal into the database using explicit type casting
+    const { data, error } = await supabase
+      .from('enhanced_signals' as any)
       .insert(newSignal)
       .select();
       

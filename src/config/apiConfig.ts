@@ -29,6 +29,6 @@ export const API_LIMITS = {
 };
 
 export const CONFIG_FLAGS = {
-  USE_MOCK_MT5: true,
+  USE_MOCK_MT5: false, // Set to false to use real data
   EXHAUSTIVE_SEARCH: true
 };
