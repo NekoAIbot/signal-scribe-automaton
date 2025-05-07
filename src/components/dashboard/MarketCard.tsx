@@ -9,14 +9,14 @@ import { useQueryClient } from '@tanstack/react-query';
 
 interface MarketCardProps {
   symbol: string;
-  price: number;
-  change: number;
-  volume: number;
+  price?: number;
+  change?: number;
+  volume?: number;
   timestamp?: string;
   onRefresh?: () => void;
 }
 
-export function MarketCard({ symbol, price, change, volume, timestamp, onRefresh }: MarketCardProps) {
+export function MarketCard({ symbol, price = 0, change = 0, volume = 0, timestamp, onRefresh }: MarketCardProps) {
   const isPositive = change >= 0;
   const queryClient = useQueryClient();
   
@@ -47,7 +47,7 @@ export function MarketCard({ symbol, price, change, volume, timestamp, onRefresh
                 <RefreshCw className="h-3 w-3" />
               </Button>
             </div>
-            <p className="text-sm text-muted-foreground">Vol: {volume.toLocaleString()}</p>
+            <p className="text-sm text-muted-foreground">Vol: {volume?.toLocaleString() || '0'}</p>
           </div>
           
           <div className={cn(
@@ -55,12 +55,12 @@ export function MarketCard({ symbol, price, change, volume, timestamp, onRefresh
             isPositive ? "text-success-DEFAULT" : "text-danger-DEFAULT"
           )}>
             {isPositive ? <TrendingUp className="h-4 w-4 mr-1" /> : <TrendingDown className="h-4 w-4 mr-1" />}
-            <span className="text-sm font-medium">{change.toFixed(2)}%</span>
+            <span className="text-sm font-medium">{change?.toFixed(2) || '0.00'}%</span>
           </div>
         </div>
         
         <div className="mt-2">
-          <p className="text-2xl font-bold">{price.toFixed(5)}</p>
+          <p className="text-2xl font-bold">{price?.toFixed(5) || '0.00000'}</p>
           {timestamp && (
             <p className="text-xs text-muted-foreground mt-1">
               Updated: {new Date(timestamp).toLocaleTimeString()}
