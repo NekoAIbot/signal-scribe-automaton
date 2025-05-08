@@ -61,12 +61,14 @@ export interface EnhancedSignal {
   execution_data?: any;
 }
 
+// Type to help with typecasting Supabase clients
+type AnyTable = Record<string, any>;
+
 // Function to fetch available ML models
 export const getActiveModels = async () => {
   try {
-    // Using explicit type casting to work around TypeScript errors
     const { data, error } = await supabase
-      .from('ml_models' as any)
+      .from('ml_models' as unknown as AnyTable)
       .select('*')
       .eq('is_active', true);
       
@@ -82,9 +84,8 @@ export const getActiveModels = async () => {
 // Function to fetch active trading strategies
 export const getActiveStrategies = async () => {
   try {
-    // Using explicit type casting to work around TypeScript errors
     const { data, error } = await supabase
-      .from('trading_strategies' as any)
+      .from('trading_strategies' as unknown as AnyTable)
       .select('*')
       .eq('is_active', true);
       
@@ -100,9 +101,8 @@ export const getActiveStrategies = async () => {
 // Function to fetch market sentiment data
 export const getMarketSentiment = async (symbol: string) => {
   try {
-    // Using explicit type casting to work around TypeScript errors
     const { data, error } = await supabase
-      .from('market_sentiment' as any)
+      .from('market_sentiment' as unknown as AnyTable)
       .select('*')
       .eq('symbol', symbol)
       .order('collected_at', { ascending: false })
@@ -119,9 +119,8 @@ export const getMarketSentiment = async (symbol: string) => {
 // Function to get enhanced signals with AI processing
 export const getEnhancedSignals = async () => {
   try {
-    // Using explicit type casting to work around TypeScript errors
     const { data, error } = await supabase
-      .from('enhanced_signals' as any)
+      .from('enhanced_signals' as unknown as AnyTable)
       .select('*')
       .order('time', { ascending: false })
       .limit(10);
@@ -199,8 +198,8 @@ export const generateEnhancedSignal = async (symbol: string, price: number, base
     
     // Insert the signal into the database using explicit type casting
     const { data, error } = await supabase
-      .from('enhanced_signals' as any)
-      .insert(newSignal)
+      .from('enhanced_signals' as unknown as AnyTable)
+      .insert(newSignal as any)
       .select();
       
     if (error) throw error;

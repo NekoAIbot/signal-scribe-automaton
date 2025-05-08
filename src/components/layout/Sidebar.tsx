@@ -16,7 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { useMobile } from "@/hooks/use-mobile";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface SidebarNavProps extends React.HTMLAttributes<HTMLDivElement> {
   isCollapsed: boolean;
@@ -31,7 +31,7 @@ interface NavItem {
 
 export function Sidebar({ isCollapsed }: SidebarNavProps) {
   const pathname = useLocation().pathname;
-  const isMobile = useMobile();
+  const isMobile = useIsMobile();
   
   const navItems: NavItem[] = [
     {

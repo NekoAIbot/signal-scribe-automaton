@@ -70,7 +70,7 @@ export function Layout() {
   
   return (
     <div className="flex h-screen bg-trading-bg text-foreground">
-      <Sidebar collapsed={sidebarCollapsed} onToggle={toggleSidebar} />
+      <Sidebar isCollapsed={sidebarCollapsed} />
       
       <div className="flex flex-col flex-1 overflow-hidden">
         <Header toggleSidebar={toggleSidebar} />
