@@ -61,14 +61,11 @@ export interface EnhancedSignal {
   execution_data?: any;
 }
 
-// Type to help with typecasting Supabase clients
-type AnyTable = Record<string, any>;
-
 // Function to fetch available ML models
 export const getActiveModels = async () => {
   try {
     const { data, error } = await supabase
-      .from('ml_models' as unknown as AnyTable)
+      .from('ml_models' as any)
       .select('*')
       .eq('is_active', true);
       
@@ -85,7 +82,7 @@ export const getActiveModels = async () => {
 export const getActiveStrategies = async () => {
   try {
     const { data, error } = await supabase
-      .from('trading_strategies' as unknown as AnyTable)
+      .from('trading_strategies' as any)
       .select('*')
       .eq('is_active', true);
       
@@ -102,7 +99,7 @@ export const getActiveStrategies = async () => {
 export const getMarketSentiment = async (symbol: string) => {
   try {
     const { data, error } = await supabase
-      .from('market_sentiment' as unknown as AnyTable)
+      .from('market_sentiment' as any)
       .select('*')
       .eq('symbol', symbol)
       .order('collected_at', { ascending: false })
@@ -120,7 +117,7 @@ export const getMarketSentiment = async (symbol: string) => {
 export const getEnhancedSignals = async () => {
   try {
     const { data, error } = await supabase
-      .from('enhanced_signals' as unknown as AnyTable)
+      .from('enhanced_signals' as any)
       .select('*')
       .order('time', { ascending: false })
       .limit(10);
@@ -198,7 +195,7 @@ export const generateEnhancedSignal = async (symbol: string, price: number, base
     
     // Insert the signal into the database using explicit type casting
     const { data, error } = await supabase
-      .from('enhanced_signals' as unknown as AnyTable)
+      .from('enhanced_signals' as any)
       .insert(newSignal as any)
       .select();
       
