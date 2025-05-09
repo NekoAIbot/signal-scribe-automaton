@@ -64,7 +64,7 @@ export interface EnhancedSignal {
 // Function to fetch available ML models
 export const getActiveModels = async () => {
   try {
-    // Force type casting with `as unknown as any` to bypass TypeScript's type checking
+    // Force type casting with `as any` to bypass TypeScript's type checking for database tables
     const { data, error } = await (supabase as any)
       .from('ml_models')
       .select('*')
@@ -194,7 +194,7 @@ export const generateEnhancedSignal = async (symbol: string, price: number, base
       risk_adjustment: confidenceScore * 0.8 // Risk scales with confidence
     };
     
-    // Insert the signal into the database using explicit type casting
+    // Insert the signal into the database
     const { data, error } = await (supabase as any)
       .from('enhanced_signals')
       .insert(newSignal)
