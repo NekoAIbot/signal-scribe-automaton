@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -5,12 +6,13 @@ import { Button } from "@/components/ui/button";
 import { TrendingUp, TrendingDown, AlertTriangle, Settings } from "lucide-react";
 import { toast } from "sonner";
 import { useTradingSignals } from "@/services/marketDataService";
-import { TradeSignal, executeMT5Trade } from "@/services/signalGenerationService";
+import { executeSignalAcrossAccounts } from "@/services/ai/signalService";
+import { EnhancedSignal } from "@/services/ai/types";
 import { cn } from "@/lib/utils";
 import { BrokerSettings, BrokerSettingsModal } from "@/components/settings/BrokerSettingsModal";
 
 export function TradingSignals() {
-  const { data: signals = [] } = useTradingSignals();
+  const { data: signals = [], refetch } = useTradingSignals();
   const [isExecuting, setIsExecuting] = useState<string | null>(null);
   const [brokerSettings, setBrokerSettings] = useState<BrokerSettings | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -27,7 +29,7 @@ export function TradingSignals() {
     }
   }, []);
   
-  const handleExecute = async (signal: TradeSignal) => {
+  const handleExecute = async (signal: EnhancedSignal) => {
     // Check if broker settings are available
     if (!brokerSettings) {
       toast.error("Please configure your broker settings first");
@@ -39,23 +41,16 @@ export function TradingSignals() {
     toast.info(`Processing ${signal.type} signal for ${signal.symbol}...`);
     
     try {
-      const success = await executeMT5Trade(signal, {
-        login: brokerSettings.login,
-        password: brokerSettings.password,
-        server: brokerSettings.server,
-        platform: brokerSettings.platform || 'MT5',
-        accountType: brokerSettings.accountType || 'demo',
-        lotSize: brokerSettings.lotSize || 0.01,
-        maxRisk: brokerSettings.maxRiskPerTrade || 1
-      });
+      // Execute across all user's broker accounts
+      const results = await executeSignalAcrossAccounts(signal);
       
-      if (success) {
-        const updatedSignal = {
-          ...signal,
-          status: 'executing' as const
-        };
+      if (results.length > 0) {
+        toast.success(`Signal for ${signal.symbol} is now executing on ${results.length} broker accounts`);
         
-        toast.success(`Signal for ${signal.symbol} is now executing on ${brokerSettings.platform}`);
+        // Refetch signals to update status
+        refetch();
+      } else {
+        toast.warning(`No broker accounts executed the signal for ${signal.symbol}`);
       }
     } catch (error) {
       toast.error(`Failed to execute signal: ${(error as Error).message}`);
@@ -116,23 +111,27 @@ export function TradingSignals() {
                     </Badge>
                     <div>
                       <div className="font-medium">{signal.symbol}</div>
-                      <div className="text-xs text-muted-foreground">{signal.strategy}</div>
+                      <div className="text-xs text-muted-foreground">{signal.strategy_name}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="text-right">
                       <div className="font-medium">{signal.price.toFixed(5)}</div>
                       <div className="text-xs text-muted-foreground">
-                        {new Date(signal.time).toLocaleTimeString()}
+                        {signal.time ? new Date(signal.time).toLocaleTimeString() : 'N/A'}
                       </div>
                     </div>
                     <Button 
                       variant="outline" 
                       size="sm"
-                      disabled={isExecuting === signal.id.toString()}
+                      disabled={isExecuting === signal.id.toString() || signal.status !== 'new'}
                       onClick={() => handleExecute(signal)}
                     >
-                      {isExecuting === signal.id.toString() ? 'Processing...' : 'Execute'}
+                      {isExecuting === signal.id.toString() ? 'Processing...' : 
+                        signal.status === 'new' ? 'Execute' : 
+                        signal.status === 'executing' ? 'Processing...' : 
+                        signal.status === 'executed' ? 'Executed' : 
+                        signal.status === 'monitoring' ? 'Monitoring' : 'Failed'}
                     </Button>
                   </div>
                 </div>

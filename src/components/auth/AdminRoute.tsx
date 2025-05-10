@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
-// Admin password - in a real application, this would be stored securely and authenticated against a backend
-const ADMIN_PASSWORD = "forex-ai-admin-2024";
+// Admin password updated as requested
+const ADMIN_PASSWORD = "Nathan19@@";
 
 interface AdminRouteProps {
   children: React.ReactNode;

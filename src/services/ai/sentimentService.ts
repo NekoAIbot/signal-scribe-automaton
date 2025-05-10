@@ -1,45 +1,143 @@
 
 import { supabase } from "@/integrations/supabase/client";
 import { MarketSentiment } from "./types";
+import { toast } from "sonner";
 
-// Function to fetch market sentiment data
-export const getMarketSentiment = async (symbol: string) => {
+// Function to get market sentiment for a particular symbol
+export const getMarketSentiment = async (symbol: string): Promise<MarketSentiment | null> => {
   try {
-    const { data, error } = await (supabase as any)
-      .from('market_sentiment')
+    const { data, error } = await supabase
+      .from('market_sentiments')
       .select('*')
       .eq('symbol', symbol)
       .order('collected_at', { ascending: false })
       .limit(1);
       
     if (error) throw error;
-    return data[0] as MarketSentiment | undefined;
+    
+    if (data && data.length > 0) {
+      return data[0] as MarketSentiment;
+    }
+    
+    // If no sentiment found, analyze sentiment on-demand
+    return await analyzeSentimentOnDemand(symbol);
   } catch (error) {
     console.error("Error fetching market sentiment:", error);
-    return undefined;
+    
+    // Return simulated sentiment for development
+    return {
+      symbol,
+      sentiment_score: (Math.random() * 2) - 1, // -1 to 1
+      news_sentiment: (Math.random() * 2) - 1, // -1 to 1
+      social_sentiment: (Math.random() * 2) - 1, // -1 to 1
+      source: 'simulation',
+      collected_at: new Date().toISOString()
+    };
   }
 };
 
-// Update the dashboard with AI insights
-export const getAIInsights = async () => {
+// Function to analyze sentiment on demand
+export const analyzeSentimentOnDemand = async (symbol: string): Promise<MarketSentiment | null> => {
   try {
-    // This would typically be a complex ML inference in production
-    // Here we're generating example insights
-    const insights = {
-      marketPrediction: Math.random() > 0.5 ? 'Bullish' : 'Bearish',
-      confidenceLevel: Math.floor(Math.random() * 100),
-      keyFactors: [
-        'High volume detected',
-        'Positive sentiment trend',
-        'Technical breakout pattern'
-      ],
-      riskAssessment: Math.random() > 0.7 ? 'High' : Math.random() > 0.4 ? 'Medium' : 'Low',
-      recommendedAction: Math.random() > 0.6 ? 'Consider new positions' : 'Monitor existing positions'
-    };
+    // Call Supabase Edge Function for sentiment analysis
+    const { data, error } = await supabase.functions.invoke('ml-predictions', {
+      body: { symbol: symbol, type: 'sentiment-analysis', sources: ['news', 'social'] }
+    });
     
-    return insights;
-  } catch (error) {
-    console.error("Error generating AI insights:", error);
+    if (error) throw error;
+    
+    if (data && data.success) {
+      // Store the sentiment in the database for future use
+      const { error: insertError } = await supabase
+        .from('market_sentiments')
+        .insert({
+          symbol: symbol,
+          sentiment_score: data.sentiment.overall,
+          news_sentiment: data.sentiment.news,
+          social_sentiment: data.sentiment.social,
+          source: 'api',
+          collected_at: new Date().toISOString()
+        });
+        
+      if (insertError) console.error("Error storing sentiment:", insertError);
+      
+      return {
+        symbol,
+        sentiment_score: data.sentiment.overall,
+        news_sentiment: data.sentiment.news,
+        social_sentiment: data.sentiment.social,
+        source: 'api',
+        collected_at: data.timestamp
+      };
+    }
+    
     return null;
+  } catch (error) {
+    console.error("Error analyzing sentiment:", error);
+    toast.error("Failed to analyze market sentiment");
+    
+    // Return simulated sentiment for development
+    return {
+      symbol,
+      sentiment_score: (Math.random() * 2) - 1, // -1 to 1
+      news_sentiment: (Math.random() * 2) - 1, // -1 to 1
+      social_sentiment: (Math.random() * 2) - 1, // -1 to 1
+      source: 'simulation',
+      collected_at: new Date().toISOString()
+    };
+  }
+};
+
+// Function to get bulk sentiment for multiple symbols
+export const getBulkSentiment = async (symbols: string[]): Promise<Record<string, MarketSentiment>> => {
+  try {
+    const { data, error } = await supabase
+      .from('market_sentiments')
+      .select('*')
+      .in('symbol', symbols)
+      .order('collected_at', { ascending: false });
+      
+    if (error) throw error;
+    
+    const result: Record<string, MarketSentiment> = {};
+    
+    // Get the latest sentiment for each symbol
+    if (data) {
+      symbols.forEach(symbol => {
+        const sentiments = data.filter(item => item.symbol === symbol);
+        if (sentiments.length > 0) {
+          result[symbol] = sentiments[0] as MarketSentiment;
+        } else {
+          // If no sentiment found for symbol, create a neutral one
+          result[symbol] = {
+            symbol,
+            sentiment_score: 0,
+            news_sentiment: 0,
+            social_sentiment: 0,
+            source: 'default',
+            collected_at: new Date().toISOString()
+          };
+        }
+      });
+    }
+    
+    return result;
+  } catch (error) {
+    console.error("Error fetching bulk sentiment:", error);
+    
+    // Return simulated sentiments
+    const result: Record<string, MarketSentiment> = {};
+    symbols.forEach(symbol => {
+      result[symbol] = {
+        symbol,
+        sentiment_score: (Math.random() * 2) - 1, // -1 to 1
+        news_sentiment: (Math.random() * 2) - 1, // -1 to 1
+        social_sentiment: (Math.random() * 2) - 1, // -1 to 1
+        source: 'simulation',
+        collected_at: new Date().toISOString()
+      };
+    });
+    
+    return result;
   }
 };
