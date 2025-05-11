@@ -1,7 +1,8 @@
+
 import React from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { Layout } from "@/components/layout/Layout";
-import { Dashboard } from "@/pages/Dashboard";
+import Dashboard from "@/pages/Dashboard";
 import SignalsPage from "@/pages/SignalsPage";
 import AlertsPage from "@/pages/AlertsPage";
 import AnalyticsPage from "@/pages/AnalyticsPage";

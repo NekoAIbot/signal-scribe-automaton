@@ -12,6 +12,13 @@ export interface MLModel {
   indicators?: string[];
 }
 
+export interface AIInsight {
+  marketPrediction: 'Bullish' | 'Bearish' | 'Neutral';
+  riskAssessment: 'Low' | 'Medium' | 'High';
+  confidenceLevel: number;
+  created_at: string;
+}
+
 export interface TradingStrategy {
   id: string;
   name: string;

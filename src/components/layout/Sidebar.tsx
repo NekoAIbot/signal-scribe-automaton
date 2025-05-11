@@ -1,10 +1,15 @@
+
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { HomeIcon, ActivityIcon, BellIcon, BarChart4Icon, ShieldIcon, SettingsIcon, LineChart } from 'lucide-react';
 import { cn } from "@/lib/utils";
 
-export function Sidebar() {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+interface SidebarProps {
+  isCollapsed?: boolean;
+}
+
+export function Sidebar({ isCollapsed = false }: SidebarProps) {
+  const [collapsed, setCollapsed] = useState(isCollapsed);
   
   const getLinkClass = ({ isActive }: { isActive: boolean }) => {
     return cn(

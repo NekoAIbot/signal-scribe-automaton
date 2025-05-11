@@ -29,7 +29,7 @@ export function TradingSignals() {
     }
   }, []);
   
-  const handleExecute = async (signal: EnhancedSignal) => {
+  const handleExecute = async (signal: any) => {
     // Check if broker settings are available
     if (!brokerSettings) {
       toast.error("Please configure your broker settings first");
@@ -41,8 +41,26 @@ export function TradingSignals() {
     toast.info(`Processing ${signal.type} signal for ${signal.symbol}...`);
     
     try {
+      // Convert TradeSignal to EnhancedSignal format
+      const enhancedSignal: EnhancedSignal = {
+        id: signal.id.toString(),
+        symbol: signal.symbol,
+        type: signal.type as 'BUY' | 'SELL',
+        price: signal.price,
+        time: signal.time,
+        status: 'new',
+        strategy_name: signal.strategy || 'Auto Strategy',
+        stop_loss: signal.stopLoss,
+        take_profit_levels: [
+          signal.takeProfit1,
+          signal.takeProfit2,
+          signal.takeProfit3,
+          signal.takeProfit4
+        ].filter(Boolean)
+      };
+      
       // Execute across all user's broker accounts
-      const results = await executeSignalAcrossAccounts(signal);
+      const results = await executeSignalAcrossAccounts(enhancedSignal);
       
       if (results.length > 0) {
         toast.success(`Signal for ${signal.symbol} is now executing on ${results.length} broker accounts`);
@@ -104,14 +122,14 @@ export function TradingSignals() {
                 >
                   <div className="flex items-center">
                     <Badge 
-                      variant={getBadgeVariant(signal.type)}
+                      variant={getBadgeVariant(signal.type as 'BUY' | 'SELL')}
                       className="mr-2"
                     >
                       {signal.type}
                     </Badge>
                     <div>
                       <div className="font-medium">{signal.symbol}</div>
-                      <div className="text-xs text-muted-foreground">{signal.strategy_name}</div>
+                      <div className="text-xs text-muted-foreground">{signal.strategy}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -131,7 +149,7 @@ export function TradingSignals() {
                         signal.status === 'new' ? 'Execute' : 
                         signal.status === 'executing' ? 'Processing...' : 
                         signal.status === 'executed' ? 'Executed' : 
-                        signal.status === 'monitoring' ? 'Monitoring' : 'Failed'}
+                        signal.status === 'failed' ? 'Failed' : 'Monitoring'}
                     </Button>
                   </div>
                 </div>

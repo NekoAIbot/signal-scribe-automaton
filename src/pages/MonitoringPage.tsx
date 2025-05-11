@@ -1,244 +1,258 @@
 
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { TrendingUp, TrendingDown, Search, Download, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { Activity, Search, ArrowUp, ArrowDown } from "lucide-react";
 import { toast } from "sonner";
 import { getMonitoredTrades } from '@/services/ai/signalService';
 import { MonitoredTrade } from '@/services/ai/types';
+import { cn } from "@/lib/utils";
 
 const MonitoringPage = () => {
-  const [isLoading, setIsLoading] = useState(true);
   const [trades, setTrades] = useState<MonitoredTrade[]>([]);
+  const [activeTab, setActiveTab] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState('open');
+  const [isLoading, setIsLoading] = useState(true);
   
-  // Fetch monitored trades
   useEffect(() => {
+    // Fetch monitored trades
     const fetchTrades = async () => {
-      setIsLoading(true);
       try {
-        const status = activeTab === 'all' ? undefined : 
-                      activeTab === 'open' ? 'open' : 
-                      'closed' as 'open' | 'closed' | 'partially_closed' | undefined;
-                      
-        const data = await getMonitoredTrades(undefined, status);
-        setTrades(data);
+        setIsLoading(true);
+        const tradesData = await getMonitoredTrades();
+        
+        // Convert any string types to proper enum values
+        const typedTrades = tradesData.map(trade => ({
+          ...trade,
+          type: trade.type as 'BUY' | 'SELL',
+          status: trade.status as 'open' | 'closed' | 'partially_closed'
+        }));
+        
+        setTrades(typedTrades);
       } catch (error) {
-        console.error("Error fetching trades:", error);
         toast.error("Failed to load monitored trades");
+        console.error(error);
       } finally {
         setIsLoading(false);
       }
     };
     
     fetchTrades();
-  }, [activeTab]);
+  }, []);
   
-  // Filter trades based on search term
-  const filteredTrades = trades.filter(trade => 
-    searchTerm === '' || 
-    trade.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    trade.ticket_number?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Filter trades based on search term and active tab
+  const filteredTrades = trades.filter(trade => {
+    const matchesSearch = searchTerm === '' || 
+      trade.symbol.toLowerCase().includes(searchTerm.toLowerCase());
+      
+    const matchesTab = activeTab === 'all' || 
+                      (activeTab === 'open' && trade.status === 'open') ||
+                      (activeTab === 'closed' && trade.status === 'closed');
+                       
+    return matchesSearch && matchesTab;
+  });
   
-  // Calculate total profit for displayed trades
-  const totalProfit = filteredTrades.reduce((sum, trade) => {
-    return sum + (trade.profit || 0);
-  }, 0);
-  
-  // Export trades to CSV
-  const exportTrades = () => {
-    try {
-      const headers = [
-        "Ticket", "Symbol", "Type", "Entry Price", "Current Price", 
-        "Volume", "Profit", "Status", "Open Time", "Close Time", "Broker Account"
-      ];
-      
-      const csvContent = [
-        headers.join(','),
-        ...trades.map(trade => [
-          trade.ticket_number || "-",
-          trade.symbol,
-          trade.type,
-          trade.entry_price.toFixed(5),
-          (trade.current_price || trade.entry_price).toFixed(5),
-          trade.volume.toFixed(2),
-          (trade.profit || 0).toFixed(2),
-          trade.status,
-          new Date(trade.open_time).toLocaleString(),
-          trade.close_time ? new Date(trade.close_time).toLocaleString() : "-",
-          trade.broker_account_id
-        ].join(','))
-      ].join('\n');
-      
-      // Create download link
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `monitored_trades_${new Date().toISOString().split('T')[0]}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      toast.success('Trades exported to CSV successfully');
-    } catch (error) {
-      console.error('Error exporting trades:', error);
-      toast.error('Failed to export trades');
-    }
+  // Format date
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleString();
   };
-
+  
+  // Calculate total profit/loss
+  const totalPnL = filteredTrades
+    .filter(trade => trade.profit !== undefined && trade.profit !== null)
+    .reduce((acc, trade) => acc + (trade.profit || 0), 0);
+    
+  // Calculate win rate
+  const closedTrades = filteredTrades.filter(trade => trade.status === 'closed');
+  const winningTrades = closedTrades.filter(trade => (trade.profit || 0) > 0);
+  const winRate = closedTrades.length > 0 ? (winningTrades.length / closedTrades.length) * 100 : 0;
+  
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Trade Monitoring</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Trade Monitoring</h1>
+        <Button 
+          variant="outline" 
+          onClick={() => {
+            toast.info("Refreshing trade data...");
+            // Refetch trades
+            getMonitoredTrades().then(data => {
+              // Convert any string types to proper enum values
+              const typedTrades = data.map(trade => ({
+                ...trade,
+                type: trade.type as 'BUY' | 'SELL',
+                status: trade.status as 'open' | 'closed' | 'partially_closed'
+              }));
+              
+              setTrades(typedTrades);
+              toast.success("Trade data refreshed");
+            }).catch(() => {
+              toast.error("Failed to refresh trade data");
+            });
+          }}
+        >
+          Refresh Data
+        </Button>
+      </div>
       
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Active Trades</p>
+                <h3 className="text-2xl font-bold mt-1">{trades.filter(t => t.status === 'open').length}</h3>
+              </div>
+              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                <Activity className="h-5 w-5 text-primary" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Total P&L</p>
+                <h3 className={cn("text-2xl font-bold mt-1", totalPnL >= 0 ? "text-success-DEFAULT" : "text-danger-DEFAULT")}>
+                  {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)} USD
+                </h3>
+              </div>
+              <div className={cn("h-8 w-8 rounded-full flex items-center justify-center", 
+                totalPnL >= 0 ? "bg-success-DEFAULT/10" : "bg-danger-DEFAULT/10")}>
+                {totalPnL >= 0 ? (
+                  <ArrowUp className={cn("h-5 w-5", totalPnL >= 0 ? "text-success-DEFAULT" : "text-danger-DEFAULT")} />
+                ) : (
+                  <ArrowDown className={cn("h-5 w-5", totalPnL >= 0 ? "text-success-DEFAULT" : "text-danger-DEFAULT")} />
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Win Rate</p>
+                <h3 className="text-2xl font-bold mt-1">{winRate.toFixed(1)}%</h3>
+              </div>
+              <div className="h-8 w-8 rounded-full bg-info/10 flex items-center justify-center">
+                <div className="text-xs font-bold text-info">{closedTrades.length}</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+      
+      {/* Trades Table */}
       <Card className="bg-trading-card border-trading-border">
         <CardHeader className="pb-2">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between space-y-2 sm:space-y-0">
-            <div>
-              <CardTitle className="text-base font-medium">Active Trades</CardTitle>
-              <CardDescription>Monitor and track your executed trades</CardDescription>
-            </div>
+            <CardTitle className="text-base font-medium">Trade History</CardTitle>
             
-            <div className="flex space-x-2">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="search"
-                  placeholder="Search trades..."
-                  className="pl-8 bg-trading-bg border-trading-border w-[180px] md:w-[220px]"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-              <Button variant="outline" size="sm" onClick={exportTrades}>
-                <Download className="h-4 w-4 mr-2" />
-                Export
-              </Button>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Search trades..."
+                className="pl-8 bg-trading-bg border-trading-border w-[180px] md:w-[220px]"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
             </div>
           </div>
         </CardHeader>
         
         <CardContent className="p-0">
           <Tabs 
-            defaultValue="open" 
+            defaultValue="all" 
             className="p-4" 
             value={activeTab} 
             onValueChange={setActiveTab}
           >
             <TabsList className="bg-trading-bg border border-trading-border">
-              <TabsTrigger value="open">Open Trades</TabsTrigger>
-              <TabsTrigger value="closed">Closed Trades</TabsTrigger>
               <TabsTrigger value="all">All Trades</TabsTrigger>
+              <TabsTrigger value="open">Open</TabsTrigger>
+              <TabsTrigger value="closed">Closed</TabsTrigger>
             </TabsList>
             
             <TabsContent value={activeTab} className="mt-4">
               {isLoading ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <p>Loading trades...</p>
-                </div>
+                <div className="text-center py-8 text-muted-foreground">Loading trade data...</div>
               ) : filteredTrades.length > 0 ? (
-                <>
-                  <div className="overflow-auto rounded-md border border-trading-border">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-trading-border bg-trading-bg">
-                          <th className="px-4 py-3 text-left font-medium text-muted-foreground">Symbol</th>
-                          <th className="px-4 py-3 text-left font-medium text-muted-foreground">Type</th>
-                          <th className="px-4 py-3 text-right font-medium text-muted-foreground">Entry Price</th>
-                          <th className="px-4 py-3 text-right font-medium text-muted-foreground">Current Price</th>
-                          <th className="px-4 py-3 text-right font-medium text-muted-foreground">Volume</th>
-                          <th className="px-4 py-3 text-right font-medium text-muted-foreground">P/L</th>
-                          <th className="px-4 py-3 text-right font-medium text-muted-foreground">Status</th>
-                          <th className="px-4 py-3 text-right font-medium text-muted-foreground">Time</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredTrades.map((trade) => {
-                          const isProfit = (trade.profit || 0) > 0;
-                          
-                          return (
-                            <tr 
-                              key={trade.id} 
-                              className="border-b border-trading-border hover:bg-trading-bg/50"
+                <div className="overflow-auto rounded-md border border-trading-border">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-trading-border bg-trading-bg">
+                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">Symbol</th>
+                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">Type</th>
+                        <th className="px-4 py-3 text-right font-medium text-muted-foreground">Entry Price</th>
+                        <th className="px-4 py-3 text-right font-medium text-muted-foreground hidden md:table-cell">Current Price</th>
+                        <th className="px-4 py-3 text-right font-medium text-muted-foreground">P&L</th>
+                        <th className="px-4 py-3 text-right font-medium text-muted-foreground hidden lg:table-cell">Open Time</th>
+                        <th className="px-4 py-3 text-center font-medium text-muted-foreground">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredTrades.map((trade) => (
+                        <tr 
+                          key={trade.id} 
+                          className="border-b border-trading-border hover:bg-trading-bg/50"
+                        >
+                          <td className="px-4 py-3 font-medium">{trade.symbol}</td>
+                          <td className="px-4 py-3">
+                            <Badge variant={trade.type === 'BUY' ? 'success' : 'destructive'}>
+                              {trade.type}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-right">{trade.entry_price.toFixed(5)}</td>
+                          <td className="px-4 py-3 text-right hidden md:table-cell">
+                            {trade.current_price ? trade.current_price.toFixed(5) : "N/A"}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <span className={cn(
+                              "font-medium",
+                              (trade.profit || 0) > 0 
+                                ? "text-success-DEFAULT" 
+                                : (trade.profit || 0) < 0 
+                                ? "text-danger-DEFAULT" 
+                                : ""
+                            )}>
+                              {(trade.profit || 0) > 0 ? '+' : ''}{(trade.profit || 0).toFixed(2)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right text-muted-foreground hidden lg:table-cell">
+                            {formatDate(trade.open_time)}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <Badge 
+                              variant="outline" 
+                              className={cn(
+                                trade.status === 'open' 
+                                  ? "border-info-DEFAULT text-info-DEFAULT" 
+                                  : trade.status === 'partially_closed' 
+                                  ? "border-warning-DEFAULT text-warning-DEFAULT" 
+                                  : "border-success-DEFAULT text-success-DEFAULT"
+                              )}
                             >
-                              <td className="px-4 py-3">
-                                <div className="flex items-center">
-                                  <span className="font-medium">{trade.symbol}</span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3">
-                                <Badge variant={trade.type === 'BUY' ? 'success' : 'destructive'}>
-                                  {trade.type}
-                                </Badge>
-                              </td>
-                              <td className="px-4 py-3 text-right font-mono">
-                                {trade.entry_price.toFixed(5)}
-                              </td>
-                              <td className="px-4 py-3 text-right font-mono">
-                                {(trade.current_price || trade.entry_price).toFixed(5)}
-                              </td>
-                              <td className="px-4 py-3 text-right">
-                                {trade.volume.toFixed(2)}
-                              </td>
-                              <td className="px-4 py-3 text-right">
-                                <div className={cn(
-                                  "flex items-center justify-end font-medium",
-                                  isProfit ? "text-success-DEFAULT" : "text-danger-DEFAULT"
-                                )}>
-                                  {isProfit ? 
-                                    <ArrowUpRight className="h-4 w-4 mr-1" /> : 
-                                    <ArrowDownRight className="h-4 w-4 mr-1" />
-                                  }
-                                  {(trade.profit || 0).toFixed(2)} USD
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {trade.pips || 0} pips
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 text-right">
-                                <Badge 
-                                  variant={trade.status === 'open' ? "outline" : 
-                                          trade.status === 'partially_closed' ? "secondary" : "default"}
-                                >
-                                  {trade.status}
-                                </Badge>
-                              </td>
-                              <td className="px-4 py-3 text-right text-muted-foreground">
-                                <div>{new Date(trade.open_time).toLocaleDateString()}</div>
-                                <div className="text-xs">{new Date(trade.open_time).toLocaleTimeString()}</div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                  
-                  <div className="mt-4 flex justify-between items-center p-3 bg-card border rounded-md">
-                    <div>
-                      <span className="text-sm text-muted-foreground">Total trades: </span>
-                      <span className="font-medium">{filteredTrades.length}</span>
-                    </div>
-                    <div>
-                      <span className="text-sm text-muted-foreground">Total profit/loss: </span>
-                      <span className={cn(
-                        "font-medium",
-                        totalProfit > 0 ? "text-success-DEFAULT" : 
-                        totalProfit < 0 ? "text-danger-DEFAULT" : ""
-                      )}>
-                        {totalProfit.toFixed(2)} USD
-                      </span>
-                    </div>
-                  </div>
-                </>
+                              {trade.status}
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
-                  <p>No matching trades found.</p>
+                  No matching trades found
                 </div>
               )}
             </TabsContent>

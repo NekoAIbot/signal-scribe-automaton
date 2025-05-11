@@ -7,7 +7,8 @@ import {
   TechnicalIndicator, 
   TrainingParams,
   BacktestParams,
-  BacktestResult
+  BacktestResult,
+  AIInsight
 } from "./types";
 
 // Function to fetch available ML models
@@ -30,6 +31,42 @@ export const getActiveModels = async () => {
       { id: '2', name: 'Market Sentiment Analyzer', type: 'Transformer', version: '2.1.0', is_active: true, accuracy: 0.82, indicators: ['RSI', 'Bollinger Bands', 'Volume'] },
       { id: '3', name: 'Volatility Forecaster', type: 'GRU', version: '1.0.5', is_active: true, accuracy: 0.75, indicators: ['ATR', 'Bollinger Bands', 'Stochastic'] }
     ];
+  }
+};
+
+// Function to get AI insights for market analysis
+export const getAIInsights = async (): Promise<AIInsight> => {
+  try {
+    const { data, error } = await supabase
+      .from('ai_insights')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(1);
+      
+    if (error) throw error;
+    
+    if (data && data.length > 0) {
+      return data[0] as AIInsight;
+    }
+    
+    // Return default data if no insights found
+    return {
+      marketPrediction: "Neutral",
+      riskAssessment: "Medium",
+      confidenceLevel: 65,
+      created_at: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error("Error fetching AI insights:", error);
+    toast.error("Failed to load AI insights");
+    
+    // Return fallback data
+    return {
+      marketPrediction: "Neutral",
+      riskAssessment: "Medium",
+      confidenceLevel: 65,
+      created_at: new Date().toISOString()
+    };
   }
 };
 
