@@ -32,14 +32,16 @@ export function RiskEngine() {
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-base font-medium">Risk Engine</CardTitle>
-        <CardDescription className="flex justify-between items-center">
-          <span>Overall Market Risk</span>
-          <Badge 
-            variant={overallRiskLevel.variant} 
-            className="ml-2"
-          >
-            {overallRiskLevel.label}
-          </Badge>
+        <CardDescription>
+          <div className="flex justify-between items-center">
+            <span>Overall Market Risk</span>
+            <Badge 
+              variant={overallRiskLevel.variant} 
+              className="ml-2"
+            >
+              {overallRiskLevel.label}
+            </Badge>
+          </div>
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
@@ -83,11 +85,11 @@ export function RiskEngine() {
         </div>
         
         <div className="text-xs text-muted-foreground mt-2">
-          <p>AI Risk Engine evaluates multiple risk factors in real-time</p>
-          <p className="flex items-center gap-1 mt-1">
+          <div>AI Risk Engine evaluates multiple risk factors in real-time</div>
+          <div className="flex items-center gap-1 mt-1">
             <ArrowRight className="h-3 w-3" /> 
             <span>Adjust position sizing based on current risk level</span>
-          </p>
+          </div>
         </div>
       </CardContent>
     </Card>
