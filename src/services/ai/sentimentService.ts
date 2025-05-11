@@ -6,20 +6,26 @@ import { toast } from "sonner";
 // Function to get market sentiment for a particular symbol
 export const getMarketSentiment = async (symbol: string): Promise<MarketSentiment | null> => {
   try {
-    const { data, error } = await supabase
-      .from('market_sentiments')
-      .select('*')
-      .eq('symbol', symbol)
-      .order('collected_at', { ascending: false })
-      .limit(1);
+    // Try to get sentiment from database
+    try {
+      const { data, error } = await supabase
+        .from('market_sentiments')
+        .select('*')
+        .eq('symbol', symbol)
+        .order('collected_at', { ascending: false })
+        .limit(1);
+        
+      if (error) throw error;
       
-    if (error) throw error;
-    
-    if (data && data.length > 0) {
-      return data[0] as MarketSentiment;
+      if (data && data.length > 0) {
+        return data[0] as MarketSentiment;
+      }
+    } catch (dbError) {
+      console.error("Database error fetching market sentiment:", dbError);
+      // Continue to on-demand analysis or fallback
     }
     
-    // If no sentiment found, analyze sentiment on-demand
+    // If no sentiment found, try to analyze sentiment on-demand
     return await analyzeSentimentOnDemand(symbol);
   } catch (error) {
     console.error("Error fetching market sentiment:", error);
@@ -47,19 +53,24 @@ export const analyzeSentimentOnDemand = async (symbol: string): Promise<MarketSe
     if (error) throw error;
     
     if (data && data.success) {
-      // Store the sentiment in the database for future use
-      const { error: insertError } = await supabase
-        .from('market_sentiments')
-        .insert({
-          symbol: symbol,
-          sentiment_score: data.sentiment.overall,
-          news_sentiment: data.sentiment.news,
-          social_sentiment: data.sentiment.social,
-          source: 'api',
-          collected_at: new Date().toISOString()
-        });
-        
-      if (insertError) console.error("Error storing sentiment:", insertError);
+      // Try to store the sentiment in the database for future use
+      try {
+        const { error: insertError } = await supabase
+          .from('market_sentiments')
+          .insert({
+            symbol: symbol,
+            sentiment_score: data.sentiment.overall,
+            news_sentiment: data.sentiment.news,
+            social_sentiment: data.sentiment.social,
+            source: 'api',
+            collected_at: new Date().toISOString()
+          });
+          
+        if (insertError) console.error("Error storing sentiment:", insertError);
+      } catch (dbError) {
+        console.error("Database error storing sentiment:", dbError);
+        // Continue with function data even if DB insert fails
+      }
       
       return {
         symbol,
@@ -91,18 +102,30 @@ export const analyzeSentimentOnDemand = async (symbol: string): Promise<MarketSe
 // Function to get bulk sentiment for multiple symbols
 export const getBulkSentiment = async (symbols: string[]): Promise<Record<string, MarketSentiment>> => {
   try {
-    const { data, error } = await supabase
-      .from('market_sentiments')
-      .select('*')
-      .in('symbol', symbols)
-      .order('collected_at', { ascending: false });
+    // Try to get sentiments from database
+    let data;
+    let error;
+    
+    try {
+      const response = await supabase
+        .from('market_sentiments')
+        .select('*')
+        .in('symbol', symbols)
+        .order('collected_at', { ascending: false });
+        
+      data = response.data;
+      error = response.error;
       
-    if (error) throw error;
+      if (error) throw error;
+    } catch (dbError) {
+      console.error("Database error fetching bulk sentiment:", dbError);
+      // Continue with mock data
+    }
     
     const result: Record<string, MarketSentiment> = {};
     
     // Get the latest sentiment for each symbol
-    if (data) {
+    if (data && data.length > 0) {
       symbols.forEach(symbol => {
         const sentiments = data.filter(item => item.symbol === symbol);
         if (sentiments.length > 0) {
@@ -119,7 +142,21 @@ export const getBulkSentiment = async (symbols: string[]): Promise<Record<string
           };
         }
       });
+      
+      return result;
     }
+    
+    // If database fetch failed or returned empty, generate simulated sentiments
+    symbols.forEach(symbol => {
+      result[symbol] = {
+        symbol,
+        sentiment_score: (Math.random() * 2) - 1, // -1 to 1
+        news_sentiment: (Math.random() * 2) - 1, // -1 to 1
+        social_sentiment: (Math.random() * 2) - 1, // -1 to 1
+        source: 'simulation',
+        collected_at: new Date().toISOString()
+      };
+    });
     
     return result;
   } catch (error) {

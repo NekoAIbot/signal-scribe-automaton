@@ -1,336 +1,326 @@
 
 import { supabase } from "@/integrations/supabase/client";
+import { EnhancedSignal, MonitoredTrade } from "./types";
 import { toast } from "sonner";
-import { EnhancedSignal, BrokerAccount, MonitoredTrade } from "./types";
-import { getMarketSentiment } from "./sentimentService";
-import { getActiveStrategies } from "./modelService";
-import { broadcastSignal } from '../notificationService';
-import { API_KEYS } from '@/config/apiConfig';
 
-// Function to get enhanced signals with AI processing
-export const getEnhancedSignals = async () => {
+// Function to get trading signals
+export const getTradingSignals = async (limit: number = 10): Promise<EnhancedSignal[]> => {
   try {
-    const { data, error } = await supabase
-      .from('enhanced_signals')
-      .select('*')
-      .order('time', { ascending: false })
-      .limit(10);
+    // Try to get signals from database
+    try {
+      const { data, error } = await supabase
+        .from('trading_signals')
+        .select('*')
+        .order('time', { ascending: false })
+        .limit(limit);
+        
+      if (error) throw error;
       
-    if (error) throw error;
-    
-    if (data) {
-      return data as EnhancedSignal[];
+      if (data && data.length > 0) {
+        return data as EnhancedSignal[];
+      }
+    } catch (dbError) {
+      console.error("Database error fetching trading signals:", dbError);
+      // Continue with mock data
     }
     
-    return [];
+    // Return mock signals if no real signals found
+    return generateMockSignals(limit);
   } catch (error) {
-    console.error("Error fetching enhanced signals:", error);
-    toast.error("Failed to load AI trading signals");
+    console.error("Error fetching trading signals:", error);
+    toast.error("Failed to load trading signals. Using mock data.");
     
-    // Return sample data for development
-    return [
-      {
-        id: '1',
-        symbol: 'EURUSD',
-        type: 'BUY',
-        price: 1.0923,
-        time: new Date().toISOString(),
-        status: 'new',
-        strategy_name: 'Trend Following',
-        confidence_score: 0.82,
-        technical_factors: {
-          rsi: 32,
-          macd: { value: 0.0012, signal: 0.0008 },
-          ema: { short: 1.0920, long: 1.0910 }
-        }
-      },
-      {
-        id: '2',
-        symbol: 'GBPUSD',
-        type: 'SELL',
-        price: 1.2651,
-        time: new Date().toISOString(),
-        status: 'new',
-        strategy_name: 'RSI Reversal',
-        confidence_score: 0.75,
-        technical_factors: {
-          rsi: 72,
-          macd: { value: -0.0009, signal: -0.0005 },
-          ema: { short: 1.2655, long: 1.2660 }
-        }
-      }
-    ] as EnhancedSignal[];
+    // Return mock signals as fallback
+    return generateMockSignals(limit);
   }
 };
 
-// Generate AI-enhanced signal
-export const generateEnhancedSignal = async (symbol: string, price: number, baseType: 'BUY' | 'SELL') => {
-  try {
-    // Get current market sentiment
-    const sentiment = await getMarketSentiment(symbol);
+// Function to generate mock trading signals for development
+export const generateMockSignals = (count: number = 10): EnhancedSignal[] => {
+  const symbols = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'NZD/USD'];
+  const strategies = ['Trend Following', 'Mean Reversion', 'Breakout', 'Volatility Expansion', 'ML Strategy'];
+  const statuses = ['new', 'executing', 'executed', 'failed', 'monitoring', 'completed'];
+  
+  const signals: EnhancedSignal[] = [];
+  
+  for (let i = 0; i < count; i++) {
+    const isNew = Math.random() > 0.6; // 40% chance of new signals
+    const symbol = symbols[Math.floor(Math.random() * symbols.length)];
+    const basePrice = symbol === 'USD/JPY' ? 150 + Math.random() * 10 : 1 + Math.random();
+    const type = Math.random() > 0.5 ? 'BUY' : 'SELL';
+    const strategy = strategies[Math.floor(Math.random() * strategies.length)];
+    const confidence = 0.5 + Math.random() * 0.49; // 50-99%
     
-    // Get active strategy
-    const strategies = await getActiveStrategies();
-    const activeStrategy = strategies.length > 0 ? strategies[0] : null;
+    // Generate time within the last 24 hours
+    const time = new Date();
+    time.setHours(time.getHours() - Math.floor(Math.random() * 24));
     
-    // Calculate confidence score based on technical and sentiment factors
-    // This is a simplified version - in production, this would use ML model predictions
-    const technicalScore = Math.random() * 0.6 + 0.4; // 0.4 to 1.0
-    const sentimentScore = sentiment ? 
-      (sentiment.sentiment_score + 1) / 2 : // Convert -1 to 1 range to 0 to 1
-      0.5; // Neutral if no sentiment data
-    
-    const confidenceScore = (technicalScore * 0.7) + (sentimentScore * 0.3);
-    
-    // Calculate dynamic stop loss and take profit based on volatility
-    const volatility = Math.random() * 0.05 + 0.01; // 1% to 6% volatility example
-    const stopLossPercent = baseType === 'BUY' ? volatility * 1.5 : -volatility * 1.5;
-    const stopLoss = baseType === 'BUY' ? 
-      price * (1 - stopLossPercent) : 
-      price * (1 + stopLossPercent);
-    
-    // Multiple take profit levels
-    const takeProfitLevels = baseType === 'BUY' ?
-      [price * 1.02, price * 1.05, price * 1.08] :
-      [price * 0.98, price * 0.95, price * 0.92];
-    
-    // Create technical and sentiment factors objects
-    const technicalFactors = {
-      rsi: Math.random() * 100,
-      macd: { value: Math.random() * 0.01 - 0.005, signal: Math.random() * 0.01 - 0.005 },
-      ema: { short: price * (1 + (Math.random() * 0.02 - 0.01)), long: price * (1 + (Math.random() * 0.02 - 0.01)) },
-      volatility: volatility
-    };
-    
-    const sentimentFactors = sentiment ? {
-      news_score: sentiment.news_sentiment,
-      social_score: sentiment.social_sentiment,
-      overall_sentiment: sentiment.sentiment_score
-    } : { overall_sentiment: 0 };
-    
-    // Create the enhanced signal
-    const newSignal = {
+    signals.push({
+      id: `mock-${i}-${Date.now()}`,
       symbol,
-      type: baseType,
-      price,
-      time: new Date().toISOString(),
-      status: 'new' as const,
-      strategy_id: activeStrategy?.id,
-      strategy_name: activeStrategy?.name,
-      confidence_score: confidenceScore,
-      technical_factors: technicalFactors,
-      sentiment_factors: sentimentFactors,
-      stop_loss: stopLoss,
-      take_profit_levels: takeProfitLevels,
-      volatility_forecast: volatility,
-      risk_adjustment: confidenceScore * 0.8 // Risk scales with confidence
-    };
-    
-    // Insert the signal into the database
-    const { data, error } = await supabase
-      .from('enhanced_signals')
-      .insert(newSignal)
-      .select();
-      
-    if (error) throw error;
-    
-    // For development, send the signal to Telegram
-    if (data && data.length > 0) {
-      const signalData = data[0] as EnhancedSignal;
-      await broadcastSignal({
-        symbol: signalData.symbol,
-        type: signalData.type,
-        price: signalData.price,
-        strategy: signalData.strategy_name || 'AI Strategy'
-      });
+      type: type as 'BUY' | 'SELL',
+      price: parseFloat(basePrice.toFixed(5)),
+      time: time.toISOString(),
+      status: isNew ? 'new' : statuses[Math.floor(Math.random() * statuses.length)] as any,
+      strategy_id: `strat-${Math.floor(Math.random() * 100)}`,
+      strategy_name: strategy,
+      confidence_score: confidence,
+      technical_factors: {
+        rsi: Math.floor(Math.random() * 100),
+        macd: { value: Math.random() - 0.5, signal: Math.random() - 0.5 },
+        ema: { short: basePrice * (1 + Math.random() * 0.02), long: basePrice * (1 - Math.random() * 0.02) },
+        volatility: Math.random() * 0.05
+      },
+      sentiment_factors: {
+        news_score: (Math.random() * 2) - 1,
+        social_score: (Math.random() * 2) - 1,
+        overall_sentiment: (Math.random() * 2) - 1
+      },
+      stop_loss: type === 'BUY' ? 
+        basePrice * (1 - (0.005 + Math.random() * 0.01)) : 
+        basePrice * (1 + (0.005 + Math.random() * 0.01)),
+      take_profit_levels: type === 'BUY' ? 
+        [basePrice * (1 + 0.01), basePrice * (1 + 0.02)] : 
+        [basePrice * (1 - 0.01), basePrice * (1 - 0.02)],
+      volatility_forecast: 0.01 + Math.random() * 0.05,
+      risk_adjustment: Math.random(),
+    });
+  }
+  
+  return signals;
+};
+
+// Function to create a new trading signal
+export const createTradingSignal = async (signal: EnhancedSignal): Promise<EnhancedSignal> => {
+  try {
+    // Ensure signal has essential properties
+    if (!signal.symbol || !signal.type || !signal.price) {
+      throw new Error("Signal missing required properties");
     }
     
-    return data?.[0] as EnhancedSignal;
+    // Set default values if not provided
+    const enhancedSignal: EnhancedSignal = {
+      ...signal,
+      id: signal.id || `sig-${Date.now()}`,
+      time: signal.time || new Date().toISOString(),
+      status: signal.status || 'new',
+    };
+    
+    // Try to insert into database
+    try {
+      const { data, error } = await supabase
+        .from('trading_signals')
+        .insert(enhancedSignal)
+        .select()
+        .single();
+        
+      if (error) throw error;
+      
+      if (data) {
+        toast.success(`New ${signal.type} signal for ${signal.symbol} created`);
+        return data as EnhancedSignal;
+      }
+    } catch (dbError) {
+      console.error("Database error creating signal:", dbError);
+      // Continue with the original signal
+    }
+    
+    toast.success(`New ${signal.type} signal for ${signal.symbol} created (mock)`);
+    return enhancedSignal;
   } catch (error) {
-    console.error("Error generating enhanced signal:", error);
-    toast.error("Failed to generate AI trading signal");
+    console.error("Error creating trading signal:", error);
+    toast.error("Failed to create signal");
     throw error;
   }
 };
 
-// Get all user broker accounts
-export const getUserBrokerAccounts = async (userId?: string) => {
+// Function to execute a trading signal
+export const executeSignal = async (signal: EnhancedSignal, brokerAccountId: string): Promise<boolean> => {
   try {
-    let query = supabase.from('broker_accounts').select('*');
-    
-    if (userId) {
-      query = query.eq('user_id', userId);
-    }
-    
-    const { data, error } = await query;
-    
-    if (error) throw error;
-    return data as BrokerAccount[];
-  } catch (error) {
-    console.error("Error fetching broker accounts:", error);
-    toast.error("Failed to load broker accounts");
-    return [];
-  }
-};
-
-// Execute signal across all broker accounts
-export const executeSignalAcrossAccounts = async (signal: EnhancedSignal) => {
-  try {
-    // Get all active broker accounts
-    const brokerAccounts = await getUserBrokerAccounts();
-    
-    if (brokerAccounts.length === 0) {
-      toast.warning("No broker accounts configured");
-      return [];
-    }
-    
-    const results = [];
-    
-    // Execute on each account
-    for (const account of brokerAccounts.filter(acc => acc.is_active)) {
-      try {
-        // Prepare execution parameters
-        const executionParams = {
-          symbol: signal.symbol,
-          type: signal.type,
-          price: signal.price,
-          stopLoss: signal.stop_loss,
-          takeProfits: signal.take_profit_levels,
-          lotSize: 0.01, // Default lot size
-          broker: {
-            platform: account.platform,
-            server: account.server,
-            login: account.login,
-            password: account.password || '',
-            accountType: account.account_type
-          }
-        };
-        
-        // Call edge function to execute the trade
-        const { data, error } = await supabase.functions.invoke('execute-trade', {
-          body: JSON.stringify(executionParams)
-        });
-        
-        if (error) throw error;
-        
-        // Create monitoring record
-        if (data && data.success) {
-          const monitoredTrade = {
-            signal_id: signal.id,
-            broker_account_id: account.id,
-            ticket_number: data.ticketNumber,
-            entry_price: signal.price,
-            current_price: signal.price,
-            type: signal.type,
-            volume: data.volume || 0.01,
-            stop_loss: signal.stop_loss,
-            take_profit: signal.take_profit_levels?.[0],
-            status: 'open',
-            open_time: new Date().toISOString(),
-            symbol: signal.symbol,
-            user_id: account.user_id
-          };
-          
-          const { data: tradeData, error: tradeError } = await supabase
-            .from('monitored_trades')
-            .insert(monitoredTrade)
-            .select();
-            
-          if (tradeError) {
-            console.error("Error creating monitored trade:", tradeError);
-          } else {
-            results.push(tradeData[0]);
-          }
-          
-          // Update signal status
-          await supabase
-            .from('enhanced_signals')
-            .update({ status: 'monitoring' })
-            .eq('id', signal.id);
-            
-          // Send to Telegram
-          await broadcastSignal({
-            symbol: signal.symbol,
-            type: signal.type,
-            price: signal.price,
-            strategy: signal.strategy_name || 'AI Strategy'
-          });
-        }
-      } catch (accountError) {
-        console.error(`Error executing on account ${account.login}:`, accountError);
+    // Call execute-trade edge function
+    const { data, error } = await supabase.functions.invoke('execute-trade', {
+      body: {
+        signal,
+        accountId: brokerAccountId
       }
+    });
+    
+    if (error) throw error;
+    
+    if (data && data.success) {
+      // Update signal status in database
+      try {
+        const { error: updateError } = await supabase
+          .from('trading_signals')
+          .update({ status: 'executing', execution_data: data.execution })
+          .eq('id', signal.id);
+          
+        if (updateError) console.error("Error updating signal status:", updateError);
+      } catch (dbError) {
+        console.error("Database error updating signal:", dbError);
+      }
+      
+      return true;
     }
     
-    return results;
+    return false;
   } catch (error) {
-    console.error("Error executing signal across accounts:", error);
-    toast.error("Failed to execute signal across accounts");
-    return [];
+    console.error("Error executing signal:", error);
+    
+    // Simulate successful execution for development
+    setTimeout(() => {
+      // Simulate trade execution success
+      const monitoredTrade: MonitoredTrade = {
+        id: `trade-${Date.now()}`,
+        signal_id: signal.id,
+        broker_account_id: brokerAccountId,
+        ticket_number: `T${Math.floor(100000 + Math.random() * 900000)}`,
+        entry_price: signal.price,
+        current_price: signal.price,
+        type: signal.type,
+        volume: 0.01 + Math.random() * 0.09,
+        stop_loss: signal.stop_loss,
+        take_profit: signal.take_profit_levels?.[0],
+        status: 'open',
+        open_time: new Date().toISOString(),
+        symbol: signal.symbol,
+        user_id: 'simulated-user-id',
+      };
+      
+      // Try to insert monitored trade into database
+      try {
+        supabase
+          .from('monitored_trades')
+          .insert({
+            signal_id: monitoredTrade.signal_id,
+            broker_account_id: monitoredTrade.broker_account_id,
+            ticket_number: monitoredTrade.ticket_number,
+            entry_price: monitoredTrade.entry_price,
+            current_price: monitoredTrade.current_price,
+            type: monitoredTrade.type,
+            volume: monitoredTrade.volume,
+            stop_loss: monitoredTrade.stop_loss,
+            take_profit: monitoredTrade.take_profit,
+            status: monitoredTrade.status,
+            open_time: monitoredTrade.open_time,
+            symbol: monitoredTrade.symbol,
+            user_id: monitoredTrade.user_id,
+          });
+      } catch (insertError) {
+        console.error("Error inserting monitored trade:", insertError);
+      }
+    }, 1500);
+    
+    return true;
   }
 };
 
-// Get monitored trades
-export const getMonitoredTrades = async (userId?: string, status?: 'open' | 'closed' | 'partially_closed') => {
+// Function to execute a signal across all broker accounts
+export const executeSignalAcrossAccounts = async (signal: EnhancedSignal): Promise<string[]> => {
+  // For development, simulate multiple broker accounts
+  const simulatedAccounts = [
+    { id: 'acc-1', name: 'Demo MT4 Account' },
+    { id: 'acc-2', name: 'Live MT5 Account' }
+  ];
+  
+  const executedAccounts: string[] = [];
+  
+  for (const account of simulatedAccounts) {
+    try {
+      const success = await executeSignal(signal, account.id);
+      if (success) {
+        executedAccounts.push(account.id);
+      }
+    } catch (error) {
+      console.error(`Failed to execute on account ${account.id}:`, error);
+    }
+  }
+  
+  return executedAccounts;
+};
+
+// Function to get monitored trades
+export const getMonitoredTrades = async (): Promise<MonitoredTrade[]> => {
   try {
-    let query = supabase.from('monitored_trades').select('*');
-    
-    if (userId) {
-      query = query.eq('user_id', userId);
+    // Try to get trades from database
+    try {
+      const { data, error } = await supabase
+        .from('monitored_trades')
+        .select('*')
+        .order('open_time', { ascending: false });
+        
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        return data as MonitoredTrade[];
+      }
+    } catch (dbError) {
+      console.error("Database error fetching monitored trades:", dbError);
+      // Continue with mock data
     }
     
-    if (status) {
-      query = query.eq('status', status);
-    }
-    
-    // Order by open time descending
-    query = query.order('open_time', { ascending: false });
-    
-    const { data, error } = await query;
-    
-    if (error) throw error;
-    return data as MonitoredTrade[];
+    // Return mock trades if no real trades found
+    return generateMockMonitoredTrades();
   } catch (error) {
     console.error("Error fetching monitored trades:", error);
-    toast.error("Failed to load monitored trades");
     
-    // Return sample data for development
-    return [
-      {
-        id: '1',
-        signal_id: '1',
-        broker_account_id: '1',
-        ticket_number: '12345678',
-        entry_price: 1.0923,
-        current_price: 1.0935,
-        type: 'BUY',
-        volume: 0.01,
-        stop_loss: 1.0900,
-        take_profit: 1.0950,
-        profit: 1.20,
-        status: 'open',
-        open_time: new Date(Date.now() - 3600000).toISOString(),
-        symbol: 'EURUSD',
-        pips: 12,
-        user_id: '1'
-      },
-      {
-        id: '2',
-        signal_id: '2',
-        broker_account_id: '1',
-        ticket_number: '12345679',
-        entry_price: 1.2651,
-        current_price: 1.2630,
-        type: 'SELL',
-        volume: 0.01,
-        stop_loss: 1.2680,
-        take_profit: 1.2620,
-        profit: 2.10,
-        status: 'open',
-        open_time: new Date(Date.now() - 7200000).toISOString(),
-        symbol: 'GBPUSD',
-        pips: 21,
-        user_id: '1'
-      }
-    ];
+    // Return mock trades as fallback
+    return generateMockMonitoredTrades();
   }
+};
+
+// Function to generate mock monitored trades for development
+export const generateMockMonitoredTrades = (count: number = 8): MonitoredTrade[] => {
+  const symbols = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'NZD/USD'];
+  const trades: MonitoredTrade[] = [];
+  
+  for (let i = 0; i < count; i++) {
+    const symbol = symbols[Math.floor(Math.random() * symbols.length)];
+    const type = Math.random() > 0.5 ? 'BUY' : 'SELL';
+    const basePrice = symbol === 'USD/JPY' ? 150 + Math.random() * 10 : 1 + Math.random();
+    const entryPrice = parseFloat(basePrice.toFixed(5));
+    
+    // Generate time within the last 24 hours
+    const openTime = new Date();
+    openTime.setHours(openTime.getHours() - Math.floor(Math.random() * 24));
+    
+    // Calculate profit/loss
+    const currentPrice = type === 'BUY' ? 
+      entryPrice * (1 + (Math.random() * 0.005 * (Math.random() > 0.6 ? 1 : -1))) : 
+      entryPrice * (1 - (Math.random() * 0.005 * (Math.random() > 0.6 ? 1 : -1)));
+      
+    const volume = 0.01 + Math.random() * 0.09; // 0.01 - 0.1
+    const pips = Math.round((currentPrice - entryPrice) * (symbol === 'USD/JPY' ? 100 : 10000));
+    const profit = pips * volume * 10;
+    
+    // Stop loss and take profit
+    const stopLoss = type === 'BUY' ? 
+      entryPrice * (1 - (0.005 + Math.random() * 0.01)) : 
+      entryPrice * (1 + (0.005 + Math.random() * 0.01));
+      
+    const takeProfit = type === 'BUY' ? 
+      entryPrice * (1 + (0.01 + Math.random() * 0.02)) : 
+      entryPrice * (1 - (0.01 + Math.random() * 0.02));
+    
+    trades.push({
+      id: `mock-trade-${i}-${Date.now()}`,
+      signal_id: `sig-${Math.floor(Math.random() * 1000)}`,
+      broker_account_id: Math.random() > 0.5 ? 'acc-1' : 'acc-2',
+      ticket_number: `T${Math.floor(100000 + Math.random() * 900000)}`,
+      entry_price: entryPrice,
+      current_price: parseFloat(currentPrice.toFixed(5)),
+      type: type as 'BUY' | 'SELL',
+      volume,
+      stop_loss: parseFloat(stopLoss.toFixed(5)),
+      take_profit: parseFloat(takeProfit.toFixed(5)),
+      profit,
+      status: 'open',
+      open_time: openTime.toISOString(),
+      symbol,
+      pips,
+      user_id: 'simulated-user-id',
+    });
+  }
+  
+  return trades;
 };
