@@ -1,4 +1,3 @@
-
 // Types for AI and ML features
 export interface MLModel {
   id: string;
@@ -17,6 +16,11 @@ export interface AIInsight {
   riskAssessment: 'Low' | 'Medium' | 'High';
   confidenceLevel: number;
   created_at: string;
+  topOpportunities?: Array<{
+    symbol: string;
+    direction: string;
+    score: number;
+  }>;
 }
 
 export interface TradingStrategy {

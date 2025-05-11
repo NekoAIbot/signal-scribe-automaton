@@ -1,37 +1,12 @@
 
-import { supabase } from "@/integrations/supabase/client";
 import { AIInsight, MLModel, TrainingParams } from "./types";
 import { toast } from "sonner";
 
 // Function to get AI insights
 export const getAIInsights = async (): Promise<AIInsight | null> => {
   try {
-    // Try to get insights from database
-    try {
-      const { data, error } = await supabase
-        .from('ai_insights')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(1);
-        
-      if (error) {
-        // If the error is about the table not existing, use mock data
-        if (error.code === '42P01') {
-          console.log("Table 'ai_insights' doesn't exist yet. Using mock data.");
-          return generateMockAIInsights();
-        }
-        throw error;
-      }
-      
-      if (data && data.length > 0) {
-        return data[0] as AIInsight;
-      }
-    } catch (dbError) {
-      console.error("Database error fetching AI insights:", dbError);
-      // Continue with mock data
-    }
-    
-    // Return mock insights if no real insights found
+    // For now, we'll skip database interactions and use mock data
+    // This avoids errors when tables don't exist yet
     return generateMockAIInsights();
   } catch (error) {
     console.error("Error fetching AI insights:", error);
@@ -73,31 +48,8 @@ export const generateMockAIInsights = (): AIInsight => {
 // Function to get ML models
 export const getMLModels = async (): Promise<MLModel[]> => {
   try {
-    // Try to get models from database
-    try {
-      const { data, error } = await supabase
-        .from('ml_models')
-        .select('*')
-        .order('created_at', { ascending: false });
-        
-      if (error) {
-        // If the error is about the table not existing, use mock data
-        if (error.code === '42P01') {
-          console.log("Table 'ml_models' doesn't exist yet. Using mock data.");
-          return generateMockMLModels();
-        }
-        throw error;
-      }
-      
-      if (data && data.length > 0) {
-        return data as MLModel[];
-      }
-    } catch (dbError) {
-      console.error("Database error fetching ML models:", dbError);
-      // Continue with mock data
-    }
-    
-    // Return mock models if no real models found
+    // For now, we'll skip database interactions and use mock data
+    // This avoids errors when tables don't exist yet
     return generateMockMLModels();
   } catch (error) {
     console.error("Error fetching ML models:", error);
@@ -136,41 +88,6 @@ export const generateMockMLModels = (count: number = 5): MLModel[] => {
 export const trainMLModel = async (params: TrainingParams): Promise<MLModel | null> => {
   try {
     toast.loading(`Training ${params.modelType} model, please wait...`);
-    
-    // Call train-ml-model edge function
-    try {
-      const { data, error } = await supabase.functions.invoke('train-ml-model', {
-        body: params
-      });
-      
-      if (error) throw error;
-      
-      if (data && data.model) {
-        // Try to insert model into database (if table exists)
-        try {
-          const tableCheck = supabase
-            .from('ml_models')
-            .select('id')
-            .limit(1);
-          
-          tableCheck.then(({ error: tableCheckError }) => {
-            if (!tableCheckError || tableCheckError.code !== '42P01') {
-              supabase.from('ml_models').insert(data.model);
-            }
-          });
-        } catch (insertError) {
-          console.error("Error inserting trained model:", insertError);
-        }
-        
-        toast.success(`${params.modelType} model training completed`);
-        return data.model;
-      } else {
-        throw new Error("Model training did not return a valid model");
-      }
-    } catch (fnError) {
-      console.error("Error calling train-ml-model function:", fnError);
-      // Continue with simulation
-    }
     
     // Simulate model training for development
     await new Promise(resolve => setTimeout(resolve, 3000));
