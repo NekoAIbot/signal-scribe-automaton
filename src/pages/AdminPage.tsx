@@ -1,11 +1,10 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { getEnhancedSignals } from '@/services/aiSignalService';
+import { getEnhancedSignals } from '@/services/ai/signalService';
 
 // Mock admin data
 const mockStrategies = [

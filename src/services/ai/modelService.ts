@@ -1,213 +1,196 @@
 
 import { supabase } from "@/integrations/supabase/client";
-import { MLModel, TrainingParams, BacktestResult, BacktestParams } from "./types";
+import { AIInsight, MLModel, TrainingParams } from "./types";
 import { toast } from "sonner";
 
-// Mock ML models for development
-const mockModels: MLModel[] = [
-  {
-    id: '1',
-    name: 'LSTM Forex Model',
-    type: 'LSTM',
-    version: '1.0.0',
-    is_active: true,
-    accuracy: 0.78,
-    indicators: ['RSI', 'MACD', 'Bollinger Bands'],
-    created_at: new Date().toISOString()
-  },
-  {
-    id: '2',
-    name: 'Deep Q-Network',
-    type: 'DQN',
-    version: '2.1.3',
-    is_active: true,
-    accuracy: 0.72,
-    indicators: ['Stochastic', 'ATR', 'Moving Averages'],
-    created_at: new Date().toISOString()
-  },
-  {
-    id: '3',
-    name: 'Transformer Model',
-    type: 'Transformer',
-    version: '1.2.0',
-    is_active: false,
-    accuracy: 0.81,
-    indicators: ['RSI', 'Volume Profile', 'Price Action'],
-    created_at: new Date().toISOString()
+// Function to get AI insights
+export const getAIInsights = async (): Promise<AIInsight | null> => {
+  try {
+    // Try to get insights from database
+    try {
+      const { data, error } = await supabase
+        .from('ai_insights')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(1);
+        
+      if (error) {
+        // If the error is about the table not existing, use mock data
+        if (error.code === '42P01') {
+          console.log("Table 'ai_insights' doesn't exist yet. Using mock data.");
+          return generateMockAIInsights();
+        }
+        throw error;
+      }
+      
+      if (data && data.length > 0) {
+        return data[0] as AIInsight;
+      }
+    } catch (dbError) {
+      console.error("Database error fetching AI insights:", dbError);
+      // Continue with mock data
+    }
+    
+    // Return mock insights if no real insights found
+    return generateMockAIInsights();
+  } catch (error) {
+    console.error("Error fetching AI insights:", error);
+    
+    // Return mock insights as fallback
+    return generateMockAIInsights();
   }
-];
+};
 
-// Get all ML models
+// Function to generate mock AI insights for development
+export const generateMockAIInsights = (): AIInsight => {
+  const marketPredictions = ['Bullish', 'Bearish', 'Neutral'] as const;
+  const riskLevels = ['Low', 'Medium', 'High'] as const;
+  
+  const prediction = marketPredictions[Math.floor(Math.random() * marketPredictions.length)];
+  const risk = riskLevels[Math.floor(Math.random() * riskLevels.length)];
+  
+  const topOpportunities = [];
+  const symbols = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD'];
+  const directions = ['BUY', 'SELL'];
+  
+  for (let i = 0; i < 3; i++) {
+    topOpportunities.push({
+      symbol: symbols[Math.floor(Math.random() * symbols.length)],
+      direction: directions[Math.floor(Math.random() * directions.length)],
+      score: 0.7 + Math.random() * 0.3 // 70-100% confidence
+    });
+  }
+  
+  return {
+    marketPrediction: prediction,
+    riskAssessment: risk,
+    confidenceLevel: 0.6 + Math.random() * 0.39, // 60-99% confidence
+    created_at: new Date().toISOString(),
+    topOpportunities
+  };
+};
+
+// Function to get ML models
 export const getMLModels = async (): Promise<MLModel[]> => {
   try {
     // Try to get models from database
-    const { data, error } = await supabase
-      .from('ml_models')
-      .select('*');
-      
-    if (error) throw error;
-    
-    if (data && data.length > 0) {
-      return data as MLModel[];
-    }
-    
-    // Return mock data if no models found in database
-    return mockModels;
-  } catch (error) {
-    console.error("Error fetching ML models:", error);
-    toast.error("Failed to load ML models, using mock data");
-    
-    // Return mock data in case of error
-    return mockModels;
-  }
-};
-
-// Get a single ML model by ID
-export const getMLModelById = async (modelId: string): Promise<MLModel | null> => {
-  try {
-    // Try to get model from database
-    const { data, error } = await supabase
-      .from('ml_models')
-      .select('*')
-      .eq('id', modelId)
-      .single();
-      
-    if (error) throw error;
-    
-    return data as MLModel;
-  } catch (error) {
-    console.error(`Error fetching ML model ${modelId}:`, error);
-    
-    // Return mock model if ID matches
-    const mockModel = mockModels.find(m => m.id === modelId);
-    if (mockModel) return mockModel;
-    
-    // Return first mock model as fallback
-    return mockModels[0];
-  }
-};
-
-// Train a new ML model
-export const trainModel = async (params: TrainingParams): Promise<MLModel> => {
-  try {
-    toast.info(`Training ${params.modelType} model...`);
-    
-    // Try to call model training edge function
-    const { data: functionData, error: functionError } = await supabase.functions.invoke('train-ml-model', {
-      body: params
-    });
-    
-    if (functionError) throw functionError;
-    
-    if (functionData && functionData.success && functionData.model) {
-      // Try to insert new model into the database
-      try {
-        const { data, error } = await supabase
-          .from('ml_models')
-          .insert(functionData.model);
-          
-        if (error) throw error;
-      } catch (dbError) {
-        console.error("Error saving model to database:", dbError);
-        // Continue with function data even if DB insert fails
+    try {
+      const { data, error } = await supabase
+        .from('ml_models')
+        .select('*')
+        .order('created_at', { ascending: false });
+        
+      if (error) {
+        // If the error is about the table not existing, use mock data
+        if (error.code === '42P01') {
+          console.log("Table 'ml_models' doesn't exist yet. Using mock data.");
+          return generateMockMLModels();
+        }
+        throw error;
       }
       
-      toast.success(`${params.modelType} model trained successfully!`);
-      return functionData.model as MLModel;
+      if (data && data.length > 0) {
+        return data as MLModel[];
+      }
+    } catch (dbError) {
+      console.error("Database error fetching ML models:", dbError);
+      // Continue with mock data
     }
     
-    throw new Error("Model training failed or returned invalid data");
+    // Return mock models if no real models found
+    return generateMockMLModels();
   } catch (error) {
-    console.error("Error training model:", error);
-    toast.error("Failed to train model. Using simulated result.");
+    console.error("Error fetching ML models:", error);
     
-    // Generate simulated training result
-    const newModelId = `sim-${Date.now()}`;
-    const accuracy = 0.6 + Math.random() * 0.3; // Between 0.6 and 0.9
-    
-    const simulatedModel: MLModel = {
-      id: newModelId,
-      name: `${params.modelType} Model ${newModelId.slice(-4)}`,
-      type: params.modelType,
-      version: '1.0.0',
-      is_active: true,
-      accuracy,
-      indicators: params.indicators || ['RSI', 'MACD', 'EMA'],
-      created_at: new Date().toISOString(),
-    };
-    
-    return simulatedModel;
+    // Return mock models as fallback
+    return generateMockMLModels();
   }
 };
 
-// Run backtest on a strategy
-export const runBacktest = async (params: BacktestParams): Promise<BacktestResult> => {
-  try {
-    toast.info(`Running backtest for strategy ${params.strategyId}...`);
-    
-    // Try to call backtest edge function
-    const { data, error } = await supabase.functions.invoke('backtest-strategy', {
-      body: params
-    });
-    
-    if (error) throw error;
-    
-    if (data && data.success && data.result) {
-      toast.success("Backtest completed successfully!");
-      return data.result as BacktestResult;
-    }
-    
-    throw new Error("Backtest failed or returned invalid data");
-  } catch (error) {
-    console.error("Error running backtest:", error);
-    toast.error("Failed to run backtest. Using simulated result.");
-    
-    // Generate simulated backtest result
-    const winRate = 0.55 + Math.random() * 0.25; // Between 0.55 and 0.8
-    const profitFactor = 1.2 + Math.random() * 1.3; // Between 1.2 and 2.5
-    const totalTrades = Math.floor(50 + Math.random() * 150); // Between 50 and 200 trades
-    const winningTrades = Math.floor(totalTrades * winRate);
-    const netProfit = Math.floor((params.initialCapital || 10000) * (Math.random() * 0.3)); // Up to 30% profit
-    
-    const simulatedBacktest: BacktestResult = {
-      id: `sim-${Date.now()}`,
-      strategyId: params.strategyId,
-      startDate: params.startDate,
-      endDate: params.endDate,
-      totalTrades,
-      winRate: Number(winRate.toFixed(2)),
-      profitFactor: Number(profitFactor.toFixed(2)),
-      sharpeRatio: Number((0.8 + Math.random() * 1.2).toFixed(2)), // Between 0.8 and 2.0
-      maxDrawdown: Number((5 + Math.random() * 15).toFixed(2)), // Between 5% and 20%
-      netProfit,
-      symbols: params.symbols,
-      tradesData: []
-    };
-    
-    return simulatedBacktest;
-  }
-};
-
-// Get AI insights for the market
-export const getAIInsights = async (): Promise<any> => {
-  // Simulated AI insights for development
-  const marketOutlook = ['Bullish', 'Bearish', 'Neutral'][Math.floor(Math.random() * 3)];
-  const confidence = Math.round((0.6 + Math.random() * 0.39) * 100); // 60-99% confidence
+// Function to generate mock ML models for development
+export const generateMockMLModels = (count: number = 5): MLModel[] => {
+  const modelTypes = ['DQN', 'PPO', 'LSTM', 'Transformer', 'GRU', 'RandomForest', 'XGBoost'] as const;
+  const models: MLModel[] = [];
   
-  return {
-    marketPrediction: marketOutlook,
-    riskAssessment: Math.random() > 0.5 ? 'Medium' : Math.random() > 0.5 ? 'Low' : 'High',
-    confidenceLevel: confidence / 100,
-    created_at: new Date().toISOString(),
-    topOpportunities: [
-      { symbol: 'EUR/USD', score: Number((0.6 + Math.random() * 0.4).toFixed(2)), direction: Math.random() > 0.5 ? 'BUY' : 'SELL' },
-      { symbol: 'GBP/USD', score: Number((0.6 + Math.random() * 0.4).toFixed(2)), direction: Math.random() > 0.5 ? 'BUY' : 'SELL' },
-      { symbol: 'USD/JPY', score: Number((0.6 + Math.random() * 0.4).toFixed(2)), direction: Math.random() > 0.5 ? 'BUY' : 'SELL' },
-    ],
-    riskFactors: [
-      { factor: 'Market Volatility', level: Math.random() > 0.5 ? 'High' : 'Medium' },
-      { factor: 'Economic Events', level: Math.random() > 0.5 ? 'Medium' : 'Low' },
-      { factor: 'Liquidity', level: Math.random() > 0.5 ? 'High' : 'Medium' }
-    ]
-  };
+  for (let i = 0; i < count; i++) {
+    const type = modelTypes[Math.floor(Math.random() * modelTypes.length)];
+    const date = new Date();
+    date.setDate(date.getDate() - Math.floor(Math.random() * 60)); // Up to 60 days ago
+    
+    models.push({
+      id: `model-${i}-${Date.now()}`,
+      name: `${type} Model ${Math.floor(Math.random() * 100)}`,
+      type,
+      version: `${Math.floor(Math.random() * 3)}.${Math.floor(Math.random() * 10)}.${Math.floor(Math.random() * 10)}`,
+      is_active: Math.random() > 0.3,
+      created_at: date.toISOString(),
+      accuracy: 0.7 + Math.random() * 0.25, // 70-95% accuracy
+      indicators: ['RSI', 'MACD', 'EMA', 'Bollinger', 'ATR'].slice(0, Math.floor(Math.random() * 5) + 1)
+    });
+  }
+  
+  return models;
+};
+
+// Function to train a new ML model
+export const trainMLModel = async (params: TrainingParams): Promise<MLModel | null> => {
+  try {
+    toast.loading(`Training ${params.modelType} model, please wait...`);
+    
+    // Call train-ml-model edge function
+    try {
+      const { data, error } = await supabase.functions.invoke('train-ml-model', {
+        body: params
+      });
+      
+      if (error) throw error;
+      
+      if (data && data.model) {
+        // Try to insert model into database (if table exists)
+        try {
+          const tableCheck = supabase
+            .from('ml_models')
+            .select('id')
+            .limit(1);
+          
+          tableCheck.then(({ error: tableCheckError }) => {
+            if (!tableCheckError || tableCheckError.code !== '42P01') {
+              supabase.from('ml_models').insert(data.model);
+            }
+          });
+        } catch (insertError) {
+          console.error("Error inserting trained model:", insertError);
+        }
+        
+        toast.success(`${params.modelType} model training completed`);
+        return data.model;
+      } else {
+        throw new Error("Model training did not return a valid model");
+      }
+    } catch (fnError) {
+      console.error("Error calling train-ml-model function:", fnError);
+      // Continue with simulation
+    }
+    
+    // Simulate model training for development
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    const model: MLModel = {
+      id: `model-${Date.now()}`,
+      name: `${params.modelType} Model`,
+      type: params.modelType,
+      version: "1.0.0",
+      is_active: true,
+      created_at: new Date().toISOString(),
+      accuracy: 0.7 + Math.random() * 0.25,
+      indicators: params.indicators || ['RSI', 'MACD', 'EMA']
+    };
+    
+    toast.success(`${params.modelType} model training completed (mock)`);
+    return model;
+  } catch (error) {
+    console.error("Error training ML model:", error);
+    toast.error(`Failed to train ${params.modelType} model: ${(error as Error).message}`);
+    return null;
+  }
 };

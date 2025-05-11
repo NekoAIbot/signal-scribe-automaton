@@ -1,20 +1,26 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { EnhancedSignal, MonitoredTrade } from "./types";
 import { toast } from "sonner";
 
-// Function to get trading signals
-export const getTradingSignals = async (limit: number = 10): Promise<EnhancedSignal[]> => {
+// Function to get enhanced trading signals
+export const getEnhancedSignals = async (limit: number = 10): Promise<EnhancedSignal[]> => {
   try {
-    // Try to get signals from database
+    // Try to get signals from database - but handle the case where tables don't exist yet
     try {
       const { data, error } = await supabase
-        .from('trading_signals')
+        .from('enhanced_signals')
         .select('*')
         .order('time', { ascending: false })
         .limit(limit);
         
-      if (error) throw error;
+      if (error) {
+        // If the error is about the table not existing, we'll use mock data instead
+        if (error.code === '42P01') {
+          console.error("Table 'enhanced_signals' doesn't exist yet. Using mock data.");
+          return generateMockEnhancedSignals(limit);
+        }
+        throw error;
+      }
       
       if (data && data.length > 0) {
         return data as EnhancedSignal[];
@@ -25,20 +31,20 @@ export const getTradingSignals = async (limit: number = 10): Promise<EnhancedSig
     }
     
     // Return mock signals if no real signals found
-    return generateMockSignals(limit);
+    return generateMockEnhancedSignals(limit);
   } catch (error) {
-    console.error("Error fetching trading signals:", error);
+    console.error("Error fetching enhanced signals:", error);
     toast.error("Failed to load trading signals. Using mock data.");
     
     // Return mock signals as fallback
-    return generateMockSignals(limit);
+    return generateMockEnhancedSignals(limit);
   }
 };
 
-// Function to generate mock trading signals for development
-export const generateMockSignals = (count: number = 10): EnhancedSignal[] => {
+// Function to generate mock enhanced signals
+const generateMockEnhancedSignals = (count: number = 10): EnhancedSignal[] => {
   const symbols = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'NZD/USD'];
-  const strategies = ['Trend Following', 'Mean Reversion', 'Breakout', 'Volatility Expansion', 'ML Strategy'];
+  const strategies = ['ML Strategy Alpha', 'Neural Net Trend', 'Advanced LSTM', 'Transformer Model', 'Sentiment Analysis'];
   const statuses = ['new', 'executing', 'executed', 'failed', 'monitoring', 'completed'];
   
   const signals: EnhancedSignal[] = [];
@@ -90,6 +96,12 @@ export const generateMockSignals = (count: number = 10): EnhancedSignal[] => {
   return signals;
 };
 
+// Function to get trading signals
+export const getTradingSignals = async (limit: number = 10): Promise<EnhancedSignal[]> => {
+  // Just use the enhanced signals for now
+  return getEnhancedSignals(limit);
+};
+
 // Function to create a new trading signal
 export const createTradingSignal = async (signal: EnhancedSignal): Promise<EnhancedSignal> => {
   try {
@@ -106,19 +118,28 @@ export const createTradingSignal = async (signal: EnhancedSignal): Promise<Enhan
       status: signal.status || 'new',
     };
     
-    // Try to insert into database
+    // Try to insert into database - handle case where tables don't exist
     try {
-      const { data, error } = await supabase
-        .from('trading_signals')
-        .insert(enhancedSignal)
-        .select()
-        .single();
+      // Check if table exists first to avoid errors
+      const { error: tableCheckError } = await supabase
+        .from('enhanced_signals')
+        .select('id')
+        .limit(1);
+
+      // If table exists, try to insert
+      if (!tableCheckError || tableCheckError.code !== '42P01') {
+        const { data, error } = await supabase
+          .from('enhanced_signals')
+          .insert(enhancedSignal)
+          .select()
+          .single();
+          
+        if (error) throw error;
         
-      if (error) throw error;
-      
-      if (data) {
-        toast.success(`New ${signal.type} signal for ${signal.symbol} created`);
-        return data as EnhancedSignal;
+        if (data) {
+          toast.success(`New ${signal.type} signal for ${signal.symbol} created`);
+          return data as EnhancedSignal;
+        }
       }
     } catch (dbError) {
       console.error("Database error creating signal:", dbError);
@@ -138,34 +159,43 @@ export const createTradingSignal = async (signal: EnhancedSignal): Promise<Enhan
 export const executeSignal = async (signal: EnhancedSignal, brokerAccountId: string): Promise<boolean> => {
   try {
     // Call execute-trade edge function
-    const { data, error } = await supabase.functions.invoke('execute-trade', {
-      body: {
-        signal,
-        accountId: brokerAccountId
-      }
-    });
-    
-    if (error) throw error;
-    
-    if (data && data.success) {
-      // Update signal status in database
-      try {
-        const { error: updateError } = await supabase
-          .from('trading_signals')
-          .update({ status: 'executing', execution_data: data.execution })
-          .eq('id', signal.id);
-          
-        if (updateError) console.error("Error updating signal status:", updateError);
-      } catch (dbError) {
-        console.error("Database error updating signal:", dbError);
-      }
+    try {
+      const { data, error } = await supabase.functions.invoke('execute-trade', {
+        body: {
+          signal,
+          accountId: brokerAccountId
+        }
+      });
       
-      return true;
+      if (error) throw error;
+      
+      if (data && data.success) {
+        // Update signal status in database - if it exists
+        try {
+          // Check if table exists first
+          const { error: tableCheckError } = await supabase
+            .from('enhanced_signals')
+            .select('id')
+            .limit(1);
+
+          if (!tableCheckError || tableCheckError.code !== '42P01') {
+            const { error: updateError } = await supabase
+              .from('enhanced_signals')
+              .update({ status: 'executing', execution_data: data.execution })
+              .eq('id', signal.id);
+              
+            if (updateError) console.error("Error updating signal status:", updateError);
+          }
+        } catch (dbError) {
+          console.error("Database error updating signal:", dbError);
+        }
+        
+        return true;
+      }
+    } catch (fnError) {
+      console.error("Error calling execute-trade function:", fnError);
+      // Continue with simulation
     }
-    
-    return false;
-  } catch (error) {
-    console.error("Error executing signal:", error);
     
     // Simulate successful execution for development
     setTimeout(() => {
@@ -187,31 +217,46 @@ export const executeSignal = async (signal: EnhancedSignal, brokerAccountId: str
         user_id: 'simulated-user-id',
       };
       
-      // Try to insert monitored trade into database
+      // Try to insert monitored trade into database - if table exists
       try {
-        supabase
+        // Check if table exists first
+        const tableCheck = supabase
           .from('monitored_trades')
-          .insert({
-            signal_id: monitoredTrade.signal_id,
-            broker_account_id: monitoredTrade.broker_account_id,
-            ticket_number: monitoredTrade.ticket_number,
-            entry_price: monitoredTrade.entry_price,
-            current_price: monitoredTrade.current_price,
-            type: monitoredTrade.type,
-            volume: monitoredTrade.volume,
-            stop_loss: monitoredTrade.stop_loss,
-            take_profit: monitoredTrade.take_profit,
-            status: monitoredTrade.status,
-            open_time: monitoredTrade.open_time,
-            symbol: monitoredTrade.symbol,
-            user_id: monitoredTrade.user_id,
-          });
+          .select('id')
+          .limit(1);
+          
+        tableCheck.then(({ error: tableCheckError }) => {
+          if (!tableCheckError || tableCheckError.code !== '42P01') {
+            // Table exists, try to insert
+            supabase
+              .from('monitored_trades')
+              .insert({
+                signal_id: monitoredTrade.signal_id,
+                broker_account_id: monitoredTrade.broker_account_id,
+                ticket_number: monitoredTrade.ticket_number,
+                entry_price: monitoredTrade.entry_price,
+                current_price: monitoredTrade.current_price,
+                type: monitoredTrade.type,
+                volume: monitoredTrade.volume,
+                stop_loss: monitoredTrade.stop_loss,
+                take_profit: monitoredTrade.take_profit,
+                status: monitoredTrade.status,
+                open_time: monitoredTrade.open_time,
+                symbol: monitoredTrade.symbol,
+                user_id: monitoredTrade.user_id,
+              });
+          }
+        });
       } catch (insertError) {
         console.error("Error inserting monitored trade:", insertError);
       }
     }, 1500);
     
     return true;
+  } catch (error) {
+    console.error("Error executing signal:", error);
+    toast.error(`Failed to execute ${signal.symbol} signal`);
+    return false;
   }
 };
 
@@ -242,14 +287,22 @@ export const executeSignalAcrossAccounts = async (signal: EnhancedSignal): Promi
 // Function to get monitored trades
 export const getMonitoredTrades = async (): Promise<MonitoredTrade[]> => {
   try {
-    // Try to get trades from database
+    // Try to get trades from database - if table exists
     try {
+      // Check if table exists first
       const { data, error } = await supabase
         .from('monitored_trades')
         .select('*')
         .order('open_time', { ascending: false });
         
-      if (error) throw error;
+      if (error) {
+        // If the error is about the table not existing, use mock data
+        if (error.code === '42P01') {
+          console.error("Table 'monitored_trades' doesn't exist yet. Using mock data.");
+          return generateMockMonitoredTrades();
+        }
+        throw error;
+      }
       
       if (data && data.length > 0) {
         return data as MonitoredTrade[];
