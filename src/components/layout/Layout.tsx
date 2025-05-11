@@ -5,14 +5,15 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { toast } from 'sonner';
-import { useAuth } from '@/services/authService';
+import { useAuth } from '@/contexts/AuthContext';
 import { useWebSocketMarketData } from '@/services/websocketService';
 
 export function Layout() {
   const isMobile = useIsMobile();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(isMobile);
-  const { isAuthenticated } = useAuth();
+  const { user } = useAuth();
   const location = useLocation();
+  const mainContentRef = useRef<HTMLDivElement>(null);
   
   // Connect to WebSocket for real-time data
   const { isConnected, usingMockData, reconnect } = useWebSocketMarketData();
@@ -23,6 +24,13 @@ export function Layout() {
   const toggleSidebar = () => {
     setSidebarCollapsed(!sidebarCollapsed);
   };
+  
+  // Auto-scroll to top when location changes
+  useEffect(() => {
+    if (mainContentRef.current) {
+      mainContentRef.current.scrollTop = 0;
+    }
+  }, [location.pathname]);
   
   // Auto-collapse sidebar on mobile when navigating
   useEffect(() => {
@@ -52,7 +60,7 @@ export function Layout() {
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
     
-    if (!isConnected && isAuthenticated) {
+    if (!isConnected && user) {
       const now = Date.now();
       // Only attempt reconnect at most once every 30 seconds
       if (now - lastReconnectAttemptRef.current > 30000) {
@@ -66,7 +74,7 @@ export function Layout() {
     return () => {
       if (timer) clearTimeout(timer);
     };
-  }, [isConnected, isAuthenticated, reconnect]);
+  }, [isConnected, user, reconnect]);
   
   return (
     <div className="flex h-screen bg-trading-bg text-foreground">
@@ -75,7 +83,7 @@ export function Layout() {
       <div className="flex flex-col flex-1 overflow-hidden">
         <Header toggleSidebar={toggleSidebar} />
         
-        <main className="flex-1 overflow-auto p-4">
+        <main className="flex-1 overflow-auto p-4" ref={mainContentRef}>
           <Outlet />
         </main>
       </div>

@@ -5,8 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
-// Admin password updated as requested
+// Admin password set as requested
 const ADMIN_PASSWORD = "Nathan19@@";
 
 interface AdminRouteProps {
@@ -14,6 +15,7 @@ interface AdminRouteProps {
 }
 
 export function AdminRoute({ children }: AdminRouteProps) {
+  const { user } = useAuth();
   const [isAuthenticated, setIsAuthenticated] = useState(
     localStorage.getItem('adminAuthenticated') === 'true'
   );
@@ -24,7 +26,7 @@ export function AdminRoute({ children }: AdminRouteProps) {
     e.preventDefault();
     setIsSubmitting(true);
     
-    // Simulate API request
+    // Check password
     setTimeout(() => {
       if (password === ADMIN_PASSWORD) {
         localStorage.setItem('adminAuthenticated', 'true');
@@ -36,6 +38,11 @@ export function AdminRoute({ children }: AdminRouteProps) {
       setIsSubmitting(false);
     }, 1000);
   };
+
+  // First check if the user is even logged in
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
 
   if (isAuthenticated) {
     return <>{children}</>;

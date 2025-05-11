@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Bell, Menu, User, AlertCircle, LogOut, Settings as SettingsIcon } from 'lucide-react';
-import { useAuth } from '@/services/authService';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import {
   DropdownMenu,
@@ -37,10 +37,10 @@ export function Header({ toggleSidebar }: HeaderProps) {
   
   const handleLogout = () => {
     logout();
-    navigate('/');
   };
   
   const unreadCount = notifications.filter(n => !n.read).length;
+  const subscriptionBadge = user?.subscriptionTier ? user.subscriptionTier : 'free';
   
   return (
     <header className="bg-trading-card border-b border-trading-border h-16 flex items-center justify-between px-4">
@@ -90,7 +90,7 @@ export function Header({ toggleSidebar }: HeaderProps) {
         <div className="flex items-center ml-4 space-x-3">
           <div className="text-right hidden md:block">
             <p className="text-sm font-medium">{user?.name || 'Guest'}</p>
-            <p className="text-xs text-muted-foreground">Pro Account</p>
+            <p className="text-xs text-muted-foreground capitalize">{subscriptionBadge} Account</p>
           </div>
           
           <DropdownMenu>

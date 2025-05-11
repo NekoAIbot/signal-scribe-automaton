@@ -1,331 +1,328 @@
 
-import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { Bell, Plus, Search, X } from 'lucide-react';
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { toast } from "sonner";
+import { Plus, Trash2, Bell, BellOff, ArrowUpRight } from "lucide-react";
 
-interface Alert {
-  id: number;
-  symbol: string;
-  condition: string;
-  value: number;
-  active: boolean;
-  createdAt: string;
-}
-
-const mockAlerts: Alert[] = [
+// Sample alert data
+const sampleAlerts = [
   {
-    id: 1,
+    id: '1',
     symbol: 'EUR/USD',
     condition: 'Price Above',
-    value: 1.05500,
+    value: 1.0850,
+    created: '2024-05-10',
     active: true,
-    createdAt: '2023-04-20T14:30:00',
   },
   {
-    id: 2,
+    id: '2',
     symbol: 'GBP/USD',
     condition: 'Price Below',
-    value: 1.24000,
+    value: 1.2500,
+    created: '2024-05-09',
     active: true,
-    createdAt: '2023-04-19T09:15:00',
   },
   {
-    id: 3,
-    symbol: 'USD/JPY',
-    condition: 'RSI Above',
-    value: 70,
+    id: '3',
+    symbol: 'BTC/USD',
+    condition: 'Price Movement',
+    value: 5,
+    created: '2024-05-08',
     active: false,
-    createdAt: '2023-04-18T11:45:00',
-  },
-  {
-    id: 4,
-    symbol: 'AUD/USD',
-    condition: 'MA Crossover',
-    value: 0,
-    active: true,
-    createdAt: '2023-04-17T16:20:00',
   },
 ];
-
-interface Notification {
-  id: number;
-  message: string;
-  type: 'info' | 'warning' | 'success' | 'error';
-  time: string;
-  read: boolean;
-}
-
-const mockNotifications: Notification[] = [
-  {
-    id: 1,
-    message: 'EUR/USD price alert triggered (Above 1.05500)',
-    type: 'info',
-    time: '2023-04-21T09:45:00',
-    read: false,
-  },
-  {
-    id: 2,
-    message: 'Bot successfully executed BUY order for GBP/USD',
-    type: 'success',
-    time: '2023-04-21T09:30:00',
-    read: false,
-  },
-  {
-    id: 3,
-    message: 'Trading strategy retraining completed (+2.1% accuracy)',
-    type: 'success',
-    time: '2023-04-21T07:15:00',
-    read: true,
-  },
-  {
-    id: 4,
-    message: 'Warning: API rate limit at 80% utilization',
-    type: 'warning',
-    time: '2023-04-20T14:30:00',
-    read: true,
-  },
-  {
-    id: 5,
-    message: 'Error: Failed to execute SELL order for USD/JPY',
-    type: 'error',
-    time: '2023-04-20T11:45:00',
-    read: true,
-  },
-];
-
-const formatTime = (timeString: string) => {
-  const date = new Date(timeString);
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-};
-
-const formatDate = (timeString: string) => {
-  const date = new Date(timeString);
-  const now = new Date();
-  
-  if (date.toDateString() === now.toDateString()) {
-    return `Today at ${formatTime(timeString)}`;
-  } else {
-    const yesterday = new Date(now);
-    yesterday.setDate(now.getDate() - 1);
-    
-    if (date.toDateString() === yesterday.toDateString()) {
-      return `Yesterday at ${formatTime(timeString)}`;
-    } else {
-      return date.toLocaleDateString() + ' ' + formatTime(timeString);
-    }
-  }
-};
 
 const AlertsPage = () => {
-  return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Alerts & Notifications</h1>
+  const [activeTab, setActiveTab] = useState('price');
+  const [alerts, setAlerts] = useState(sampleAlerts);
+  const [newAlert, setNewAlert] = useState({
+    symbol: 'EUR/USD',
+    condition: 'Price Above',
+    value: '',
+  });
+
+  const symbols = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'BTC/USD', 'ETH/USD'];
+  const conditions = ['Price Above', 'Price Below', 'Price Movement'];
+
+  const handleAddAlert = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!newAlert.value) {
+      toast.error('Please enter an alert value');
+      return;
+    }
+    
+    const alert = {
+      id: Date.now().toString(),
+      symbol: newAlert.symbol,
+      condition: newAlert.condition,
+      value: parseFloat(newAlert.value as string),
+      created: new Date().toISOString().split('T')[0],
+      active: true,
+    };
+    
+    setAlerts([...alerts, alert]);
+    setNewAlert({ ...newAlert, value: '' });
+    toast.success(`New ${newAlert.condition} alert created for ${newAlert.symbol}`);
+  };
+
+  const toggleAlertStatus = (id: string) => {
+    setAlerts(
+      alerts.map((alert) =>
+        alert.id === id ? { ...alert, active: !alert.active } : alert
+      )
+    );
+    
+    const alert = alerts.find(a => a.id === id);
+    if (alert) {
+      toast.success(`Alert for ${alert.symbol} ${alert.active ? 'disabled' : 'enabled'}`);
+    }
+  };
+
+  const deleteAlert = (id: string) => {
+    const alert = alerts.find(a => a.id === id);
+    setAlerts(alerts.filter((alert) => alert.id !== id));
+    if (alert) {
+      toast.info(`Alert for ${alert.symbol} deleted`);
+    }
+  };
+  
+  const handleTestAlert = () => {
+    toast.loading('Testing alert system...', {
+      id: 'test-alert'
+    });
+    
+    setTimeout(() => {
+      toast.success('Alert system working correctly', {
+        id: 'test-alert'
+      });
       
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="bg-trading-card border-trading-border">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-base font-medium">Price Alerts</CardTitle>
-            
-            <div className="flex items-center space-x-2">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="search"
-                  placeholder="Search alerts..."
-                  className="pl-8 bg-trading-bg border-trading-border w-[180px]"
-                />
-              </div>
-              <Button size="sm">
-                <Plus className="h-4 w-4 mr-1" />
-                New Alert
-              </Button>
-            </div>
-          </CardHeader>
-          
-          <CardContent className="p-0">
-            <div className="overflow-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-trading-border bg-trading-bg">
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Symbol</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Condition</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Value</th>
-                    <th className="px-4 py-3 text-center font-medium text-muted-foreground">Status</th>
-                    <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {mockAlerts.map((alert) => (
-                    <tr 
-                      key={alert.id} 
-                      className="border-b border-trading-border hover:bg-trading-bg/50"
-                    >
-                      <td className="px-4 py-3 font-medium">{alert.symbol}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{alert.condition}</td>
-                      <td className="px-4 py-3">
-                        {alert.condition.includes('Price') 
-                          ? alert.value.toFixed(5) 
-                          : alert.condition === 'MA Crossover' 
-                          ? 'SMA 50/200' 
-                          : alert.value}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Switch 
-                          checked={alert.active} 
-                          className="data-[state=checked]:bg-success-DEFAULT" 
-                        />
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-trading-card border-trading-border">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-base font-medium">Recent Notifications</CardTitle>
-            
-            <div className="flex items-center space-x-2">
-              <Button variant="outline" size="sm">Mark All Read</Button>
-              <Button variant="ghost" size="icon">
-                <Bell className="h-5 w-5" />
-              </Button>
-            </div>
-          </CardHeader>
-          
-          <CardContent>
-            <div className="space-y-4">
-              {mockNotifications.map((notification) => (
-                <div 
-                  key={notification.id} 
-                  className={`
-                    p-3 rounded-md border
-                    ${notification.read ? 'bg-trading-bg/50' : 'bg-trading-bg'}
-                    ${notification.type === 'info' ? 'border-info-DEFAULT' : 
-                      notification.type === 'success' ? 'border-success-DEFAULT' : 
-                      notification.type === 'warning' ? 'border-warning-DEFAULT' : 
-                      'border-danger-DEFAULT'}
-                  `}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <p className={`text-sm ${notification.read ? 'text-muted-foreground' : 'text-foreground'}`}>
-                        {notification.message}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {formatDate(notification.time)}
-                      </p>
-                    </div>
-                    
-                    {!notification.read && (
-                      <Badge className="ml-2 bg-primary/20 text-primary border-primary">New</Badge>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-            
-            <div className="mt-4 text-center">
-              <Button variant="link" size="sm" className="text-muted-foreground">
-                View All Notifications
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      // Simulate an actual alert after a moment
+      setTimeout(() => {
+        toast.error('ALERT: EUR/USD has reached 1.0850!', {
+          duration: 10000,
+          action: {
+            label: 'View Chart',
+            onClick: () => {
+              // Would navigate to chart in a real app
+              toast.info('Opening chart view');
+            }
+          }
+        });
+      }, 2000);
+    }, 1500);
+  };
+
+  return (
+    <div className="p-4 space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Market Alerts</h1>
+        <Button 
+          variant="outline"
+          onClick={handleTestAlert}
+        >
+          Test Alert System
+        </Button>
       </div>
       
-      <Card className="bg-trading-card border-trading-border">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base font-medium">Notification Settings</CardTitle>
-        </CardHeader>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Active Alerts</CardTitle>
+              <CardDescription>
+                Manage your price and market alerts
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Tabs value={activeTab} onValueChange={setActiveTab}>
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="price">Price Alerts</TabsTrigger>
+                  <TabsTrigger value="technical">Technical</TabsTrigger>
+                  <TabsTrigger value="news">News & Events</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="price" className="py-4">
+                  {alerts.length > 0 ? (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Symbol</TableHead>
+                          <TableHead>Condition</TableHead>
+                          <TableHead>Value</TableHead>
+                          <TableHead>Created</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {alerts.map((alert) => (
+                          <TableRow key={alert.id}>
+                            <TableCell>{alert.symbol}</TableCell>
+                            <TableCell>{alert.condition}</TableCell>
+                            <TableCell>
+                              {alert.condition === 'Price Movement' 
+                                ? `${alert.value}%` 
+                                : alert.value.toFixed(4)}
+                            </TableCell>
+                            <TableCell>{alert.created}</TableCell>
+                            <TableCell>
+                              <Button
+                                variant={alert.active ? "default" : "secondary"}
+                                size="sm"
+                                onClick={() => toggleAlertStatus(alert.id)}
+                              >
+                                {alert.active ? (
+                                  <><Bell className="mr-1 h-3 w-3" /> Active</>
+                                ) : (
+                                  <><BellOff className="mr-1 h-3 w-3" /> Inactive</>
+                                )}
+                              </Button>
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => deleteAlert(alert.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  ) : (
+                    <div className="text-center py-6 text-muted-foreground">
+                      No price alerts set. Create one using the form.
+                    </div>
+                  )}
+                </TabsContent>
+                
+                <TabsContent value="technical" className="py-4">
+                  <div className="flex flex-col items-center justify-center py-8">
+                    <p className="text-muted-foreground mb-4">
+                      Technical alerts will be available soon
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={() => toast.info('Technical alerts coming in a future update')}
+                    >
+                      <ArrowUpRight className="mr-2 h-4 w-4" />
+                      Subscribe for Updates
+                    </Button>
+                  </div>
+                </TabsContent>
+                
+                <TabsContent value="news" className="py-4">
+                  <div className="flex flex-col items-center justify-center py-8">
+                    <p className="text-muted-foreground mb-4">
+                      News & event alerts will be available soon
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={() => toast.info('News alerts coming in a future update')}
+                    >
+                      <ArrowUpRight className="mr-2 h-4 w-4" />
+                      Subscribe for Updates
+                    </Button>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+        </div>
         
-        <CardContent>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="text-sm font-medium">Trading Signals</h4>
-                    <p className="text-xs text-muted-foreground">Get notified when new signals are generated</p>
-                  </div>
-                  <Switch defaultChecked />
+        <div>
+          <Card>
+            <CardHeader>
+              <CardTitle>Create Alert</CardTitle>
+              <CardDescription>
+                Set up a new price alert
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleAddAlert} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="symbol">Symbol</Label>
+                  <Select
+                    value={newAlert.symbol}
+                    onValueChange={(value) => setNewAlert({ ...newAlert, symbol: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Symbol" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {symbols.map((symbol) => (
+                        <SelectItem key={symbol} value={symbol}>
+                          {symbol}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="text-sm font-medium">Trade Execution</h4>
-                    <p className="text-xs text-muted-foreground">Get notified when trades are executed</p>
-                  </div>
-                  <Switch defaultChecked />
+                <div className="space-y-2">
+                  <Label htmlFor="condition">Condition</Label>
+                  <Select
+                    value={newAlert.condition}
+                    onValueChange={(value) => setNewAlert({ ...newAlert, condition: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Condition" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {conditions.map((condition) => (
+                        <SelectItem key={condition} value={condition}>
+                          {condition}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="text-sm font-medium">Price Alerts</h4>
-                    <p className="text-xs text-muted-foreground">Get notified when price alerts are triggered</p>
-                  </div>
-                  <Switch defaultChecked />
-                </div>
-              </div>
-              
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="text-sm font-medium">System Status</h4>
-                    <p className="text-xs text-muted-foreground">Get notified about bot status changes</p>
-                  </div>
-                  <Switch defaultChecked />
+                <div className="space-y-2">
+                  <Label htmlFor="value">
+                    {newAlert.condition === 'Price Movement' ? 'Percentage (%)' : 'Price Value'}
+                  </Label>
+                  <Input
+                    type="number"
+                    step="0.0001"
+                    placeholder={newAlert.condition === 'Price Movement' ? "e.g. 5" : "e.g. 1.0850"}
+                    value={newAlert.value}
+                    onChange={(e) => setNewAlert({ ...newAlert, value: e.target.value })}
+                    required
+                  />
                 </div>
                 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="text-sm font-medium">ML Model Updates</h4>
-                    <p className="text-xs text-muted-foreground">Get notified when ML models are retrained</p>
-                  </div>
-                  <Switch />
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="text-sm font-medium">Error Notifications</h4>
-                    <p className="text-xs text-muted-foreground">Get notified about errors and warnings</p>
-                  </div>
-                  <Switch defaultChecked />
-                </div>
-              </div>
-            </div>
-            
-            <div className="pt-4 border-t border-trading-border">
-              <h4 className="text-sm font-medium mb-2">Notification Channels</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="flex items-center space-x-2">
-                  <Switch defaultChecked />
-                  <span className="text-sm">In-App Notifications</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Switch defaultChecked />
-                  <span className="text-sm">Telegram Messages</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Switch />
-                  <span className="text-sm">Email Notifications</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+                <Button type="submit" className="w-full">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Alert
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 };
