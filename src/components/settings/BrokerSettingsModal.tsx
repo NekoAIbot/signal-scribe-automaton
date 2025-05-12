@@ -22,6 +22,7 @@ export interface BrokerSettings {
   platform: 'MT4' | 'MT5' | 'cTrader';
   lotSize: number;
   maxRiskPerTrade: number;
+  brokerName: string; // Added brokerName property
 }
 
 export function BrokerSettingsModal({ 
@@ -37,7 +38,8 @@ export function BrokerSettingsModal({
     accountType: 'demo',
     platform: 'MT5',
     lotSize: 0.01,
-    maxRiskPerTrade: 1
+    maxRiskPerTrade: 1,
+    brokerName: 'Default Broker' // Added default value
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -59,7 +61,7 @@ export function BrokerSettingsModal({
     e.preventDefault();
     
     // Basic validation
-    if (!settings.login || !settings.password || !settings.server) {
+    if (!settings.login || !settings.password || !settings.server || !settings.brokerName) {
       toast.error("Please fill in all required fields");
       return;
     }
@@ -77,6 +79,18 @@ export function BrokerSettingsModal({
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="brokerName">Broker Name</Label>
+            <Input 
+              id="brokerName"
+              name="brokerName"
+              value={settings.brokerName}
+              onChange={handleChange}
+              placeholder="Enter broker name (e.g. IC Markets)"
+              className="bg-trading-bg border-trading-border"
+            />
+          </div>
+          
           <div className="space-y-2">
             <Label htmlFor="platform">Trading Platform</Label>
             <Select 

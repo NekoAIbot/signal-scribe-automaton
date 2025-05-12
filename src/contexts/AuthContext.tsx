@@ -97,12 +97,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       
       if (email && password && email.includes('@') && verificationCode === expectedCode) {
-        const newUser = {
+        const newUser: User = {
           id: '1',
           name: email.split('@')[0],  // Use part of email as name for demo
           email: email,
           role: email.toLowerCase().includes('admin') ? 'admin' as const : 'user' as const,
-          subscriptionTier: 'free'
+          subscriptionTier: 'free' as const
         };
         
         setUser(newUser);
