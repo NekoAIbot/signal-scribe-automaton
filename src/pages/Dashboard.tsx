@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { PriceChart } from "@/components/dashboard/PriceChart";
 import { TradingStatus } from "@/components/dashboard/TradingStatus";
 import { MarketCard } from "@/components/dashboard/MarketCard";
@@ -15,19 +15,15 @@ import { Button } from "@/components/ui/button";
 import { ArrowUpRight } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
+import { useScrollToTop } from "@/hooks/useScrollToTop";
 
 const Dashboard = () => {
   const { data: marketData, isLoading } = useMarketData();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const dashboardRef = useRef<HTMLDivElement>(null);
   
-  // Scroll to top when component mounts
-  useEffect(() => {
-    if (dashboardRef.current) {
-      dashboardRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, []);
+  // Use the scroll to top hook
+  useScrollToTop();
   
   // Find market data for specific symbols or use defaults
   const getMarketDataForSymbol = (symbol: string) => {
@@ -44,7 +40,7 @@ const Dashboard = () => {
   const showSubscriptionCard = user?.subscriptionTier === 'free';
   
   return (
-    <div className="p-4 space-y-4" ref={dashboardRef}>
+    <div className="p-4 space-y-4">
       <h1 className="text-2xl font-bold">AI Enhanced Trading Platform</h1>
       
       {showSubscriptionCard && (

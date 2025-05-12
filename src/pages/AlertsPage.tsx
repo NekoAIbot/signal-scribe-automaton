@@ -22,6 +22,9 @@ import {
 } from "@/components/ui/table";
 import { toast } from "sonner";
 import { Plus, Trash2, Bell, BellOff, ArrowUpRight } from "lucide-react";
+import { testAlertSystem } from "@/services/notificationService";
+import { TechnicalAlertForm } from "@/components/alerts/TechnicalAlertForm";
+import { NewsAlertForm } from "@/components/alerts/NewsAlertForm";
 
 // Sample alert data
 const sampleAlerts = [
@@ -106,30 +109,13 @@ const AlertsPage = () => {
     }
   };
   
-  const handleTestAlert = () => {
-    toast.loading('Testing alert system...', {
-      id: 'test-alert'
-    });
-    
-    setTimeout(() => {
-      toast.success('Alert system working correctly', {
-        id: 'test-alert'
-      });
-      
-      // Simulate an actual alert after a moment
-      setTimeout(() => {
-        toast.error('ALERT: EUR/USD has reached 1.0850!', {
-          duration: 10000,
-          action: {
-            label: 'View Chart',
-            onClick: () => {
-              // Would navigate to chart in a real app
-              toast.info('Opening chart view');
-            }
-          }
-        });
-      }, 2000);
-    }, 1500);
+  const handleTestAlert = async () => {
+    await testAlertSystem();
+  };
+  
+  const openChart = (symbol: string) => {
+    // Open TradingView chart in a new window
+    window.open(`https://www.tradingview.com/chart/?symbol=${symbol.replace('/', '')}`, '_blank');
   };
 
   return (
@@ -177,7 +163,15 @@ const AlertsPage = () => {
                       <TableBody>
                         {alerts.map((alert) => (
                           <TableRow key={alert.id}>
-                            <TableCell>{alert.symbol}</TableCell>
+                            <TableCell>
+                              <Button 
+                                variant="link" 
+                                className="p-0 h-auto" 
+                                onClick={() => openChart(alert.symbol)}
+                              >
+                                {alert.symbol}
+                              </Button>
+                            </TableCell>
                             <TableCell>{alert.condition}</TableCell>
                             <TableCell>
                               {alert.condition === 'Price Movement' 
@@ -219,33 +213,11 @@ const AlertsPage = () => {
                 </TabsContent>
                 
                 <TabsContent value="technical" className="py-4">
-                  <div className="flex flex-col items-center justify-center py-8">
-                    <p className="text-muted-foreground mb-4">
-                      Technical alerts will be available soon
-                    </p>
-                    <Button
-                      variant="outline"
-                      onClick={() => toast.info('Technical alerts coming in a future update')}
-                    >
-                      <ArrowUpRight className="mr-2 h-4 w-4" />
-                      Subscribe for Updates
-                    </Button>
-                  </div>
+                  <TechnicalAlertForm />
                 </TabsContent>
                 
                 <TabsContent value="news" className="py-4">
-                  <div className="flex flex-col items-center justify-center py-8">
-                    <p className="text-muted-foreground mb-4">
-                      News & event alerts will be available soon
-                    </p>
-                    <Button
-                      variant="outline"
-                      onClick={() => toast.info('News alerts coming in a future update')}
-                    >
-                      <ArrowUpRight className="mr-2 h-4 w-4" />
-                      Subscribe for Updates
-                    </Button>
-                  </div>
+                  <NewsAlertForm />
                 </TabsContent>
               </Tabs>
             </CardContent>
@@ -255,7 +227,7 @@ const AlertsPage = () => {
         <div>
           <Card>
             <CardHeader>
-              <CardTitle>Create Alert</CardTitle>
+              <CardTitle>Create Price Alert</CardTitle>
               <CardDescription>
                 Set up a new price alert
               </CardDescription>

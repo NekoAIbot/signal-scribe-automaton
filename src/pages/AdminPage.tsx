@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -14,135 +14,289 @@ import {
   Settings, 
   BarChart2, 
   Trash2,
-  Edit 
+  Edit,
+  LogOut
 } from 'lucide-react';
-
-// Mock admin data
-const mockStrategies = [
-  { 
-    id: '1', 
-    name: 'Trend Following', 
-    description: 'Uses moving averages to identify trends',
-    model_id: '1',
-    risk_profile: 'Medium' as const,
-    is_active: true,
-    indicators: ['EMA', 'MACD', 'ADX']
-  },
-  { 
-    id: '2', 
-    name: 'RSI Reversal', 
-    description: 'Spots overbought and oversold conditions',
-    model_id: '2',
-    risk_profile: 'High' as const,
-    is_active: true,
-    indicators: ['RSI', 'Stochastic', 'CCI']
-  }
-];
-
-const mockModels = [
-  {
-    id: '1',
-    name: 'Regression Model v1',
-    accuracy: 78.4,
-    lastTrained: '2023-12-01',
-    status: 'active'
-  },
-  {
-    id: '2',
-    name: 'Classification Model v2',
-    accuracy: 82.1,
-    lastTrained: '2024-01-15',
-    status: 'active'
-  }
-];
-
-const mockUsers = [
-  {
-    id: '1',
-    name: 'John Trader',
-    email: 'john@example.com',
-    role: 'user',
-    subscriptionTier: 'premium',
-    lastLogin: '2024-05-10'
-  },
-  {
-    id: '2',
-    name: 'Sarah Analyst',
-    email: 'sarah@example.com',
-    role: 'user',
-    subscriptionTier: 'basic',
-    lastLogin: '2024-05-09'
-  }
-];
+import { AdminPasswordModal } from "@/components/admin/AdminPasswordModal";
+import { StrategyFormModal } from "@/components/admin/StrategyFormModal";
+import { ModelFormModal } from "@/components/admin/ModelFormModal";
+import { UserFormModal } from "@/components/admin/UserFormModal";
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { 
+  getStrategies, 
+  getModels, 
+  getUsers, 
+  addStrategy, 
+  updateStrategy, 
+  deleteStrategy, 
+  addModel, 
+  updateModel, 
+  deleteModel, 
+  trainModel, 
+  addUser, 
+  updateUser, 
+  deleteUser, 
+  toggleTelegramBot, 
+  resetAdminPassword 
+} from '@/services/adminService';
 
 const AdminPage = () => {
   const [activeTab, setActiveTab] = useState('strategies');
-  const [botRunning, setBotRunning] = useState(false);
+  const [strategies, setStrategies] = useState<any[]>([]);
+  const [models, setModels] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [telegramBotActive, setTelegramBotActive] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(true);
   
-  const handleAddStrategy = () => {
-    toast.success("Add strategy modal would open here");
-  };
-
-  const handleEditStrategy = (id: string) => {
-    toast.info(`Editing strategy ${id}`);
-  };
-
-  const handleTrainModel = () => {
-    toast.loading("Training new model...", {
-      id: "train-model"
-    });
-    
-    // Simulate training completion
-    setTimeout(() => {
-      toast.success("Model trained successfully", {
-        id: "train-model"
-      });
-    }, 3000);
-  };
-
-  const handleTrainSpecificModel = (id: string) => {
-    toast.loading(`Training model ${id}...`, {
-      id: `train-model-${id}`
-    });
-    
-    // Simulate training completion
-    setTimeout(() => {
-      toast.success(`Model ${id} trained successfully`, {
-        id: `train-model-${id}`
-      });
-    }, 2000);
-  };
-
-  const handleDeleteModel = (id: string) => {
-    toast.info(`Model ${id} would be deleted`);
-  };
+  // Form modals state
+  const [strategyModalOpen, setStrategyModalOpen] = useState(false);
+  const [modelModalOpen, setModelModalOpen] = useState(false);
+  const [modelTrainingModalOpen, setModelTrainingModalOpen] = useState(false);
+  const [userModalOpen, setUserModalOpen] = useState(false);
   
-  const handleAddUser = () => {
-    toast.success("Add user modal would open here");
-  };
-  
-  const handleEditUser = (id: string) => {
-    toast.info(`Editing user ${id}`);
-  };
-  
-  const handleDeleteUser = (id: string) => {
-    toast.info(`User ${id} would be deleted`);
-  };
+  // Selected items for editing
+  const [selectedStrategy, setSelectedStrategy] = useState<any | null>(null);
+  const [selectedModel, setSelectedModel] = useState<any | null>(null);
+  const [selectedUser, setSelectedUser] = useState<any | null>(null);
 
-  const handleToggleTelegramBot = () => {
-    setTelegramBotActive(!telegramBotActive);
-    
-    if (!telegramBotActive) {
-      toast.success("Telegram copy-trading signal generation started");
-    } else {
-      toast.info("Telegram copy-trading signal generation stopped");
+  const navigate = useNavigate();
+  const { logout } = useAuth();
+  
+  // Load data
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadAllData();
+    }
+  }, [isAuthenticated]);
+  
+  const loadAllData = async () => {
+    try {
+      const [strategiesData, modelsData, usersData] = await Promise.all([
+        getStrategies(),
+        getModels(),
+        getUsers()
+      ]);
+      
+      setStrategies(strategiesData);
+      setModels(modelsData);
+      setUsers(usersData);
+    } catch (error) {
+      console.error('Error loading admin data:', error);
+      toast.error('Failed to load administrative data');
     }
   };
   
+  // Authentication
+  const handleAuthenticated = () => {
+    setIsAuthenticated(true);
+  };
+  
+  // Strategy management
+  const handleAddStrategy = () => {
+    setSelectedStrategy(null);
+    setStrategyModalOpen(true);
+  };
+
+  const handleEditStrategy = (id: string) => {
+    const strategy = strategies.find(s => s.id === id);
+    setSelectedStrategy(strategy);
+    setStrategyModalOpen(true);
+  };
+  
+  const handleSaveStrategy = async (strategy: any) => {
+    try {
+      if (selectedStrategy) {
+        // Update existing strategy
+        const updated = await updateStrategy(strategy);
+        setStrategies(strategies.map(s => s.id === updated.id ? updated : s));
+      } else {
+        // Add new strategy
+        const added = await addStrategy(strategy);
+        setStrategies([...strategies, added]);
+      }
+    } catch (error) {
+      console.error('Error saving strategy:', error);
+      toast.error('Failed to save strategy');
+    }
+  };
+  
+  const handleDeleteStrategy = async (id: string) => {
+    if (confirm('Are you sure you want to delete this strategy?')) {
+      try {
+        await deleteStrategy(id);
+        setStrategies(strategies.filter(s => s.id !== id));
+      } catch (error) {
+        console.error('Error deleting strategy:', error);
+        toast.error('Failed to delete strategy');
+      }
+    }
+  };
+  
+  // Model management
+  const handleAddModel = () => {
+    setSelectedModel(null);
+    setModelModalOpen(true);
+  };
+  
+  const handleEditModel = (id: string) => {
+    const model = models.find(m => m.id === id);
+    setSelectedModel(model);
+    setModelModalOpen(true);
+  };
+  
+  const handleSaveModel = async (model: any) => {
+    try {
+      if (selectedModel) {
+        // Update existing model
+        const updated = await updateModel(model);
+        setModels(models.map(m => m.id === updated.id ? updated : m));
+      } else {
+        // Add new model
+        const added = await addModel(model);
+        setModels([...models, added]);
+      }
+    } catch (error) {
+      console.error('Error saving model:', error);
+      toast.error('Failed to save model');
+    }
+  };
+  
+  const handleTrainModel = () => {
+    setSelectedModel(null);
+    setModelTrainingModalOpen(true);
+  };
+  
+  const handleTrainSpecificModel = (id: string) => {
+    const model = models.find(m => m.id === id);
+    setSelectedModel(model);
+    setModelTrainingModalOpen(true);
+  };
+  
+  const handleSaveTraining = async (model: any) => {
+    try {
+      const trained = await trainModel(model);
+      
+      // Update models list if this was retraining
+      if (selectedModel) {
+        setModels(models.map(m => m.id === trained.id ? trained : m));
+      } else {
+        // Add new model if it was training a new one
+        setModels([...models, trained]);
+      }
+    } catch (error) {
+      console.error('Error training model:', error);
+      toast.error('Failed to train model');
+    }
+  };
+  
+  const handleDeleteModel = async (id: string) => {
+    if (confirm('Are you sure you want to delete this model?')) {
+      try {
+        await deleteModel(id);
+        setModels(models.filter(m => m.id !== id));
+      } catch (error) {
+        console.error('Error deleting model:', error);
+        toast.error('Failed to delete model');
+      }
+    }
+  };
+  
+  // User management
+  const handleAddUser = () => {
+    setSelectedUser(null);
+    setUserModalOpen(true);
+  };
+  
+  const handleEditUser = (id: string) => {
+    const user = users.find(u => u.id === id);
+    setSelectedUser(user);
+    setUserModalOpen(true);
+  };
+  
+  const handleSaveUser = async (user: any) => {
+    try {
+      if (selectedUser) {
+        // Update existing user
+        const updated = await updateUser(user);
+        setUsers(users.map(u => u.id === updated.id ? updated : u));
+      } else {
+        // Add new user
+        const added = await addUser(user);
+        setUsers([...users, added]);
+      }
+    } catch (error) {
+      console.error('Error saving user:', error);
+      toast.error('Failed to save user');
+    }
+  };
+  
+  const handleDeleteUser = async (id: string) => {
+    if (confirm('Are you sure you want to delete this user?')) {
+      try {
+        await deleteUser(id);
+        setUsers(users.filter(u => u.id !== id));
+      } catch (error) {
+        console.error('Error deleting user:', error);
+        toast.error('Failed to delete user');
+      }
+    }
+  };
+
+  const handleToggleTelegramBot = async () => {
+    try {
+      const isActive = !telegramBotActive;
+      await toggleTelegramBot(isActive);
+      setTelegramBotActive(isActive);
+    } catch (error) {
+      console.error('Error toggling Telegram bot:', error);
+      toast.error('Failed to toggle Telegram bot');
+    }
+  };
+  
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+  
+  if (!isAuthenticated) {
+    return (
+      <div className="flex items-center justify-center min-h-[80vh]">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="text-center">Admin Authentication Required</CardTitle>
+          </CardHeader>
+          <CardContent className="text-center">
+            <Button 
+              onClick={() => setPasswordModalOpen(true)}
+              className="mt-4"
+            >
+              Enter Admin Password
+            </Button>
+            <AdminPasswordModal 
+              open={passwordModalOpen} 
+              onOpenChange={setPasswordModalOpen} 
+              onAuthenticated={handleAuthenticated}
+            />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+  
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Admin Panel</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Admin Panel</h1>
+        <Button 
+          variant="outline" 
+          onClick={handleLogout}
+          className="flex items-center gap-2"
+        >
+          <LogOut className="h-4 w-4" /> Logout
+        </Button>
+      </div>
       
       <div className="flex items-center justify-between">
         <div>
@@ -188,27 +342,59 @@ const AdminPage = () => {
               
               <ScrollArea className="h-[50vh] rounded-md border">
                 <div className="p-4 space-y-4">
-                  {mockStrategies.map((strategy) => (
-                    <Card key={strategy.id} className="mb-4">
-                      <CardHeader className="pb-2">
-                        <div className="flex items-center justify-between">
-                          <CardTitle className="text-base">{strategy.name}</CardTitle>
-                          <Button variant="ghost" size="sm" onClick={() => handleEditStrategy(strategy.id)}>
-                            <Edit className="h-4 w-4 mr-1" /> Edit
-                          </Button>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="pb-4">
-                        <p className="text-sm text-muted-foreground mb-2">{strategy.description}</p>
-                        <div className="flex items-center gap-2 text-xs">
-                          <div className="bg-secondary px-2 py-1 rounded">Risk: {strategy.risk_profile}</div>
-                          <div className="bg-secondary px-2 py-1 rounded">Active: {strategy.is_active ? 'Yes' : 'No'}</div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                  {strategies.length > 0 ? (
+                    strategies.map((strategy) => (
+                      <Card key={strategy.id} className="mb-4">
+                        <CardHeader className="pb-2">
+                          <div className="flex items-center justify-between">
+                            <CardTitle className="text-base">{strategy.name}</CardTitle>
+                            <div className="flex items-center gap-2">
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => handleEditStrategy(strategy.id)}
+                              >
+                                <Edit className="h-4 w-4 mr-1" /> Edit
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => handleDeleteStrategy(strategy.id)}
+                              >
+                                <Trash2 className="h-4 w-4 mr-1" /> Delete
+                              </Button>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="pb-4">
+                          <p className="text-sm text-muted-foreground mb-2">{strategy.description}</p>
+                          <div className="flex items-center gap-2 text-xs">
+                            <div className="bg-secondary px-2 py-1 rounded">Risk: {strategy.risk_profile}</div>
+                            <div className="bg-secondary px-2 py-1 rounded">Active: {strategy.is_active ? 'Yes' : 'No'}</div>
+                            {strategy.indicators && strategy.indicators.length > 0 && (
+                              <div className="bg-secondary px-2 py-1 rounded">
+                                Indicators: {strategy.indicators.join(', ')}
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))
+                  ) : (
+                    <div className="text-center py-4 text-muted-foreground">
+                      No strategies found. Add a strategy to get started.
+                    </div>
+                  )}
                 </div>
               </ScrollArea>
+              
+              <StrategyFormModal 
+                open={strategyModalOpen} 
+                onOpenChange={setStrategyModalOpen}
+                initialStrategy={selectedStrategy}
+                onSave={handleSaveStrategy}
+                models={models}
+              />
             </TabsContent>
             
             <TabsContent value="models" className="mt-4">
@@ -220,29 +406,51 @@ const AdminPage = () => {
               
               <ScrollArea className="h-[50vh] rounded-md border">
                 <div className="p-4 space-y-4">
-                  {mockModels.map((model) => (
-                    <Card key={model.id} className="mb-4">
-                      <CardHeader className="pb-2">
-                        <div className="flex items-center justify-between">
-                          <CardTitle className="text-base">{model.name}</CardTitle>
-                          <div className="flex items-center gap-2">
-                            <Button variant="secondary" size="sm" onClick={() => handleTrainSpecificModel(model.id)}>
-                              <BarChart2 className="h-3 w-3 mr-1" /> Retrain
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => handleDeleteModel(model.id)}>
-                              <Trash2 className="h-3 w-3 mr-1" /> Delete
-                            </Button>
+                  {models.length > 0 ? (
+                    models.map((model) => (
+                      <Card key={model.id} className="mb-4">
+                        <CardHeader className="pb-2">
+                          <div className="flex items-center justify-between">
+                            <CardTitle className="text-base">{model.name}</CardTitle>
+                            <div className="flex items-center gap-2">
+                              <Button 
+                                variant="secondary" 
+                                size="sm" 
+                                onClick={() => handleTrainSpecificModel(model.id)}
+                              >
+                                <BarChart2 className="h-3 w-3 mr-1" /> Retrain
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => handleEditModel(model.id)}
+                              >
+                                <Edit className="h-3 w-3 mr-1" /> Edit
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => handleDeleteModel(model.id)}
+                              >
+                                <Trash2 className="h-3 w-3 mr-1" /> Delete
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="pb-4">
-                        <div className="flex items-center justify-between text-sm">
-                          <div>Accuracy: {model.accuracy}%</div>
-                          <div className="text-muted-foreground">Last Trained: {model.lastTrained}</div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                        </CardHeader>
+                        <CardContent className="pb-4">
+                          <div className="flex items-center justify-between text-sm">
+                            <div>Type: {model.type}</div>
+                            <div>Accuracy: {model.accuracy}%</div>
+                            <div className="text-muted-foreground">Last Trained: {model.lastTrained}</div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))
+                  ) : (
+                    <div className="text-center py-4 text-muted-foreground">
+                      No ML models found. Train a model to get started.
+                    </div>
+                  )}
                 </div>
               </ScrollArea>
               
@@ -261,6 +469,21 @@ const AdminPage = () => {
                   Test AI Signal Generation
                 </Button>
               </div>
+              
+              <ModelFormModal 
+                open={modelModalOpen} 
+                onOpenChange={setModelModalOpen}
+                initialModel={selectedModel}
+                onSave={handleSaveModel}
+              />
+              
+              <ModelFormModal 
+                open={modelTrainingModalOpen} 
+                onOpenChange={setModelTrainingModalOpen}
+                initialModel={selectedModel}
+                onSave={handleSaveTraining}
+                isTraining={true}
+              />
             </TabsContent>
             
             <TabsContent value="users" className="mt-4">
@@ -272,32 +495,51 @@ const AdminPage = () => {
               
               <ScrollArea className="h-[50vh] rounded-md border">
                 <div className="p-4 space-y-4">
-                  {mockUsers.map((user) => (
-                    <Card key={user.id} className="mb-4">
-                      <CardHeader className="pb-2">
-                        <div className="flex items-center justify-between">
-                          <CardTitle className="text-base">{user.name}</CardTitle>
-                          <div className="flex items-center gap-2">
-                            <Button variant="secondary" size="sm" onClick={() => handleEditUser(user.id)}>
-                              <Edit className="h-3 w-3 mr-1" /> Edit
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => handleDeleteUser(user.id)}>
-                              <Trash2 className="h-3 w-3 mr-1" /> Delete
-                            </Button>
+                  {users.length > 0 ? (
+                    users.map((user) => (
+                      <Card key={user.id} className="mb-4">
+                        <CardHeader className="pb-2">
+                          <div className="flex items-center justify-between">
+                            <CardTitle className="text-base">{user.name}</CardTitle>
+                            <div className="flex items-center gap-2">
+                              <Button 
+                                variant="secondary" 
+                                size="sm"
+                                onClick={() => handleEditUser(user.id)}
+                              >
+                                <Edit className="h-3 w-3 mr-1" /> Edit
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => handleDeleteUser(user.id)}
+                              >
+                                <Trash2 className="h-3 w-3 mr-1" /> Delete
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="pb-4">
-                        <div className="space-y-1 text-sm">
-                          <div>{user.email}</div>
-                          <div className="flex items-center gap-2 text-xs">
-                            <div className="bg-secondary px-2 py-1 rounded">Role: {user.role}</div>
-                            <div className="bg-secondary px-2 py-1 rounded capitalize">Plan: {user.subscriptionTier}</div>
+                        </CardHeader>
+                        <CardContent className="pb-4">
+                          <div className="space-y-1 text-sm">
+                            <div>{user.email}</div>
+                            <div className="flex items-center gap-2 text-xs">
+                              <div className="bg-secondary px-2 py-1 rounded">Role: {user.role}</div>
+                              <div className="bg-secondary px-2 py-1 rounded capitalize">
+                                Plan: {user.subscriptionTier || 'None'}
+                              </div>
+                              {user.lastLogin && (
+                                <div className="text-muted-foreground">Last Login: {user.lastLogin}</div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                        </CardContent>
+                      </Card>
+                    ))
+                  ) : (
+                    <div className="text-center py-4 text-muted-foreground">
+                      No users found. Add a user to get started.
+                    </div>
+                  )}
                 </div>
               </ScrollArea>
               
@@ -305,13 +547,20 @@ const AdminPage = () => {
                 <Button 
                   variant="default" 
                   onClick={() => {
-                    toast.success("Admin password has been changed to Nathan19@@");
+                    resetAdminPassword();
                   }}
                 >
                   <Settings className="mr-2 h-4 w-4" />
                   Reset Admin Password
                 </Button>
               </div>
+              
+              <UserFormModal 
+                open={userModalOpen} 
+                onOpenChange={setUserModalOpen}
+                initialUser={selectedUser}
+                onSave={handleSaveUser}
+              />
             </TabsContent>
           </Tabs>
         </CardContent>

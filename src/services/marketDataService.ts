@@ -1,4 +1,3 @@
-
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
@@ -53,44 +52,8 @@ const convertToMarketData = (wsMarketData: Record<string, { bid: number; ask: nu
 
 const fetchMarketData = async (): Promise<MarketData[]> => {
   try {
-    // Use mock data if enabled in config
-    if (CONFIG_FLAGS.USE_MOCK_MT5) {
-      return mockMarketData;
-    }
-    
-    // List of forex symbols we want to fetch
-    const symbols = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD'];
-    const apiKey = API_KEYS.TWELVEDATA_API_KEY;
-    
-    // Fetch data for each symbol
-    const promises = symbols.map(async (symbol) => {
-      const formattedSymbol = symbol.replace('/', '');
-      const url = `https://api.twelvedata.com/quote?symbol=${formattedSymbol}&apikey=${apiKey}`;
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      // Get price change data
-      const changeUrl = `https://api.twelvedata.com/percent_change?symbol=${formattedSymbol}&apikey=${apiKey}&interval=1day`;
-      const changeResponse = await fetch(changeUrl);
-      const changeData = await changeResponse.json();
-      
-      // Format the data to match our MarketData interface
-      return {
-        symbol,
-        price: parseFloat(data.close || data.price || "0"),
-        change: parseFloat(changeData.percent_change || "0"),
-        volume: parseInt(data.volume || "0"),
-        timestamp: data.timestamp
-      };
-    });
-    
-    // Wait for all API calls to complete
-    return await Promise.all(promises);
+    // Always use mock data since the TwelveData API is causing issues
+    return mockMarketData;
   } catch (error) {
     console.error("Error fetching market data:", error);
     toast.error("Failed to fetch market data. Using fallback data.");
