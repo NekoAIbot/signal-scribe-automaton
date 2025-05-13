@@ -8,7 +8,7 @@ import { Toaster as SonnerToaster } from 'sonner';
 import { ThemeProvider } from '@/components/ThemeProvider';
 
 // Routes / Pages
-import Layout from './components/layout/Layout';
+import { Layout } from './components/layout/Layout';
 import Dashboard from './pages/Dashboard';
 import AnalyticsPage from './pages/AnalyticsPage';
 import AlertsPage from './pages/AlertsPage';
@@ -21,8 +21,8 @@ import RegisterPage from './pages/RegisterPage';
 import NotFound from './pages/NotFound';
 
 // Guards & Utilities
-import ProtectedRoute from './components/auth/ProtectedRoute';
-import AdminRoute from './components/auth/AdminRoute';
+import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { AdminRoute } from './components/auth/AdminRoute';
 import { useScrollToTop } from './hooks/useScrollToTop';
 
 // Initialize React Query client

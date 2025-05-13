@@ -1,4 +1,3 @@
-
 import { toast } from "sonner";
 import { 
   TradingStrategy, 
@@ -38,7 +37,9 @@ const mockModels = [
     type: 'LSTM' as const,
     accuracy: 78.4,
     lastTrained: '2023-12-01',
-    status: 'active'
+    status: 'active',
+    version: '1.0',
+    is_active: true
   },
   {
     id: '2',
@@ -46,7 +47,9 @@ const mockModels = [
     type: 'Transformer' as const,
     accuracy: 82.1,
     lastTrained: '2024-01-15',
-    status: 'active'
+    status: 'active',
+    version: '1.0',
+    is_active: true
   }
 ];
 
@@ -70,26 +73,30 @@ const mockUsers = [
 ];
 
 // In-memory data storage
-let strategies = [...mockStrategies];
-let models = [...mockModels];
+let strategies: typeof mockStrategies = [...mockStrategies];
+let models: typeof mockModels = [...mockModels];
 let users = [...mockUsers];
 
 // Admin password for demonstration
 export const ADMIN_PASSWORD = "Nathan19@@";
 
 // Strategy management
-export const getStrategies = async (): Promise<TradingStrategy[]> => {
+export const getStrategies = async (): Promise<typeof mockStrategies> => {
   return strategies;
 };
 
 export const addStrategy = async (strategy: TradingStrategy): Promise<TradingStrategy> => {
-  strategies = [...strategies, strategy];
+  const newStrategy = {
+    ...strategy,
+    description: strategy.description || '',
+  };
+  strategies = [...strategies, newStrategy as any];
   toast.success(`Strategy "${strategy.name}" added`);
   return strategy;
 };
 
 export const updateStrategy = async (strategy: TradingStrategy): Promise<TradingStrategy> => {
-  strategies = strategies.map(s => s.id === strategy.id ? strategy : s);
+  strategies = strategies.map(s => s.id === strategy.id ? {...strategy, description: strategy.description || ''} as any : s);
   toast.success(`Strategy "${strategy.name}" updated`);
   return strategy;
 };
@@ -101,18 +108,23 @@ export const deleteStrategy = async (id: string): Promise<boolean> => {
 };
 
 // ML model management
-export const getModels = async (): Promise<MLModel[]> => {
+export const getModels = async (): Promise<typeof mockModels> => {
   return models;
 };
 
 export const addModel = async (model: MLModel): Promise<MLModel> => {
-  models = [...models, model];
+  const newModel = {
+    ...model,
+    lastTrained: new Date().toISOString().split('T')[0],
+    status: 'active',
+  };
+  models = [...models, newModel as any];
   toast.success(`Model "${model.name}" added`);
   return model;
 };
 
 export const updateModel = async (model: MLModel): Promise<MLModel> => {
-  models = models.map(m => m.id === model.id ? model : m);
+  models = models.map(m => m.id === model.id ? {...model, lastTrained: model.lastTrained || new Date().toISOString().split('T')[0], status: model.status || 'active'} as any : m);
   toast.success(`Model "${model.name}" updated`);
   return model;
 };

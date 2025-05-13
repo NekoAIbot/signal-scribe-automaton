@@ -78,3 +78,5 @@ export function AdminRoute({ children }: AdminRouteProps) {
     </div>
   );
 }
+
+export default AdminRoute;
