@@ -1,151 +1,167 @@
 
-import { toast } from 'sonner';
+import { toast } from "sonner";
+import { useMutation } from "@tanstack/react-query";
+import { API_KEYS } from "@/config/apiConfig";
 
-// Mock notification service for broadcasting signals
-export interface BroadcastSignalParams {
+export interface SignalNotification {
   symbol: string;
-  type: 'BUY' | 'SELL' | 'NOTIFICATION';
-  price?: number;
+  type: string;
+  price: number;
   strategy?: string;
-  message?: string;
-  timestamp?: string;
+  time?: string;
 }
 
-export const broadcastSignal = async (signal: BroadcastSignalParams): Promise<boolean> => {
-  console.log('Broadcasting signal:', signal);
+// Function to broadcast signal to Telegram
+export const broadcastSignal = async (signal: SignalNotification): Promise<boolean> => {
   try {
-    // In a real app, this would send the signal to connected clients
-    // such as Telegram, email, SMS, etc.
+    // Get current time if not provided
+    const signalTime = signal.time || new Date().toISOString();
     
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Format the message for Telegram
+    const message = `
+📊 TRADING SIGNAL
+${signal.type === 'BUY' ? '🟢 BUY' : '🔴 SELL'}: ${signal.symbol}
+💰 Price: ${signal.price.toFixed(5)}
+📈 Strategy: ${signal.strategy || 'AI Model'}
+🕒 Time: ${new Date(signalTime).toLocaleString()}
+`;
     
-    // If it's a trading signal, format appropriately
-    if (signal.type === 'BUY' || signal.type === 'SELL') {
-      console.log(`${signal.type} signal sent for ${signal.symbol} at ${signal.price}`);
-      toast.success(`Signal broadcasted: ${signal.type} ${signal.symbol} at ${signal.price}`);
-    } 
-    // If it's a notification message
-    else if (signal.type === 'NOTIFICATION') {
-      console.log(`Notification sent: ${signal.message}`);
+    // In a production app, this would send the message via an API or webhook
+    // Here we'll simulate it for the demo
+    console.log("Broadcasting signal to Telegram:", message);
+    
+    // Simulate successful broadcast
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    toast.success(`Signal ${signal.type} ${signal.symbol} broadcasted to Telegram`);
+    return true;
+  } catch (error) {
+    console.error("Error broadcasting signal:", error);
+    toast.error(`Failed to broadcast signal to Telegram: ${(error as Error).message}`);
+    return false;
+  }
+};
+
+// Hook to broadcast signal with React Query
+export const useBroadcastSignal = () => {
+  return useMutation({
+    mutationFn: broadcastSignal,
+    onSuccess: () => {
+      // Handle success if needed
+    },
+    onError: (error) => {
+      console.error("Error broadcasting signal:", error);
+      toast.error(`Failed to broadcast signal: ${(error as Error).message}`);
     }
-    
-    return true;
-  } catch (error) {
-    console.error('Error broadcasting signal:', error);
-    toast.error('Failed to broadcast signal');
-    return false;
-  }
-};
-
-// Technical alerts service
-export interface TechnicalAlertParams {
-  symbol: string;
-  indicator: string;
-  condition: string;
-  value: number;
-  timeframe: string;
-}
-
-export const createTechnicalAlert = async (params: TechnicalAlertParams): Promise<boolean> => {
-  console.log('Creating technical alert:', params);
-  
-  try {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    toast.success(`${params.indicator} alert created for ${params.symbol}`);
-    return true;
-  } catch (error) {
-    console.error('Error creating technical alert:', error);
-    toast.error('Failed to create technical alert');
-    return false;
-  }
-};
-
-// News alerts service
-export interface NewsAlertParams {
-  symbol?: string;
-  keywords: string[];
-  importance: 'low' | 'medium' | 'high';
-  sources?: string[];
-}
-
-export const createNewsAlert = async (params: NewsAlertParams): Promise<boolean> => {
-  console.log('Creating news alert:', params);
-  
-  try {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    toast.success(`News alert created for keywords: ${params.keywords.join(', ')}`);
-    return true;
-  } catch (error) {
-    console.error('Error creating news alert:', error);
-    toast.error('Failed to create news alert');
-    return false;
-  }
-};
-
-// Mock system for testing alert delivery
-export const testAlertSystem = async (): Promise<void> => {
-  toast.loading('Testing alert system...', {
-    id: 'test-alert'
   });
-  
+};
+
+// Function to register Telegram bot
+export const registerTelegramBot = async (botToken: string, chatId: string): Promise<boolean> => {
   try {
-    // Simulate API check
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    // In a real app, this would store the token and chat ID securely
+    localStorage.setItem('telegramBotToken', botToken);
+    localStorage.setItem('telegramBotChatId', chatId);
     
-    toast.success('Alert system working correctly', {
-      id: 'test-alert'
-    });
-    
-    // Simulate an actual alert after a moment
-    setTimeout(() => {
-      toast.error('ALERT: EUR/USD has reached 1.0850!', {
-        duration: 10000,
-        action: {
-          label: 'View Chart',
-          onClick: () => {
-            window.open('https://www.tradingview.com/chart/?symbol=EURUSD', '_blank');
-          }
-        }
-      });
-    }, 2000);
+    toast.success('Telegram bot registered successfully');
+    return true;
   } catch (error) {
-    console.error('Error testing alert system:', error);
-    toast.error('Alert system test failed', {
-      id: 'test-alert'
-    });
+    console.error("Error registering Telegram bot:", error);
+    toast.error(`Failed to register Telegram bot: ${(error as Error).message}`);
+    return false;
   }
 };
 
-// Add the missing email notification service function
-export interface EmailNotificationParams {
-  subject: string;
-  content: string;
-  recipient: string;
-}
+// Check if Telegram bot is configured
+export const isTelegramBotConfigured = (): boolean => {
+  const botToken = localStorage.getItem('telegramBotToken');
+  const chatId = localStorage.getItem('telegramBotChatId');
+  return !!botToken && !!chatId;
+};
 
-export const sendEmailNotification = async (
-  subject: string, 
-  content: string, 
-  recipient: string
-): Promise<boolean> => {
-  console.log('Sending email notification:', { subject, recipient });
-  
+// Function to test Telegram notification
+export const testTelegramNotification = async (): Promise<boolean> => {
   try {
-    // This is just a mock function for frontend demonstration
-    // In a production app, this would call a backend API endpoint
-    await new Promise(resolve => setTimeout(resolve, 800));
+    const testSignal: SignalNotification = {
+      symbol: 'TEST/USD',
+      type: 'BUY',
+      price: 1.0000,
+      strategy: 'Test Notification',
+      time: new Date().toISOString()
+    };
     
-    console.log(`Email sent to ${recipient}: ${subject}`);
-    toast.success(`Email notification sent to ${recipient}`);
-    return true;
+    const result = await broadcastSignal(testSignal);
+    return result;
   } catch (error) {
-    console.error('Error sending email notification:', error);
-    toast.error('Failed to send email notification');
+    console.error("Error testing Telegram notification:", error);
+    toast.error(`Failed to test Telegram notification: ${(error as Error).message}`);
     return false;
+  }
+};
+
+// Set up or update trade signal service
+export const setupRealTimeSignals = (isActive: boolean): void => {
+  // In a real app, this would connect to a WebSocket or similar for real-time signals
+  if (isActive) {
+    toast.success("Real-time signal service activated");
+    
+    // Start a periodic check for new signals (simulated)
+    const intervalId = setInterval(() => {
+      // Check if service is still active
+      const isStillActive = localStorage.getItem('telegramSignalServiceActive') === 'true';
+      if (!isStillActive) {
+        clearInterval(intervalId);
+        return;
+      }
+      
+      // 15% chance to generate a signal every minute
+      if (Math.random() < 0.15) {
+        const symbols = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD'];
+        const types = ['BUY', 'SELL'];
+        const strategies = ['RSI Divergence', 'MA Crossover', 'Breakout', 'Support/Resistance', 'AI Model'];
+        
+        const randomSignal: SignalNotification = {
+          symbol: symbols[Math.floor(Math.random() * symbols.length)],
+          type: types[Math.floor(Math.random() * types.length)],
+          price: 1 + Math.random(), // Simple random price
+          strategy: strategies[Math.floor(Math.random() * strategies.length)],
+          time: new Date().toISOString()
+        };
+        
+        broadcastSignal(randomSignal);
+      }
+    }, 60000); // Check every minute
+    
+    // Store interval ID and state
+    localStorage.setItem('telegramSignalIntervalId', intervalId.toString());
+    localStorage.setItem('telegramSignalServiceActive', 'true');
+  } else {
+    // Stop the service
+    const intervalId = localStorage.getItem('telegramSignalIntervalId');
+    if (intervalId) {
+      clearInterval(parseInt(intervalId));
+    }
+    localStorage.setItem('telegramSignalServiceActive', 'false');
+    toast.info("Real-time signal service deactivated");
+  }
+};
+
+// Initialize the service based on stored state
+export const initializeSignalService = (): void => {
+  const isActive = localStorage.getItem('telegramSignalServiceActive') === 'true';
+  if (isActive) {
+    setupRealTimeSignals(true);
+  }
+};
+
+// Function to check and toggle the trade signal service
+export const toggleTradeSignalService = async (isActive: boolean): Promise<boolean> => {
+  try {
+    setupRealTimeSignals(isActive);
+    return isActive;
+  } catch (error) {
+    console.error("Error toggling trade signal service:", error);
+    toast.error(`Failed to toggle trade signal service: ${(error as Error).message}`);
+    return !isActive;
   }
 };

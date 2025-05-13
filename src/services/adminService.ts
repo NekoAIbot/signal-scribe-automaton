@@ -46,12 +46,23 @@ export interface User {
   subscriptionTier: 'free' | 'basic' | 'premium' | 'enterprise';
 }
 
-// Admin password for demonstration
-export const ADMIN_PASSWORD = "Nathan19@@";
+// Admin password in localStorage for development
+const ADMIN_PASSWORD_KEY = 'admin_password';
+
+// Admin password for demonstration - initialize with default if not set
+export const ADMIN_PASSWORD = localStorage.getItem(ADMIN_PASSWORD_KEY) || "Nathan19@@";
 
 // Admin password verification function
 export const verifyAdminPassword = (password: string): boolean => {
-  return password === ADMIN_PASSWORD;
+  const currentPassword = localStorage.getItem(ADMIN_PASSWORD_KEY) || ADMIN_PASSWORD;
+  return password === currentPassword;
+};
+
+// Update admin password
+export const updateAdminPassword = (newPassword: string): void => {
+  // Store the new password in localStorage
+  localStorage.setItem(ADMIN_PASSWORD_KEY, newPassword);
+  toast.success("Admin password has been updated successfully");
 };
 
 // Reset admin password function
@@ -181,28 +192,40 @@ export const getModels = async (): Promise<typeof mockModels> => {
 };
 
 export const addModel = async (model: MLModel): Promise<MLModel> => {
-  const newModel = {
-    ...model,
-    lastTrained: model.lastTrained || new Date().toISOString().split('T')[0],
-    status: model.status || 'active',
-    version: model.version || '1.0',
-    is_active: model.is_active !== undefined ? model.is_active : true
-  };
-  models = [...models, newModel];
-  toast.success(`Model "${model.name}" added`);
-  return model;
+  try {
+    const newModel = {
+      ...model,
+      lastTrained: model.lastTrained || new Date().toISOString().split('T')[0],
+      status: model.status || 'active',
+      version: model.version || '1.0',
+      is_active: model.is_active !== undefined ? model.is_active : true
+    };
+    models = [...models, newModel];
+    toast.success(`Model "${model.name}" added`);
+    return model;
+  } catch (error) {
+    console.error("Error adding model:", error);
+    toast.error(`Failed to add model "${model.name}"`);
+    throw error;
+  }
 };
 
 export const updateModel = async (model: MLModel): Promise<MLModel> => {
-  models = models.map(m => m.id === model.id ? {
-    ...model, 
-    lastTrained: model.lastTrained || new Date().toISOString().split('T')[0], 
-    status: model.status || 'active',
-    version: model.version || '1.0',
-    is_active: model.is_active !== undefined ? model.is_active : true
-  } : m);
-  toast.success(`Model "${model.name}" updated`);
-  return model;
+  try {
+    models = models.map(m => m.id === model.id ? {
+      ...model, 
+      lastTrained: model.lastTrained || new Date().toISOString().split('T')[0], 
+      status: model.status || 'active',
+      version: model.version || '1.0',
+      is_active: model.is_active !== undefined ? model.is_active : true
+    } : m);
+    toast.success(`Model "${model.name}" updated`);
+    return model;
+  } catch (error) {
+    console.error("Error updating model:", error);
+    toast.error(`Failed to update model "${model.name}"`);
+    throw error;
+  }
 };
 
 export const deleteModel = async (id: string): Promise<void> => {
@@ -212,28 +235,34 @@ export const deleteModel = async (id: string): Promise<void> => {
 };
 
 export const trainModel = async (id: string): Promise<MLModel> => {
-  // Simulate API call
-  await new Promise(resolve => setTimeout(resolve, 3000));
-  
-  // Update the model
-  const updatedModels = models.map(m => {
-    if (m.id === id) {
-      return {
-        ...m,
-        lastTrained: new Date().toISOString().split('T')[0],
-        accuracy: parseFloat((m.accuracy + (Math.random() * 5 - 2)).toFixed(1)) // Slightly adjust accuracy
-      };
-    }
-    return m;
-  });
-  
-  models = updatedModels;
-  
-  const updatedModel = models.find(m => m.id === id);
-  if (!updatedModel) throw new Error("Model not found");
-  
-  toast.success(`Model "${updatedModel.name}" has been trained`);
-  return updatedModel;
+  try {
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    // Update the model
+    const updatedModels = models.map(m => {
+      if (m.id === id) {
+        return {
+          ...m,
+          lastTrained: new Date().toISOString().split('T')[0],
+          accuracy: parseFloat((m.accuracy + (Math.random() * 5 - 2)).toFixed(1)) // Slightly adjust accuracy
+        };
+      }
+      return m;
+    });
+    
+    models = updatedModels;
+    
+    const updatedModel = models.find(m => m.id === id);
+    if (!updatedModel) throw new Error("Model not found");
+    
+    toast.success(`Model "${updatedModel.name}" has been trained`);
+    return updatedModel;
+  } catch (error) {
+    console.error("Error training model:", error);
+    toast.error(`Failed to train model: ${(error as Error).message}`);
+    throw error;
+  }
 };
 
 // User management
@@ -242,9 +271,28 @@ export const getUsers = async (): Promise<User[]> => {
 };
 
 export const addUser = async (user: User): Promise<User> => {
-  users = [...users, {...user, id: (users.length + 1).toString()}];
-  toast.success(`User "${user.name}" added`);
-  return user;
+  try {
+    // Generate a temporary password for new users
+    const temporaryPassword = Math.random().toString(36).slice(-8);
+    
+    // In a real app, you would send an email with this password
+    console.log(`Temporary password for ${user.email}: ${temporaryPassword}`);
+    
+    // Add user with generated ID
+    const newUser = {
+      ...user, 
+      id: (users.length + 1).toString(),
+      temporaryPassword // This would be hashed in a real app
+    };
+    
+    users = [...users, newUser];
+    toast.success(`User "${user.name}" added with temporary password`);
+    return user;
+  } catch (error) {
+    console.error("Error adding user:", error);
+    toast.error(`Failed to add user "${user.name}"`);
+    throw error;
+  }
 };
 
 export const updateUser = async (user: User): Promise<User> => {

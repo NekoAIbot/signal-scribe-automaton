@@ -67,10 +67,6 @@ export function AdminPasswordModal({
             {error && (
               <p className="text-sm text-red-500">{error}</p>
             )}
-            
-            <p className="text-xs text-muted-foreground mt-1">
-              Default password: {ADMIN_PASSWORD}
-            </p>
           </div>
           
           <DialogFooter>

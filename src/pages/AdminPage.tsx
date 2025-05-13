@@ -15,9 +15,11 @@ import {
   BarChart2, 
   Trash2,
   Edit,
-  LogOut
+  LogOut,
+  Key
 } from 'lucide-react';
 import { AdminPasswordModal } from "@/components/admin/AdminPasswordModal";
+import { ResetPasswordModal } from "@/components/admin/ResetPasswordModal";
 import { StrategyFormModal } from "@/components/admin/StrategyFormModal";
 import { ModelFormModal } from "@/components/admin/ModelFormModal";
 import { UserFormModal } from "@/components/admin/UserFormModal";
@@ -49,6 +51,7 @@ const AdminPage = () => {
   const [telegramBotActive, setTelegramBotActive] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(true);
+  const [resetPasswordModalOpen, setResetPasswordModalOpen] = useState(false);
   
   // Form modals state
   const [strategyModalOpen, setStrategyModalOpen] = useState(false);
@@ -168,15 +171,25 @@ const AdminPage = () => {
     setModelTrainingModalOpen(true);
   };
   
-  const handleTrainSpecificModel = (id: string) => {
-    const model = models.find(m => m.id === id);
-    setSelectedModel(model);
-    setModelTrainingModalOpen(true);
+  const handleTrainSpecificModel = async (id: string) => {
+    try {
+      toast.info(`Training model ${id}...`);
+      const trainedModel = await trainModel(id);
+      
+      // Update models list
+      setModels(models.map(m => m.id === trainedModel.id ? trainedModel : m));
+      
+      toast.success(`Model ${trainedModel.name} trained successfully`);
+    } catch (error) {
+      console.error('Error training model:', error);
+      toast.error('Failed to train model');
+    }
   };
   
-  const handleSaveTraining = async (model: any) => {
+  const handleSaveTraining = async (modelData: any) => {
     try {
-      const trained = await trainModel(model);
+      const modelId = selectedModel ? selectedModel.id : `model-${Date.now()}`;
+      const trained = await trainModel(modelId);
       
       // Update models list if this was retraining
       if (selectedModel) {
@@ -254,10 +267,45 @@ const AdminPage = () => {
       toast.error('Failed to toggle Telegram bot');
     }
   };
+
+  const handleOpenResetPassword = () => {
+    setResetPasswordModalOpen(true);
+  };
   
   const handleLogout = () => {
     logout();
     navigate('/login');
+  };
+
+  // Test real AI signal generation
+  const testAISignalGeneration = async () => {
+    try {
+      toast.info("Testing AI signal generation...");
+      
+      // Get enhanced signals
+      const signals = await getEnhancedSignals(5);
+      
+      if (signals && signals.length > 0) {
+        // Display samples of the generated signals
+        signals.forEach((signal, index) => {
+          if (index < 3) { // Only show max 3 sample signals in notifications
+            toast.success(`AI Signal: ${signal.type} ${signal.symbol} at ${signal.price.toFixed(5)}`, {
+              description: `Strategy: ${signal.strategy_name || 'AI Model'}, Confidence: ${signal.confidence_score ? (signal.confidence_score * 100).toFixed(1) + '%' : 'N/A'}`
+            });
+          }
+        });
+        
+        toast.success(`Generated ${signals.length} AI signals successfully`);
+      } else {
+        toast.info("No signals generated at this time");
+      }
+      
+      return signals;
+    } catch (error) {
+      console.error("Error testing AI signal generation:", error);
+      toast.error("Failed to test AI signal generation");
+      throw error;
+    }
   };
   
   if (!isAuthenticated) {
@@ -457,14 +505,7 @@ const AdminPage = () => {
               <div className="mt-4">
                 <Button 
                   variant="default" 
-                  onClick={() => {
-                    toast.info("Testing AI signal generation...");
-                    getEnhancedSignals().then(() => {
-                      toast.success("Signal test completed");
-                    }).catch(() => {
-                      toast.error("Signal test failed");
-                    });
-                  }}
+                  onClick={testAISignalGeneration}
                 >
                   Test AI Signal Generation
                 </Button>
@@ -543,15 +584,13 @@ const AdminPage = () => {
                 </div>
               </ScrollArea>
               
-              <div className="mt-4">
+              <div className="mt-4 flex gap-2">
                 <Button 
                   variant="default" 
-                  onClick={() => {
-                    resetAdminPassword();
-                  }}
+                  onClick={handleOpenResetPassword}
                 >
-                  <Settings className="mr-2 h-4 w-4" />
-                  Reset Admin Password
+                  <Key className="mr-2 h-4 w-4" />
+                  Change Admin Password
                 </Button>
               </div>
               
@@ -560,6 +599,11 @@ const AdminPage = () => {
                 onOpenChange={setUserModalOpen}
                 initialUser={selectedUser}
                 onSave={handleSaveUser}
+              />
+              
+              <ResetPasswordModal
+                open={resetPasswordModalOpen}
+                onOpenChange={setResetPasswordModalOpen}
               />
             </TabsContent>
           </Tabs>
