@@ -5,7 +5,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { Toaster as SonnerToaster } from 'sonner';
-import { ThemeProvider } from '@/components/ThemeProvider';
+import { ThemeProvider } from './components/ThemeProvider';
 
 // Routes / Pages
 import { Layout } from './components/layout/Layout';
@@ -53,21 +53,23 @@ function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
               
-              <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-                <Route index element={<Dashboard />} />
-                <Route path="analytics" element={<AnalyticsPage />} />
-                <Route path="signals" element={<SignalsPage />} />
-                <Route path="alerts" element={<AlertsPage />} />
-                <Route path="monitoring" element={<MonitoringPage />} />
-                <Route path="settings" element={<SettingsPage />} />
-                <Route 
-                  path="admin" 
-                  element={
-                    <AdminRoute>
-                      <AdminPage />
-                    </AdminRoute>
-                  } 
-                />
+              <Route path="/" element={<ProtectedRoute />}>
+                <Route element={<Layout />}>
+                  <Route index element={<Dashboard />} />
+                  <Route path="analytics" element={<AnalyticsPage />} />
+                  <Route path="signals" element={<SignalsPage />} />
+                  <Route path="alerts" element={<AlertsPage />} />
+                  <Route path="monitoring" element={<MonitoringPage />} />
+                  <Route path="settings" element={<SettingsPage />} />
+                  <Route 
+                    path="admin" 
+                    element={
+                      <AdminRoute>
+                        <AdminPage />
+                      </AdminRoute>
+                    } 
+                  />
+                </Route>
               </Route>
               
               <Route path="*" element={<NotFound />} />

@@ -1,39 +1,61 @@
+
 import { toast } from "sonner";
 import { 
   TradingStrategy, 
-  MLModel, 
-  EnhancedSignal, 
-  BacktestResult,
-  TrainingParams
-} from "@/services/ai/types";
-import { broadcastSignal } from '@/services/notificationService';
+  SubscriptionPlan 
+} from '@/integrations/supabase/types';
 
-// Mock admin data 
-const mockStrategies = [
-  { 
-    id: '1', 
-    name: 'Trend Following', 
-    description: 'Uses moving averages to identify trends',
-    model_id: '1',
-    risk_profile: 'Medium' as const,
-    is_active: true,
-    indicators: ['EMA', 'MACD', 'ADX']
+// Define the ML model type
+export interface MLModel {
+  id: string;
+  name: string;
+  type: 'LSTM' | 'Transformer' | 'DQN' | 'PPO' | 'GRU' | 'RandomForest' | 'XGBoost';
+  accuracy: number;
+  lastTrained: string;
+  status: string;
+  version: string;
+  is_active: boolean;
+}
+
+// Define the user type
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: 'admin' | 'user';
+  createdAt?: string;
+  lastLogin?: string;
+  subscriptionTier: 'free' | 'basic' | 'premium' | 'enterprise';
+}
+
+// Mock data
+export const mockStrategies: TradingStrategy[] = [
+  {
+    id: '1',
+    name: 'Moving Average Crossover',
+    description: 'A strategy based on the crossing of two moving averages',
+    assets: ['EURUSD', 'BTCUSDT'],
+    indicator: 'Moving Average',
+    timeframe: '1h',
+    status: 'active',
+    winRate: 68.5
   },
-  { 
-    id: '2', 
-    name: 'RSI Reversal', 
-    description: 'Spots overbought and oversold conditions',
-    model_id: '2',
-    risk_profile: 'High' as const,
-    is_active: true,
-    indicators: ['RSI', 'Stochastic', 'CCI']
+  {
+    id: '2',
+    name: 'RSI Divergence',
+    description: 'Identifies potential reversals based on RSI divergence patterns',
+    assets: ['GBPUSD', 'ETHUSD'],
+    indicator: 'RSI',
+    timeframe: '4h',
+    status: 'active',
+    winRate: 72.1
   }
 ];
 
-const mockModels = [
+export const mockModels: MLModel[] = [
   {
     id: '1',
-    name: 'Regression Model v1',
+    name: 'ForexPredictor-v1',
     type: 'LSTM' as const,
     accuracy: 78.4,
     lastTrained: '2023-12-01',
@@ -43,7 +65,7 @@ const mockModels = [
   },
   {
     id: '2',
-    name: 'Classification Model v2',
+    name: 'CryptoTrend-v2',
     type: 'Transformer' as const,
     accuracy: 82.1,
     lastTrained: '2024-01-15',
@@ -53,22 +75,24 @@ const mockModels = [
   }
 ];
 
-const mockUsers = [
+export const mockUsers: User[] = [
   {
     id: '1',
     name: 'John Trader',
     email: 'john@example.com',
-    role: 'user' as const,
-    subscriptionTier: 'premium' as const,
-    lastLogin: '2024-05-10'
+    role: 'admin',
+    createdAt: '2023-10-01',
+    lastLogin: '2024-04-15',
+    subscriptionTier: 'enterprise'
   },
   {
     id: '2',
-    name: 'Sarah Analyst',
-    email: 'sarah@example.com',
-    role: 'user' as const,
-    subscriptionTier: 'basic' as const,
-    lastLogin: '2024-05-09'
+    name: 'Alice Investor',
+    email: 'alice@example.com',
+    role: 'user',
+    createdAt: '2023-11-15',
+    lastLogin: '2024-04-10',
+    subscriptionTier: 'premium'
   }
 ];
 
@@ -90,21 +114,21 @@ export const addStrategy = async (strategy: TradingStrategy): Promise<TradingStr
     ...strategy,
     description: strategy.description || '',
   };
-  strategies = [...strategies, newStrategy as any];
+  strategies = [...strategies, newStrategy];
   toast.success(`Strategy "${strategy.name}" added`);
   return strategy;
 };
 
 export const updateStrategy = async (strategy: TradingStrategy): Promise<TradingStrategy> => {
-  strategies = strategies.map(s => s.id === strategy.id ? {...strategy, description: strategy.description || ''} as any : s);
+  strategies = strategies.map(s => s.id === strategy.id ? {...strategy, description: strategy.description || ''} : s);
   toast.success(`Strategy "${strategy.name}" updated`);
   return strategy;
 };
 
-export const deleteStrategy = async (id: string): Promise<boolean> => {
+export const deleteStrategy = async (id: string): Promise<void> => {
   strategies = strategies.filter(s => s.id !== id);
   toast.success("Strategy deleted");
-  return true;
+  return;
 };
 
 // ML model management
@@ -115,120 +139,149 @@ export const getModels = async (): Promise<typeof mockModels> => {
 export const addModel = async (model: MLModel): Promise<MLModel> => {
   const newModel = {
     ...model,
-    lastTrained: new Date().toISOString().split('T')[0],
-    status: 'active',
+    lastTrained: model.lastTrained || new Date().toISOString().split('T')[0],
+    status: model.status || 'active',
+    version: model.version || '1.0',
+    is_active: model.is_active !== undefined ? model.is_active : true
   };
-  models = [...models, newModel as any];
+  models = [...models, newModel];
   toast.success(`Model "${model.name}" added`);
   return model;
 };
 
 export const updateModel = async (model: MLModel): Promise<MLModel> => {
-  models = models.map(m => m.id === model.id ? {...model, lastTrained: model.lastTrained || new Date().toISOString().split('T')[0], status: model.status || 'active'} as any : m);
+  models = models.map(m => m.id === model.id ? {
+    ...model, 
+    lastTrained: model.lastTrained || new Date().toISOString().split('T')[0], 
+    status: model.status || 'active',
+    version: model.version || '1.0',
+    is_active: model.is_active !== undefined ? model.is_active : true
+  } : m);
   toast.success(`Model "${model.name}" updated`);
   return model;
 };
 
-export const deleteModel = async (id: string): Promise<boolean> => {
+export const deleteModel = async (id: string): Promise<void> => {
   models = models.filter(m => m.id !== id);
   toast.success("Model deleted");
-  return true;
+  return;
 };
 
-export const trainModel = async (params: TrainingParams | MLModel): Promise<MLModel> => {
-  const modelId = 'id' in params ? params.id : `model-${Date.now()}`;
-  const modelName = 'name' in params ? params.name : `Model ${Date.now().toString().slice(-4)}`;
-  const modelType = 'type' in params ? params.type : params.modelType;
-  
-  toast.loading(`Training ${modelName}...`, {
-    id: `train-model-${modelId}`
-  });
-  
-  // Simulate training time
+export const trainModel = async (id: string): Promise<MLModel> => {
+  // Simulate API call
   await new Promise(resolve => setTimeout(resolve, 3000));
   
-  // Update or add the model
-  const newAccuracy = Math.round((70 + Math.random() * 20) * 10) / 10; // 70-90% accuracy
-  const trainedModel = {
-    id: modelId,
-    name: modelName,
-    type: modelType,
-    accuracy: newAccuracy,
-    lastTrained: new Date().toISOString().split('T')[0],
-    status: 'active'
-  };
-  
-  if ('id' in params) {
-    // Update existing model
-    models = models.map(m => m.id === modelId ? trainedModel : m);
-  } else {
-    // Add new model
-    models = [...models, trainedModel];
-  }
-  
-  toast.success(`Model "${trainedModel.name}" trained successfully (Accuracy: ${trainedModel.accuracy}%)`, {
-    id: `train-model-${modelId}`
+  // Update the model
+  const updatedModels = models.map(m => {
+    if (m.id === id) {
+      return {
+        ...m,
+        lastTrained: new Date().toISOString().split('T')[0],
+        accuracy: parseFloat((m.accuracy + (Math.random() * 5 - 2)).toFixed(1)) // Slightly adjust accuracy
+      };
+    }
+    return m;
   });
   
-  return trainedModel;
+  models = updatedModels;
+  
+  const updatedModel = models.find(m => m.id === id);
+  if (!updatedModel) throw new Error("Model not found");
+  
+  toast.success(`Model "${updatedModel.name}" has been trained`);
+  return updatedModel;
 };
 
 // User management
-export const getUsers = async (): Promise<typeof mockUsers> => {
+export const getUsers = async (): Promise<User[]> => {
   return users;
 };
 
-export const addUser = async (user: typeof mockUsers[0]): Promise<typeof mockUsers[0]> => {
-  users = [...users, user];
+export const addUser = async (user: User): Promise<User> => {
+  users = [...users, {...user, id: (users.length + 1).toString()}];
   toast.success(`User "${user.name}" added`);
   return user;
 };
 
-export const updateUser = async (user: typeof mockUsers[0]): Promise<typeof mockUsers[0]> => {
+export const updateUser = async (user: User): Promise<User> => {
   users = users.map(u => u.id === user.id ? user : u);
   toast.success(`User "${user.name}" updated`);
   return user;
 };
 
-export const deleteUser = async (id: string): Promise<boolean> => {
+export const deleteUser = async (id: string): Promise<void> => {
   users = users.filter(u => u.id !== id);
   toast.success("User deleted");
-  return true;
+  return;
 };
 
-// Bot control
-export const toggleTelegramBot = async (activate: boolean): Promise<boolean> => {
-  if (activate) {
-    // Simulate starting the Telegram bot
-    toast.success("Telegram copy-trading bot activated");
-    await broadcastSignal({ 
-      symbol: "System", 
-      type: "NOTIFICATION", 
-      message: "Telegram signal generation has been activated",
-      timestamp: new Date().toISOString() 
-    });
-  } else {
-    // Simulate stopping the Telegram bot
-    toast.info("Telegram copy-trading bot deactivated");
-    await broadcastSignal({ 
-      symbol: "System", 
-      type: "NOTIFICATION", 
-      message: "Telegram signal generation has been deactivated",
-      timestamp: new Date().toISOString() 
-    });
-  }
-  
-  return activate;
+// Subscription plan management
+export const getSubscriptionPlans = async (): Promise<SubscriptionPlan[]> => {
+  // These would typically come from a database
+  return [
+    {
+      id: 'free',
+      name: 'Free',
+      price: 0,
+      features: [
+        'Basic market data',
+        '2 trading strategies',
+        'Manual trading signals',
+        'Email support'
+      ]
+    },
+    {
+      id: 'basic',
+      name: 'Basic',
+      price: 29.99,
+      features: [
+        'Real-time market data',
+        '5 trading strategies',
+        'Automated trading signals',
+        'Technical indicators',
+        'Priority email support'
+      ]
+    },
+    {
+      id: 'premium',
+      name: 'Premium',
+      price: 99.99,
+      features: [
+        'Advanced real-time data',
+        'Unlimited trading strategies',
+        'Custom ML models',
+        'API access',
+        '24/7 support',
+        'Strategy backtesting'
+      ]
+    },
+    {
+      id: 'enterprise',
+      name: 'Enterprise',
+      price: 499.99,
+      features: [
+        'All Premium features',
+        'Dedicated account manager',
+        'Custom development',
+        'White-label solution',
+        'Multi-user access'
+      ]
+    }
+  ];
 };
 
-// System verification
-export const verifyAdminPassword = (password: string): boolean => {
-  return password === ADMIN_PASSWORD;
-};
-
-export const resetAdminPassword = async (): Promise<string> => {
-  // In a real system, this would generate a new random password
-  // For this demo, we'll just confirm the existing one
-  toast.success("Admin password confirmed");
-  return ADMIN_PASSWORD;
+// System admin functions
+export const getSystemStatus = async (): Promise<Record<string, any>> => {
+  // This would typically come from monitoring services
+  return {
+    apiStatus: 'operational',
+    databaseStatus: 'operational',
+    mlServiceStatus: 'operational',
+    tradingEngineStatus: 'operational',
+    lastIncident: '2024-03-15',
+    uptime: '99.98%',
+    activeUsers: 142,
+    signalsToday: 28,
+    tradesExecuted: 315
+  };
 };

@@ -120,3 +120,32 @@ export const testAlertSystem = async (): Promise<void> => {
     });
   }
 };
+
+// Add the missing email notification service function
+export interface EmailNotificationParams {
+  subject: string;
+  content: string;
+  recipient: string;
+}
+
+export const sendEmailNotification = async (
+  subject: string, 
+  content: string, 
+  recipient: string
+): Promise<boolean> => {
+  console.log('Sending email notification:', { subject, recipient });
+  
+  try {
+    // This is just a mock function for frontend demonstration
+    // In a production app, this would call a backend API endpoint
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    console.log(`Email sent to ${recipient}: ${subject}`);
+    toast.success(`Email notification sent to ${recipient}`);
+    return true;
+  } catch (error) {
+    console.error('Error sending email notification:', error);
+    toast.error('Failed to send email notification');
+    return false;
+  }
+};
