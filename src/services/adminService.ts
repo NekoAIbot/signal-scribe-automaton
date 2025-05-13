@@ -1,9 +1,27 @@
 
 import { toast } from "sonner";
-import { 
-  TradingStrategy, 
-  SubscriptionPlan 
-} from '@/integrations/supabase/types';
+
+// Defining our own types since the imports aren't working
+export interface TradingStrategy {
+  id: string;
+  name: string;
+  description?: string;
+  assets?: string[];
+  indicator?: string;
+  timeframe?: string;
+  status?: string;
+  winRate?: number;
+  risk_profile?: string;
+  is_active?: boolean;
+  indicators?: string[];
+}
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  price: number;
+  features: string[];
+}
 
 // Define the ML model type
 export interface MLModel {
@@ -27,6 +45,35 @@ export interface User {
   lastLogin?: string;
   subscriptionTier: 'free' | 'basic' | 'premium' | 'enterprise';
 }
+
+// Admin password for demonstration
+export const ADMIN_PASSWORD = "Nathan19@@";
+
+// Admin password verification function
+export const verifyAdminPassword = (password: string): boolean => {
+  return password === ADMIN_PASSWORD;
+};
+
+// Reset admin password function
+export const resetAdminPassword = (): void => {
+  // In a real app, this would reset the password in a database
+  // For this demo, we just show a toast
+  toast.success("Admin password has been reset to default");
+};
+
+// Telegram bot toggle function
+export const toggleTelegramBot = async (isActive: boolean): Promise<boolean> => {
+  // Simulate API call
+  await new Promise(resolve => setTimeout(resolve, 800));
+  
+  if (isActive) {
+    toast.success("Telegram signal bot activated");
+  } else {
+    toast.info("Telegram signal bot deactivated");
+  }
+  
+  return isActive;
+};
 
 // Mock data
 export const mockStrategies: TradingStrategy[] = [
@@ -100,9 +147,6 @@ export const mockUsers: User[] = [
 let strategies: typeof mockStrategies = [...mockStrategies];
 let models: typeof mockModels = [...mockModels];
 let users = [...mockUsers];
-
-// Admin password for demonstration
-export const ADMIN_PASSWORD = "Nathan19@@";
 
 // Strategy management
 export const getStrategies = async (): Promise<typeof mockStrategies> => {

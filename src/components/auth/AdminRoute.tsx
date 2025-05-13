@@ -6,9 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-
-// Admin password set as requested
-const ADMIN_PASSWORD = "Nathan19@@";
+import { ADMIN_PASSWORD, verifyAdminPassword } from "@/services/adminService";
 
 interface AdminRouteProps {
   children: React.ReactNode;
@@ -28,7 +26,7 @@ export function AdminRoute({ children }: AdminRouteProps) {
     
     // Check password
     setTimeout(() => {
-      if (password === ADMIN_PASSWORD) {
+      if (verifyAdminPassword(password)) {
         localStorage.setItem('adminAuthenticated', 'true');
         setIsAuthenticated(true);
         toast.success("Admin access granted");
