@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
@@ -45,40 +45,38 @@ function App() {
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <QueryClientProvider client={queryClient}>
-        <Router>
-          <AuthProvider>
-            <ScrollToTop />
+        <AuthProvider>
+          <ScrollToTop />
+          
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
             
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
-              
-              <Route path="/" element={<ProtectedRoute />}>
-                <Route element={<Layout />}>
-                  <Route index element={<Dashboard />} />
-                  <Route path="analytics" element={<AnalyticsPage />} />
-                  <Route path="signals" element={<SignalsPage />} />
-                  <Route path="alerts" element={<AlertsPage />} />
-                  <Route path="monitoring" element={<MonitoringPage />} />
-                  <Route path="settings" element={<SettingsPage />} />
-                  <Route 
-                    path="admin" 
-                    element={
-                      <AdminRoute>
-                        <AdminPage />
-                      </AdminRoute>
-                    } 
-                  />
-                </Route>
+            <Route path="/" element={<ProtectedRoute />}>
+              <Route element={<Layout />}>
+                <Route index element={<Dashboard />} />
+                <Route path="analytics" element={<AnalyticsPage />} />
+                <Route path="signals" element={<SignalsPage />} />
+                <Route path="alerts" element={<AlertsPage />} />
+                <Route path="monitoring" element={<MonitoringPage />} />
+                <Route path="settings" element={<SettingsPage />} />
+                <Route 
+                  path="admin" 
+                  element={
+                    <AdminRoute>
+                      <AdminPage />
+                    </AdminRoute>
+                  } 
+                />
               </Route>
-              
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+            </Route>
             
-            <SonnerToaster position="top-right" closeButton />
-            <Toaster />
-          </AuthProvider>
-        </Router>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+          
+          <SonnerToaster position="top-right" closeButton />
+          <Toaster />
+        </AuthProvider>
       </QueryClientProvider>
     </ThemeProvider>
   );
