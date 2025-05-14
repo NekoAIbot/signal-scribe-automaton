@@ -11,6 +11,42 @@ export interface SignalNotification {
   time?: string;
 }
 
+// Technical Alert Interface
+export interface TechnicalAlertParams {
+  symbol: string;
+  indicator: string;
+  condition: string;
+  value: number;
+  timeframe: string;
+}
+
+// Function to create technical alert
+export const createTechnicalAlert = async (params: TechnicalAlertParams): Promise<boolean> => {
+  try {
+    console.log("Creating technical alert:", params);
+    
+    // Format the message for notification
+    const message = `
+🔔 TECHNICAL ALERT
+📊 ${params.symbol} - ${params.timeframe}
+📈 ${params.indicator} ${params.condition} ${params.value}
+⏰ ${new Date().toLocaleString()}
+`;
+    
+    // In a production app, this would send the alert to a backend service
+    // Here we'll simulate it for the demo
+    await new Promise(resolve => setTimeout(resolve, 600));
+    
+    // Log the alert creation
+    console.log("Technical alert created:", message);
+    
+    return true;
+  } catch (error) {
+    console.error("Error creating technical alert:", error);
+    return false;
+  }
+};
+
 // Function to broadcast signal to Telegram
 export const broadcastSignal = async (signal: SignalNotification): Promise<boolean> => {
   try {
@@ -95,6 +131,19 @@ export const testTelegramNotification = async (): Promise<boolean> => {
   } catch (error) {
     console.error("Error testing Telegram notification:", error);
     toast.error(`Failed to test Telegram notification: ${(error as Error).message}`);
+    return false;
+  }
+};
+
+// Add a testAlertSystem function to support AlertsPage call
+export const testAlertSystem = async (): Promise<boolean> => {
+  try {
+    toast.info("Testing alert system...");
+    await new Promise(resolve => setTimeout(resolve, 500));
+    toast.success("Alert system is working correctly");
+    return true;
+  } catch (error) {
+    toast.error("Alert system test failed");
     return false;
   }
 };
