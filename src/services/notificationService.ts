@@ -27,6 +27,28 @@ export interface NewsAlertParams {
   sources: string[];
 }
 
+// Email notification function to simulate sending emails
+export const sendEmailNotification = async (subject: string, body: string, to: string): Promise<boolean> => {
+  try {
+    console.log(`[Email Service] Sending email:
+      To: ${to}
+      Subject: ${subject}
+      Body: ${body}
+    `);
+    
+    // In a real app, this would connect to an email service
+    // For demo purposes, we'll simulate success after a short delay
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    // Log success
+    console.log(`[Email Service] Email sent successfully to ${to}`);
+    return true;
+  } catch (error) {
+    console.error("[Email Service] Error sending email:", error);
+    return false;
+  }
+};
+
 // Function to create news alert
 export const createNewsAlert = async (params: NewsAlertParams): Promise<boolean> => {
   try {

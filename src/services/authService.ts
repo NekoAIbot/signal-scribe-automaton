@@ -49,6 +49,14 @@ export const useAuth = () => {
     try {
       setAuthState(prev => ({ ...prev, loading: true }));
       
+      // Check if email already exists
+      const currentCodes = getVerificationCodes();
+      if (currentCodes[email]) {
+        toast.error('This email is already registered. Please login instead.');
+        setAuthState(prev => ({ ...prev, loading: false }));
+        return { success: false };
+      }
+      
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1500));
       
@@ -56,25 +64,27 @@ export const useAuth = () => {
       const verificationCode = generateVerificationCode();
       
       // Store verification code in localStorage for persistence
-      const currentCodes = getVerificationCodes();
       currentCodes[email] = verificationCode;
       setVerificationCodesInStorage(currentCodes);
       
-      // Show verification code via toast
-      toast.success(`Your verification code is: ${verificationCode}`, {
-        duration: 10000,
-      });
+      // Send email notification with verification code
+      const emailSubject = 'Your Trading Platform Verification Code';
+      const emailBody = `
+        <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 5px;">
+          <h2 style="color: #333;">Welcome to Trading Platform!</h2>
+          <p>Thank you for registering. To complete your registration, please use the verification code below:</p>
+          <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; text-align: center; margin: 20px 0; font-size: 24px; letter-spacing: 3px;">
+            <strong>${verificationCode}</strong>
+          </div>
+          <p>This code will expire in 30 minutes. If you did not request this code, please ignore this email.</p>
+          <p>Best regards,<br>The Trading Platform Team</p>
+        </div>
+      `;
+      
+      // Send email (simulation)
+      await sendEmailNotification(emailSubject, emailBody, email);
       
       console.log(`Verification code for ${email}: ${verificationCode}`);
-      
-      // Attempt to simulate email (this won't actually work in frontend-only)
-      sendEmailNotification(
-        'Your Trading App Verification Code',
-        `Your verification code is: ${verificationCode}. Please use this to complete your login.`,
-        email
-      ).catch(error => {
-        console.log('Email sending simulated:', error);
-      });
       
       setAuthState(prev => ({ ...prev, loading: false }));
       
@@ -124,6 +134,13 @@ export const useAuth = () => {
         localStorage.setItem('auth_token', 'demo_token');
         localStorage.setItem('auth_user', JSON.stringify(user));
         toast.success('Login successful');
+        
+        // Clear the used verification code to prevent reuse
+        // In a real app, you might want to implement expiration instead
+        // For this demo, we'll allow the code to be reused
+        // delete storedCodes[email];
+        // setVerificationCodesInStorage(storedCodes);
+        
         return true;
       } else {
         throw new Error('Invalid credentials or verification code');

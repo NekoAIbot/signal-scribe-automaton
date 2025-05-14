@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from 'sonner';
-import { ArrowRight, Mail, Info } from "lucide-react";
+import { ArrowRight, Mail, Info, Copy } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 
 const RegisterPage = () => {
   const navigate = useNavigate();
@@ -17,6 +18,7 @@ const RegisterPage = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [verificationCode, setVerificationCode] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,12 +33,23 @@ const RegisterPage = () => {
       return;
     }
     
+    setSubmitted(true); // Prevent multiple form submissions
+    
     const result = await register(name, email, password);
     if (result.success) {
       if (result.code) {
         setVerificationCode(result.code);
+        toast.success('Registration successful! A verification code has been sent to your email.');
       }
-      toast.success('Registration successful! Please use the verification code to log in.');
+    } else {
+      setSubmitted(false); // Allow retry if failed
+    }
+  };
+  
+  const handleCopyCode = () => {
+    if (verificationCode) {
+      navigator.clipboard.writeText(verificationCode);
+      toast.success('Verification code copied to clipboard');
     }
   };
   
@@ -56,11 +69,19 @@ const RegisterPage = () => {
             <div className="space-y-6">
               <Alert className="border-primary bg-primary/10">
                 <Info className="h-5 w-5 text-primary" />
-                <AlertTitle>Verification Code</AlertTitle>
+                <AlertTitle>Verification Code Sent</AlertTitle>
                 <AlertDescription>
-                  <p className="mb-2">Your verification code is:</p>
-                  <p className="text-xl font-bold text-primary">{verificationCode}</p>
-                  <p className="mt-2 text-sm">In a real app, this would be sent to your email.</p>
+                  <p className="mb-2">A verification code has been sent to your email:</p>
+                  <div className="flex items-center justify-between mt-2 mb-3">
+                    <div className="text-xl font-bold text-primary">{verificationCode}</div>
+                    <Button size="sm" variant="outline" onClick={handleCopyCode}>
+                      <Copy className="h-4 w-4 mr-1" /> Copy
+                    </Button>
+                  </div>
+                  <p className="text-sm mt-3">
+                    In a real app, this code would be delivered to your email. 
+                    For this demo, please save this code to use when logging in.
+                  </p>
                 </AlertDescription>
               </Alert>
               <Button
@@ -82,6 +103,7 @@ const RegisterPage = () => {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required
+                  disabled={submitted}
                 />
               </div>
               <div className="space-y-2">
@@ -95,6 +117,7 @@ const RegisterPage = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  disabled={submitted}
                 />
               </div>
               <div className="space-y-2">
@@ -108,6 +131,7 @@ const RegisterPage = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  disabled={submitted}
                 />
               </div>
               <div className="space-y-2">
@@ -121,12 +145,13 @@ const RegisterPage = () => {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
+                  disabled={submitted}
                 />
               </div>
               <Button
                 type="submit"
                 className="w-full"
-                disabled={loading}
+                disabled={loading || submitted}
               >
                 {loading ? 'Registering...' : 'Register'} <ArrowRight className="ml-2 h-4 w-4" />
               </Button>

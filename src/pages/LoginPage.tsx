@@ -1,19 +1,33 @@
 
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/services/authService';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowRight, Mail } from "lucide-react";
 import { toast } from 'sonner';
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 
 const LoginPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login, loading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
+
+  // Check if user is already logged in and redirect if needed
+  useEffect(() => {
+    // Check for authentication token in localStorage
+    const token = localStorage.getItem('auth_token');
+    const user = localStorage.getItem('auth_user');
+    
+    if (token && user) {
+      // User is already logged in, redirect to dashboard
+      navigate('/');
+    }
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,9 +36,17 @@ const LoginPage = () => {
       return;
     }
     
-    const success = await login(email, password, verificationCode);
-    if (success) {
-      navigate('/');
+    try {
+      const success = await login(email, password, verificationCode);
+      if (success) {
+        // Get the redirect location or default to dashboard
+        const from = location.state?.from?.pathname || '/';
+        navigate(from, { replace: true });
+        toast.success('Login successful! Welcome back.');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      toast.error('Login failed. Please try again.');
     }
   };
 
@@ -67,13 +89,20 @@ const LoginPage = () => {
               <label htmlFor="verificationCode" className="text-sm font-medium">
                 Verification Code
               </label>
-              <Input
-                id="verificationCode"
-                placeholder="Enter the code sent to your email"
-                value={verificationCode}
-                onChange={(e) => setVerificationCode(e.target.value)}
-                required
-              />
+              <div className="flex justify-center py-2">
+                <InputOTP
+                  maxLength={6}
+                  value={verificationCode}
+                  onChange={setVerificationCode}
+                  render={({ slots }) => (
+                    <InputOTPGroup>
+                      {slots.map((slot, index) => (
+                        <InputOTPSlot key={index} {...slot} index={index} />
+                      ))}
+                    </InputOTPGroup>
+                  )}
+                />
+              </div>
             </div>
             <Button
               type="submit"
