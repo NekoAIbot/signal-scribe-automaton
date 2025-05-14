@@ -20,6 +20,41 @@ export interface TechnicalAlertParams {
   timeframe: string;
 }
 
+// News Alert Interface
+export interface NewsAlertParams {
+  keywords: string[];
+  importance: 'low' | 'medium' | 'high';
+  sources: string[];
+}
+
+// Function to create news alert
+export const createNewsAlert = async (params: NewsAlertParams): Promise<boolean> => {
+  try {
+    console.log("Creating news alert for keywords:", params.keywords.join(', '));
+    
+    // Format the message for notification
+    const message = `
+🗞️ NEWS ALERT CREATED
+📋 Keywords: ${params.keywords.join(', ')}
+📊 Importance: ${params.importance}
+📰 Sources: ${params.sources.join(', ') || 'All sources'}
+⏰ ${new Date().toLocaleString()}
+`;
+    
+    // In a production app, this would register the alert with a backend service
+    // Here we'll simulate it for the demo
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    // Log the alert creation
+    console.log("News alert created:", message);
+    
+    return true;
+  } catch (error) {
+    console.error("Error creating news alert:", error);
+    return false;
+  }
+};
+
 // Function to create technical alert
 export const createTechnicalAlert = async (params: TechnicalAlertParams): Promise<boolean> => {
   try {
