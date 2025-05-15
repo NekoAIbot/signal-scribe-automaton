@@ -1,7 +1,6 @@
 
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { sendEmailNotification } from './notificationService';
 
 interface User {
   id: string;
@@ -16,17 +15,34 @@ interface AuthState {
   loading: boolean;
 }
 
-// Mock user for demonstration
-const mockUser: User = {
-  id: '1',
-  name: 'John Trader',
-  email: 'john@example.com',
-  role: 'admin'
-};
-
-// Generate a random verification code
-const generateVerificationCode = (): string => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+// Send verification email
+const sendVerificationEmail = async (email: string, verificationCode: string, template = 'verification') => {
+  try {
+    const response = await fetch(`${window.location.origin}/api/functions/v1/send-verification-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}`
+      },
+      body: JSON.stringify({
+        email,
+        verificationCode,
+        template
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to send verification email');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error sending verification email:', error);
+    toast.error(`Failed to send verification email: ${(error as Error).message}`);
+    return false;
+  }
 };
 
 export const useAuth = () => {
@@ -45,7 +61,7 @@ export const useAuth = () => {
     localStorage.setItem('verification_codes', JSON.stringify(codes));
   };
 
-  const register = async (name: string, email: string, password: string): Promise<{success: boolean, code?: string}> => {
+  const register = async (name: string, email: string, password: string): Promise<{success: boolean, showVerification?: boolean}> => {
     try {
       setAuthState(prev => ({ ...prev, loading: true }));
       
@@ -61,34 +77,18 @@ export const useAuth = () => {
       await new Promise(resolve => setTimeout(resolve, 1500));
       
       // Generate verification code
-      const verificationCode = generateVerificationCode();
+      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
       
       // Store verification code in localStorage for persistence
       currentCodes[email] = verificationCode;
       setVerificationCodesInStorage(currentCodes);
       
-      // Send email notification with verification code
-      const emailSubject = 'Your Trading Platform Verification Code';
-      const emailBody = `
-        <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 5px;">
-          <h2 style="color: #333;">Welcome to Trading Platform!</h2>
-          <p>Thank you for registering. To complete your registration, please use the verification code below:</p>
-          <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; text-align: center; margin: 20px 0; font-size: 24px; letter-spacing: 3px;">
-            <strong>${verificationCode}</strong>
-          </div>
-          <p>This code will expire in 30 minutes. If you did not request this code, please ignore this email.</p>
-          <p>Best regards,<br>The Trading Platform Team</p>
-        </div>
-      `;
-      
-      // Send email (simulation)
-      await sendEmailNotification(emailSubject, emailBody, email);
-      
-      console.log(`Verification code for ${email}: ${verificationCode}`);
+      // Send email with verification code
+      await sendVerificationEmail(email, verificationCode);
       
       setAuthState(prev => ({ ...prev, loading: false }));
       
-      return { success: true, code: verificationCode };
+      return { success: true, showVerification: true };
     } catch (error) {
       console.error('Registration error:', error);
       toast.error('Registration failed. Please try again.');
@@ -134,12 +134,6 @@ export const useAuth = () => {
         localStorage.setItem('auth_token', 'demo_token');
         localStorage.setItem('auth_user', JSON.stringify(user));
         toast.success('Login successful');
-        
-        // Clear the used verification code to prevent reuse
-        // In a real app, you might want to implement expiration instead
-        // For this demo, we'll allow the code to be reused
-        // delete storedCodes[email];
-        // setVerificationCodesInStorage(storedCodes);
         
         return true;
       } else {

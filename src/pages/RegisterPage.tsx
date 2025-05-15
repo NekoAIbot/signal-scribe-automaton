@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from 'sonner';
-import { ArrowRight, Info, Copy } from "lucide-react";
+import { ArrowRight, Info } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const RegisterPage = () => {
@@ -16,7 +16,8 @@ const RegisterPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [verificationCode, setVerificationCode] = useState<string | null>(null);
+  const [showVerificationStep, setShowVerificationStep] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
   const [submitted, setSubmitted] = useState(false);
   
   const handleSubmit = async (e: React.FormEvent) => {
@@ -37,9 +38,9 @@ const RegisterPage = () => {
     try {
       const result = await register(name, email, password);
       if (result.success) {
-        if (result.code) {
-          setVerificationCode(result.code);
-          toast.success('Registration successful! A verification code has been sent to your email.');
+        if (result.showVerification) {
+          setShowVerificationStep(true);
+          toast.success('Registration initiated! Please check your email for a verification code.');
         }
       } else {
         setSubmitted(false); // Allow retry if failed
@@ -51,15 +52,8 @@ const RegisterPage = () => {
     }
   };
   
-  const handleCopyCode = () => {
-    if (verificationCode) {
-      navigator.clipboard.writeText(verificationCode);
-      toast.success('Verification code copied to clipboard');
-    }
-  };
-  
   const handleProceedToLogin = () => {
-    navigate('/login');
+    navigate('/login', { state: { email, requireVerification: true } });
   };
   
   return (
@@ -70,22 +64,16 @@ const RegisterPage = () => {
           <CardDescription className="text-center">Register to start trading</CardDescription>
         </CardHeader>
         <CardContent>
-          {verificationCode ? (
+          {showVerificationStep ? (
             <div className="space-y-6">
               <Alert className="border-primary bg-primary/10">
                 <Info className="h-5 w-5 text-primary" />
                 <AlertTitle>Verification Code Sent</AlertTitle>
                 <AlertDescription>
                   <p className="mb-2">A verification code has been sent to your email:</p>
-                  <div className="flex items-center justify-between mt-2 mb-3">
-                    <div className="text-xl font-bold text-primary">{verificationCode}</div>
-                    <Button size="sm" variant="outline" onClick={handleCopyCode}>
-                      <Copy className="h-4 w-4 mr-1" /> Copy
-                    </Button>
-                  </div>
                   <p className="text-sm mt-3">
-                    In a real app, this code would be delivered to your email. 
-                    For this demo, please save this code to use when logging in.
+                    Please check your email for the verification code to complete your registration. 
+                    You'll need this code to log in.
                   </p>
                 </AlertDescription>
               </Alert>

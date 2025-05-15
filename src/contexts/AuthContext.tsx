@@ -1,6 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { toast } from 'sonner';
+import { supabase } from "@/integrations/supabase/client";
 
 interface User {
   id: string;
@@ -16,7 +17,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: (email: string, password: string, code?: string) => Promise<boolean>;
   logout: () => void;
-  register: (name: string, email: string, password: string) => Promise<{success: boolean, code?: string}>;
+  register: (name: string, email: string, password: string) => Promise<{success: boolean, showVerification: boolean}>;
 }
 
 // Create context with a default value
@@ -44,8 +45,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setLoading(false);
   }, []);
   
-  // Mock register function
-  const register = async (name: string, email: string, password: string): Promise<{success: boolean, code?: string}> => {
+  // Send verification email
+  const sendVerificationEmail = async (email: string, verificationCode: string, template = 'verification') => {
+    try {
+      const response = await fetch(`${window.location.origin}/api/functions/v1/send-verification-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}`
+        },
+        body: JSON.stringify({
+          email,
+          verificationCode,
+          template
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to send verification email');
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Error sending verification email:', error);
+      toast.error(`Failed to send verification email: ${(error as Error).message}`);
+      return false;
+    }
+  };
+  
+  // Register function
+  const register = async (name: string, email: string, password: string): Promise<{success: boolean, showVerification: boolean}> => {
     try {
       setLoading(true);
       
@@ -67,7 +98,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // In a real app, you would call an API endpoint here
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Generate verification code - in a real app, this would be sent via email
+      // Generate verification code
       const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
       
       // Store in localStorage for persistence in the demo app
@@ -75,20 +106,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       verificationCodes[email] = verificationCode;
       localStorage.setItem('verification_codes', JSON.stringify(verificationCodes));
       
-      // Send email (simulated)
-      console.log(`Email verification code for ${email}: ${verificationCode}`);
+      // Send verification email
+      await sendVerificationEmail(email, verificationCode);
       
-      // Return success and the code (in a real app, you wouldn't return the code)
-      return { success: true, code: verificationCode };
+      toast.success('Verification code sent to your email');
+      
+      return { success: true, showVerification: true };
     } catch (error) {
       toast.error(`Registration failed: ${(error as Error).message}`);
-      return { success: false };
+      return { success: false, showVerification: false };
     } finally {
       setLoading(false);
     }
   };
   
-  // Mock login function
+  // Login function
   const login = async (email: string, password: string, code = ''): Promise<boolean> => {
     try {
       setLoading(true);
