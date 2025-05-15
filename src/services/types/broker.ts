@@ -1,6 +1,6 @@
 
 export interface MT5AccountDetails {
-  id: string;  // Adding the id property that's used in BrokerSettingsModal
+  id: string;
   name: string;
   server: string;
   login: string;
@@ -9,23 +9,23 @@ export interface MT5AccountDetails {
   equity?: number;
   connected: boolean;
   lastSyncTime?: string;
-  password?: string;  // Adding password field used in BrokerSettingsModal
-  platform?: string;  // Adding platform field
-  accountType?: string;  // Adding accountType field
-  lotSize?: number;  // Adding lotSize field
-  maxRisk?: number;  // Adding maxRisk field
+  password?: string;
+  platform?: string;
+  accountType?: string;
+  lotSize?: number;
+  maxRisk?: number;
 }
 
 export interface BrokerSettings {
-  brokerName?: string;  // Adding brokerName property used in TradingBot component
-  accountType?: string;  // Adding accountType property used in TradingBot component
+  brokerName?: string;
+  accountType?: string;
   apiKey?: string;
   secretKey?: string;
   enabled: boolean;
   accountId?: string;
   mt5Accounts: MT5AccountDetails[];
   preferredAccount?: string;
-  mt4Accounts?: MT5AccountDetails[];  // Adding mt4Accounts used in BrokerSettingsModal
-  ctraderAccounts?: MT5AccountDetails[];  // Adding ctraderAccounts used in BrokerSettingsModal
-  defaultAccountId?: string;  // Adding defaultAccountId used in BrokerSettingsModal
+  mt4Accounts?: MT5AccountDetails[];
+  ctraderAccounts?: MT5AccountDetails[];
+  defaultAccountId?: string;
 }

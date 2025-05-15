@@ -8,15 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
-import { MT5AccountDetails } from '@/services/signalGenerationService';
+import { MT5AccountDetails, BrokerSettings } from '@/services/types/broker';
 import { executeMT5Trade } from '@/services/signalGenerationService';
-
-export interface BrokerSettings {
-  mt4Accounts: MT5AccountDetails[];
-  mt5Accounts: MT5AccountDetails[];
-  ctraderAccounts: MT5AccountDetails[];
-  defaultAccountId?: string;
-}
 
 interface BrokerSettingsModalProps {
   open: boolean;
@@ -26,11 +19,15 @@ interface BrokerSettingsModalProps {
 }
 
 const defaultAccount: MT5AccountDetails = {
+  id: '',
+  name: '',
   login: '',
   password: '',
   server: '',
   platform: 'MT5',
   accountType: 'demo',
+  type: 'demo',
+  connected: false,
   lotSize: 0.01,
   maxRisk: 1.0,
 };
@@ -63,7 +60,7 @@ export function BrokerSettingsModal({
 
   // Reset new account form
   const resetNewAccountForm = () => {
-    setNewAccount({ ...defaultAccount, platform: activeTab.toUpperCase() as 'MT4' | 'MT5' | 'cTrader' });
+    setNewAccount({ ...defaultAccount, platform: activeTab.toUpperCase() as 'MT4' | 'MT5' | 'cTrader', type: 'demo' });
   };
 
   // Add new account
@@ -103,6 +100,9 @@ export function BrokerSettingsModal({
         mt5Accounts,
         ctraderAccounts,
         defaultAccountId,
+        enabled: true,
+        brokerName: mt5Accounts.length > 0 ? 'MetaTrader 5' : (mt4Accounts.length > 0 ? 'MetaTrader 4' : 'cTrader'),
+        accountType: defaultAccountId ? allAccounts.find(acc => acc.id === defaultAccountId)?.accountType : undefined
       };
 
       onSave(settings);

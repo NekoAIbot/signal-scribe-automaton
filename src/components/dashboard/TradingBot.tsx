@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { PlayCircle, StopCircle, Settings } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from '@/contexts/AuthContext';
-import { BrokerSettings, BrokerSettingsModal } from "@/components/settings/BrokerSettingsModal";
+import { BrokerSettings } from '@/services/types/broker';
+import { BrokerSettingsModal } from "@/components/settings/BrokerSettingsModal";
 
 export function TradingBot() {
   const [isRunning, setIsRunning] = useState(false);
