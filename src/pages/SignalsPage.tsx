@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +10,7 @@ import { broadcastSignal } from '@/services/notificationService';
 import { useTradingSignals } from '@/services/marketDataService';
 import { executeMT5Trade, TradeSignal } from '@/services/signalGenerationService';
 import { API_KEYS } from '@/config/apiConfig';
+import { MT5AccountDetails } from '@/services/types/broker';
 
 const formatDate = (timeString: string) => {
   const date = new Date(timeString);
@@ -63,10 +63,14 @@ const SignalsPage = () => {
       ));
 
       // Execute on MT5 (using default credentials from config)
-      const mt5Account = {
+      const mt5Account: MT5AccountDetails = {
+        id: 'default-mt5',
+        name: 'Default MT5 Account',
         login: API_KEYS.MT5_LOGIN,
         password: API_KEYS.MT5_PASSWORD,
-        server: API_KEYS.MT5_SERVER
+        server: API_KEYS.MT5_SERVER,
+        type: 'demo',
+        connected: true
       };
       
       const success = await executeMT5Trade(signal, mt5Account);
