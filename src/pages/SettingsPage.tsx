@@ -62,10 +62,10 @@ const SettingsPage = () => {
 
   // Helper to handle nested state updates
   const updatePreference = (category: string, setting: string, value: any) => {
-    setPreferences(prev => ({
+    setPreferences((prev) => ({
       ...prev,
       [category]: {
-        ...prev[category as keyof typeof prev],
+        ...(prev[category as keyof typeof prev] as object),  // Fixed spread operator with explicit casting
         [setting]: value
       }
     }));
