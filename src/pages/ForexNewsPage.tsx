@@ -1,165 +1,30 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Search, Calendar, ExternalLink, AlertCircle } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-
-interface NewsItem {
-  id: string;
-  title: string;
-  summary: string;
-  source: string;
-  publishedAt: string;
-  url: string;
-  impact: 'high' | 'medium' | 'low';
-  category: string;
-  relatedCurrencies: string[];
-}
+import { useNews } from "@/services/newsService";
 
 const ForexNewsPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [impactFilter, setImpactFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
-  // Mock news data fetch
-  const fetchForexNews = async (): Promise<NewsItem[]> => {
-    // In a real app, this would be an API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    return [
-      {
-        id: '1',
-        title: 'Federal Reserve Holds Interest Rates Steady',
-        summary: 'The Federal Reserve has decided to maintain interest rates at their current level citing steady economic growth and controlled inflation.',
-        source: 'Financial Times',
-        publishedAt: new Date(Date.now() - 3600000).toISOString(),
-        url: '#',
-        impact: 'high',
-        category: 'central-bank',
-        relatedCurrencies: ['USD', 'EUR']
-      },
-      {
-        id: '2',
-        title: 'ECB Signals Potential Rate Cut in Upcoming Meeting',
-        summary: 'European Central Bank officials have hinted at a possible interest rate reduction in their next policy meeting as economic indicators show slowing growth.',
-        source: 'Bloomberg',
-        publishedAt: new Date(Date.now() - 7200000).toISOString(),
-        url: '#',
-        impact: 'high',
-        category: 'central-bank',
-        relatedCurrencies: ['EUR', 'GBP']
-      },
-      {
-        id: '3',
-        title: 'UK Inflation Falls to 2.4%, Below Expectations',
-        summary: 'The latest inflation data from the UK shows a decrease to 2.4%, coming in below the expected 2.6% and bringing it closer to the Bank of England\'s target.',
-        source: 'Reuters',
-        publishedAt: new Date(Date.now() - 86400000).toISOString(),
-        url: '#',
-        impact: 'medium',
-        category: 'economic-data',
-        relatedCurrencies: ['GBP', 'USD']
-      },
-      {
-        id: '4',
-        title: 'Japan Trade Deficit Widens as Export Growth Slows',
-        summary: 'Japan\'s trade deficit expanded in the latest month as export growth slowed amid global economic uncertainties and supply chain disruptions.',
-        source: 'Nikkei Asia',
-        publishedAt: new Date(Date.now() - 172800000).toISOString(),
-        url: '#',
-        impact: 'medium',
-        category: 'economic-data',
-        relatedCurrencies: ['JPY', 'USD']
-      },
-      {
-        id: '5',
-        title: 'Australian Unemployment Rate Drops to 3.8%',
-        summary: 'Australia\'s labor market showed unexpected strength with unemployment falling to 3.8%, beating analyst forecasts of 4.0%.',
-        source: 'ABC News',
-        publishedAt: new Date(Date.now() - 259200000).toISOString(),
-        url: '#',
-        impact: 'medium',
-        category: 'economic-data',
-        relatedCurrencies: ['AUD', 'USD']
-      },
-      {
-        id: '6',
-        title: 'OPEC+ Announces Production Cuts, Oil Prices Surge',
-        summary: 'OPEC and its allies have agreed to reduce oil production by 1 million barrels per day, leading to a significant increase in global oil prices.',
-        source: 'CNBC',
-        publishedAt: new Date(Date.now() - 345600000).toISOString(),
-        url: '#',
-        impact: 'high',
-        category: 'commodities',
-        relatedCurrencies: ['USD', 'CAD', 'NOK']
-      },
-      {
-        id: '7',
-        title: 'IMF Revises Global Growth Forecast Downward',
-        summary: 'The International Monetary Fund has lowered its global economic growth forecast for the year, citing persistent inflation and tighter monetary policy.',
-        source: 'Wall Street Journal',
-        publishedAt: new Date(Date.now() - 432000000).toISOString(),
-        url: '#',
-        impact: 'medium',
-        category: 'global-economy',
-        relatedCurrencies: ['USD', 'EUR', 'JPY', 'GBP']
-      },
-      {
-        id: '8',
-        title: 'New Trade Agreement Between US and EU in Final Stages',
-        summary: 'Negotiators from the United States and European Union report they are in the final stages of reaching a new trade agreement that would reduce tariffs on certain goods.',
-        source: 'Politico',
-        publishedAt: new Date(Date.now() - 518400000).toISOString(),
-        url: '#',
-        impact: 'medium',
-        category: 'geopolitics',
-        relatedCurrencies: ['EUR', 'USD']
-      },
-      {
-        id: '9',
-        title: 'COVID-19 Resurgence in Asia Threatens Supply Chains',
-        summary: 'A new wave of COVID-19 cases in parts of Asia is raising concerns about potential disruptions to global supply chains and manufacturing.',
-        source: 'South China Morning Post',
-        publishedAt: new Date(Date.now() - 604800000).toISOString(),
-        url: '#',
-        impact: 'high',
-        category: 'health',
-        relatedCurrencies: ['CNY', 'JPY', 'KRW']
-      },
-      {
-        id: '10',
-        title: 'Gold Prices Hit Six-Month High Amid Global Uncertainty',
-        summary: 'Gold prices have surged to their highest level in six months as investors seek safe-haven assets amid economic and geopolitical uncertainties.',
-        source: 'Market Watch',
-        publishedAt: new Date(Date.now() - 691200000).toISOString(),
-        url: '#',
-        impact: 'low',
-        category: 'commodities',
-        relatedCurrencies: ['USD', 'AUD']
-      }
-    ];
-  };
-
   // Query for news data
-  const { data: newsItems = [], isLoading, error } = useQuery({
-    queryKey: ['forexNews'],
-    queryFn: fetchForexNews,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-  });
+  const { data: newsItems = [], isLoading, error } = useNews();
 
   // Filter news based on search term and filters
   const filteredNews = newsItems.filter(item => {
     const matchesSearch = searchTerm === '' || 
       item.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      item.summary.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.relatedCurrencies.some(currency => currency.toLowerCase().includes(searchTerm.toLowerCase()));
+      item.description.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesImpact = impactFilter === 'all' || item.impact === impactFilter;
-    const matchesCategory = categoryFilter === 'all' || item.category === categoryFilter;
+    // Since we've changed data source, adapt the filtering
+    const matchesImpact = true; // No impact field in newsService data
+    const matchesCategory = true; // No category field in newsService data
     
     return matchesSearch && matchesImpact && matchesCategory;
   });
@@ -174,16 +39,6 @@ const ForexNewsPage = () => {
       hour: '2-digit',
       minute: '2-digit',
     }).format(date);
-  };
-
-  // Get impact badge color
-  const getImpactBadge = (impact: string) => {
-    switch (impact) {
-      case 'high': return "bg-danger-DEFAULT text-white";
-      case 'medium': return "bg-warning-DEFAULT text-white";
-      case 'low': return "bg-success-DEFAULT text-white";
-      default: return "bg-secondary";
-    }
   };
 
   return (
@@ -247,40 +102,30 @@ const ForexNewsPage = () => {
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredNews.length > 0 ? (
-              filteredNews.map((item) => (
-                <Card key={item.id} className="bg-trading-card border-trading-border hover:border-trading-border-hover transition-colors">
+              filteredNews.map((item, index) => (
+                <Card key={index} className="bg-trading-card border-trading-border hover:border-trading-border-hover transition-colors">
                   <CardHeader className="pb-2">
                     <div className="flex justify-between items-start gap-2">
                       <div className="space-y-1 flex-grow">
-                        <Badge className={getImpactBadge(item.impact)}>
-                          {item.impact.charAt(0).toUpperCase() + item.impact.slice(1)} Impact
-                        </Badge>
                         <CardTitle className="text-base mt-1">{item.title}</CardTitle>
                       </div>
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm text-muted-foreground mb-3">{item.summary}</p>
+                    <p className="text-sm text-muted-foreground mb-3">{item.description}</p>
                     <div className="flex justify-between items-center text-xs">
                       <div className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
                         <span className="text-muted-foreground">{formatDate(item.publishedAt)}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground">{item.source}</span>
+                        <span className="text-muted-foreground">{item.source.name}</span>
                         <Button variant="ghost" size="sm" className="h-6 px-2" asChild>
                           <a href={item.url} target="_blank" rel="noopener noreferrer">
                             <ExternalLink className="h-3 w-3" />
                           </a>
                         </Button>
                       </div>
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {item.relatedCurrencies.map((currency) => (
-                        <Badge key={currency} variant="outline" className="bg-trading-bg text-xs">
-                          {currency}
-                        </Badge>
-                      ))}
                     </div>
                   </CardContent>
                 </Card>

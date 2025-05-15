@@ -68,8 +68,21 @@ export const createNewsAlert = async (params: NewsAlertParams): Promise<boolean>
   try {
     console.log("Creating news alert for keywords:", params.keywords.join(', '));
     
+    // Format the message for notification
+    const message = `
+🗞️ NEWS ALERT CREATED
+📋 Keywords: ${params.keywords.join(', ')}
+📊 Importance: ${params.importance}
+📰 Sources: ${params.sources.join(', ') || 'All sources'}
+⏰ ${new Date().toLocaleString()}
+`;
+    
     // In a production app, this would register the alert with a backend service
+    // Here we'll simulate it for the demo
     await new Promise(resolve => setTimeout(resolve, 800));
+    
+    // Log the alert creation
+    console.log("News alert created:", message);
     
     return true;
   } catch (error) {
@@ -102,6 +115,13 @@ export const useNewsAlert = () => {
       toast.error(`Failed to create news alert: ${error}`);
     }
   });
+};
+
+// Initialize signal service (placeholder for any WebSocket or notification setup)
+// IMPORTANT: Renamed the second occurrence to initializeRealTimeSignalService to avoid duplication
+export const initializeSignalService = () => {
+  console.log("Initializing signal service");
+  // This would set up WebSocket connections, push notification registrations, etc.
 };
 
 export const useSignalNotification = () => {
@@ -221,7 +241,8 @@ export const setupRealTimeSignals = (isActive: boolean): void => {
 };
 
 // Initialize the service based on stored state
-export const initializeSignalService = (): void => {
+// Renamed from initializeSignalService to avoid duplication
+export const initializeRealTimeSignalService = (): void => {
   const isActive = localStorage.getItem('telegramSignalServiceActive') === 'true';
   if (isActive) {
     setupRealTimeSignals(true);

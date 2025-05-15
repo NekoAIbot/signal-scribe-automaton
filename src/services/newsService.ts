@@ -44,6 +44,13 @@ const mockNews: NewsItem[] = [
 const fetchNews = async (): Promise<NewsItem[]> => {
   try {
     const apiKey = API_KEYS.NEWSAPI_KEY;
+    
+    // If no API key is available, return mock data
+    if (!apiKey || apiKey === 'YOUR_NEWS_API_KEY') {
+      console.log("No NewsAPI key found, using mock data");
+      return mockNews;
+    }
+    
     const url = `https://newsapi.org/v2/everything?q=forex+trading+finance&apiKey=${apiKey}&pageSize=10&language=en`;
     
     const response = await fetch(url);
@@ -53,6 +60,13 @@ const fetchNews = async (): Promise<NewsItem[]> => {
     }
     
     const data = await response.json();
+    
+    // Check if articles array exists
+    if (!data.articles || !Array.isArray(data.articles) || data.articles.length === 0) {
+      console.warn("No articles found in API response, using mock data");
+      return mockNews;
+    }
+    
     return data.articles;
   } catch (error) {
     console.error("Error fetching news:", error);
