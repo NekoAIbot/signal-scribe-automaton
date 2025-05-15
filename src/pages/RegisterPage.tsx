@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '@/services/authService';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,14 +34,20 @@ const RegisterPage = () => {
     
     setSubmitted(true); // Prevent multiple form submissions
     
-    const result = await register(name, email, password);
-    if (result.success) {
-      if (result.code) {
-        setVerificationCode(result.code);
-        toast.success('Registration successful! A verification code has been sent to your email.');
+    try {
+      const result = await register(name, email, password);
+      if (result.success) {
+        if (result.code) {
+          setVerificationCode(result.code);
+          toast.success('Registration successful! A verification code has been sent to your email.');
+        }
+      } else {
+        setSubmitted(false); // Allow retry if failed
       }
-    } else {
-      setSubmitted(false); // Allow retry if failed
+    } catch (error) {
+      console.error('Registration error:', error);
+      toast.error(`Registration failed: ${(error as Error).message || 'Please try again'}`);
+      setSubmitted(false);
     }
   };
   

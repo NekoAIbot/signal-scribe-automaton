@@ -1,230 +1,166 @@
 
-import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
-import { toast } from "sonner";
-import { FirstLoginPasswordModal } from '@/components/auth/FirstLoginPasswordModal';
-import { initializeSignalService } from '@/services/notificationService';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { toast } from 'sonner';
 
 interface User {
   id: string;
+  name: string;
   email: string;
-  name?: string;
-  role?: 'user' | 'admin';
-  subscriptionTier?: 'free' | 'premium' | 'enterprise';
+  role: 'user' | 'admin';
+  subscriptionTier?: 'free' | 'basic' | 'premium' | 'enterprise';
 }
 
 interface AuthContextType {
   user: User | null;
-  isAuthenticated: boolean; // Added to match ProtectedRoute expectations
-  loading: boolean; // Added to match ProtectedRoute expectations
-  login: (email: string, password: string, verificationCode: string) => Promise<boolean>;
-  register: (name: string, email: string, password: string) => Promise<{success: boolean, code?: string}>;
+  loading: boolean;
+  isAuthenticated: boolean;
+  login: (email: string, password: string, code?: string) => Promise<boolean>;
   logout: () => void;
+  register: (name: string, email: string, password: string) => Promise<{success: boolean, code?: string}>;
 }
 
+// Create context with a default value
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [showFirstLoginModal, setShowFirstLoginModal] = useState(false);
-  const [tempLoginEmail, setTempLoginEmail] = useState('');
-
+  const [loading, setLoading] = useState(true);
+  
+  // Load user from localStorage on initial render
   useEffect(() => {
-    // Check if user is logged in from localStorage
-    const savedUser = localStorage.getItem('user');
-    if (savedUser) {
+    const storedUser = localStorage.getItem('auth_user');
+    const token = localStorage.getItem('auth_token');
+    
+    if (storedUser && token) {
       try {
-        const parsedUser = JSON.parse(savedUser);
-        setUser(parsedUser);
+        setUser(JSON.parse(storedUser));
       } catch (error) {
-        console.error('Failed to parse saved user:', error);
-        localStorage.removeItem('user');
+        console.error('Error parsing stored user:', error);
+        localStorage.removeItem('auth_user');
+        localStorage.removeItem('auth_token');
       }
     }
-    setIsLoading(false);
     
-    // Initialize signal service if it was active
-    initializeSignalService();
+    setLoading(false);
   }, []);
-
-  // Mock authentication functions
-  const login = async (email: string, password: string, verificationCode: string) => {
-    setIsLoading(true);
-    
+  
+  // Mock register function
+  const register = async (name: string, email: string, password: string): Promise<{success: boolean, code?: string}> => {
     try {
-      // In a real app, this would validate against a backend
+      setLoading(true);
+      
+      // Simple validation
+      if (!name || !email || !password) {
+        throw new Error('All fields are required');
+      }
+      
+      // Check if email is valid
+      if (!email.includes('@')) {
+        throw new Error('Please enter a valid email address');
+      }
+      
+      // Check if password is strong enough
+      if (password.length < 6) {
+        throw new Error('Password must be at least 6 characters long');
+      }
+      
+      // In a real app, you would call an API endpoint here
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Check if this is a first-time login for an admin-created user
-      const users = JSON.parse(localStorage.getItem('users') || '[]');
-      const existingUser = users.find((u: any) => u.email === email);
-      
-      if (existingUser && existingUser.temporaryPassword) {
-        // Show first login modal for setting password
-        setTempLoginEmail(email);
-        setShowFirstLoginModal(true);
-        setIsLoading(false);
-        return false;
-      }
-      
-      // Get verification code from storage
-      const storedCodes = JSON.parse(localStorage.getItem('verification_codes') || '{}');
-      const expectedCode = storedCodes[email];
-      
-      console.log("Verification attempt:", { email, providedCode: verificationCode, expectedCode });
-      
-      // Check if code exists and matches
-      if (!expectedCode) {
-        toast.error("No verification code found for this email. Please register first.");
-        setIsLoading(false);
-        return false;
-      }
-      
-      if (email && password && email.includes('@') && verificationCode === expectedCode) {
-        const user: User = {
-          id: '1',
-          name: email.split('@')[0],  // Use part of email as name for demo
-          email: email,
-          role: 'admin',
-          subscriptionTier: 'premium' // Added default subscription tier
-        };
-        
-        setUser(user);
-        
-        localStorage.setItem('auth_token', 'demo_token');
-        localStorage.setItem('auth_user', JSON.stringify(user));
-        localStorage.setItem('user', JSON.stringify(user)); // For backwards compatibility
-        
-        toast.success('Login successful');
-        setIsLoading(false);
-        return true;
-      } else {
-        throw new Error('Invalid credentials or verification code');
-      }
-    } catch (error) {
-      console.error('Login error:', error);
-      toast.error('Login failed. Please check your credentials and verification code.');
-      setIsLoading(false);
-      return false;
-    }
-  };
-
-  const register = async (name: string, email: string, password: string) => {
-    setIsLoading(true);
-    
-    try {
-      // In a real app, this would call a backend API
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Check if user already exists
-      const users = JSON.parse(localStorage.getItem('users') || '[]');
-      if (users.some((u: any) => u.email === email)) {
-        toast.error('Email already in use');
-        setIsLoading(false);
-        return { success: false };
-      }
-      
-      // Generate verification code
+      // Generate verification code - in a real app, this would be sent via email
       const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
       
-      // Store verification code in localStorage for persistence
-      const currentCodes = JSON.parse(localStorage.getItem('verification_codes') || '{}');
-      currentCodes[email] = verificationCode;
-      localStorage.setItem('verification_codes', JSON.stringify(currentCodes));
+      // Store in localStorage for persistence in the demo app
+      const verificationCodes = JSON.parse(localStorage.getItem('verification_codes') || '{}');
+      verificationCodes[email] = verificationCode;
+      localStorage.setItem('verification_codes', JSON.stringify(verificationCodes));
       
-      // Create new user
-      const newUser: User & { password: string } = {
-        id: `user-${Date.now()}`,
-        email,
-        name,
-        role: 'user',
-        subscriptionTier: 'free', // Added default subscription tier
-        password // In a real app, this would be hashed
-      };
+      // Send email (simulated)
+      console.log(`Email verification code for ${email}: ${verificationCode}`);
       
-      // Store in "database"
-      users.push(newUser);
-      localStorage.setItem('users', JSON.stringify(users));
-      
-      setIsLoading(false);
+      // Return success and the code (in a real app, you wouldn't return the code)
       return { success: true, code: verificationCode };
     } catch (error) {
-      console.error('Registration error:', error);
       toast.error(`Registration failed: ${(error as Error).message}`);
-      setIsLoading(false);
       return { success: false };
+    } finally {
+      setLoading(false);
     }
   };
-
+  
+  // Mock login function
+  const login = async (email: string, password: string, code = ''): Promise<boolean> => {
+    try {
+      setLoading(true);
+      
+      // In a real app, you would call an API endpoint here
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Verify credentials (simplified mock)
+      if (!email || !password) {
+        throw new Error('Email and password are required');
+      }
+      
+      // Check verification code if provided
+      if (code) {
+        const verificationCodes = JSON.parse(localStorage.getItem('verification_codes') || '{}');
+        const expectedCode = verificationCodes[email];
+        
+        if (code !== expectedCode) {
+          throw new Error('Invalid verification code');
+        }
+      }
+      
+      // Create a mock user based on the email
+      const mockUser: User = {
+        id: '1',
+        name: email.split('@')[0],
+        email: email,
+        role: email.includes('admin') ? 'admin' : 'user',
+        subscriptionTier: 'free'
+      };
+      
+      // Store user in state and localStorage
+      setUser(mockUser);
+      localStorage.setItem('auth_user', JSON.stringify(mockUser));
+      localStorage.setItem('auth_token', 'mock-jwt-token');
+      
+      return true;
+    } catch (error) {
+      toast.error(`Login failed: ${(error as Error).message}`);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Logout function
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('auth_token');
     localStorage.removeItem('auth_user');
-    localStorage.removeItem('user');
-    toast.info('Logged out successfully');
+    localStorage.removeItem('auth_token');
+    toast.success('You have been logged out');
   };
-
-  const handleSetPassword = async (email: string, password: string) => {
-    // In a real app, this would call a backend API
-    const users = JSON.parse(localStorage.getItem('users') || '[]');
-    const userIndex = users.findIndex((u: any) => u.email === email);
-    
-    if (userIndex >= 0) {
-      // Update user password and remove temporary password flag
-      users[userIndex].password = password;
-      delete users[userIndex].temporaryPassword;
-      
-      // Save updated users
-      localStorage.setItem('users', JSON.stringify(users));
-      
-      // Log user in
-      const userData: User = { 
-        id: users[userIndex].id, 
-        email, 
-        name: users[userIndex].name,
-        role: users[userIndex].role || 'user',
-        subscriptionTier: 'free' // Default subscription tier
-      };
-      setUser(userData);
-      localStorage.setItem('auth_token', 'demo_token');
-      localStorage.setItem('auth_user', JSON.stringify(userData));
-      localStorage.setItem('user', JSON.stringify(userData));
-      
-      // Hide modal
-      setShowFirstLoginModal(false);
-      setTempLoginEmail('');
-    } else {
-      throw new Error('User not found');
-    }
-  };
-
+  
+  // Provide auth context
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      isAuthenticated: !!user, 
-      loading: isLoading, 
-      login, 
-      register, 
-      logout 
+    <AuthContext.Provider value={{
+      user,
+      loading,
+      isAuthenticated: !!user,
+      login,
+      logout,
+      register
     }}>
       {children}
-      <FirstLoginPasswordModal 
-        open={showFirstLoginModal}
-        email={tempLoginEmail}
-        onSetPassword={handleSetPassword}
-        onCancel={() => {
-          setShowFirstLoginModal(false);
-          setTempLoginEmail('');
-        }}
-      />
     </AuthContext.Provider>
   );
-}
+};
 
-export function useAuth() {
+export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-}
+};

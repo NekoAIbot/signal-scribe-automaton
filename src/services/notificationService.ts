@@ -1,3 +1,4 @@
+
 import { toast } from "sonner";
 import { useMutation } from "@tanstack/react-query";
 
@@ -101,12 +102,6 @@ export const useNewsAlert = () => {
       toast.error(`Failed to create news alert: ${error}`);
     }
   });
-};
-
-// Initialize signal service (placeholder for any WebSocket or notification setup)
-export const initializeSignalService = () => {
-  console.log("Initializing signal service");
-  // This would set up WebSocket connections, push notification registrations, etc.
 };
 
 export const useSignalNotification = () => {
