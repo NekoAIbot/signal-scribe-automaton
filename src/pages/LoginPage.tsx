@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowRight, Mail } from "lucide-react";
 import { toast } from 'sonner';
-import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -89,20 +88,15 @@ const LoginPage = () => {
               <label htmlFor="verificationCode" className="text-sm font-medium">
                 Verification Code
               </label>
-              <div className="flex justify-center py-2">
-                <InputOTP
-                  maxLength={6}
-                  value={verificationCode}
-                  onChange={setVerificationCode}
-                  render={({ slots }) => (
-                    <InputOTPGroup>
-                      {slots.map((slot, index) => (
-                        <InputOTPSlot key={index} {...slot} index={index} />
-                      ))}
-                    </InputOTPGroup>
-                  )}
-                />
-              </div>
+              <Input
+                id="verificationCode"
+                type="text"
+                placeholder="Enter 6-digit code"
+                value={verificationCode}
+                onChange={(e) => setVerificationCode(e.target.value)}
+                maxLength={6}
+                required
+              />
             </div>
             <Button
               type="submit"

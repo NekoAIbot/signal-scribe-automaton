@@ -44,43 +44,45 @@ function ScrollToTop() {
 
 function App() {
   return (
-    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <ScrollToTop />
-          
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
+    <React.StrictMode>
+      <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <ScrollToTop />
             
-            <Route path="/" element={<ProtectedRoute />}>
-              <Route element={<Layout />}>
-                <Route index element={<Dashboard />} />
-                <Route path="analytics" element={<AnalyticsPage />} />
-                <Route path="signals" element={<SignalsPage />} />
-                <Route path="alerts" element={<AlertsPage />} />
-                <Route path="monitoring" element={<MonitoringPage />} />
-                <Route path="settings" element={<SettingsPage />} />
-                <Route path="news" element={<ForexNewsPage />} />
-                <Route 
-                  path="admin" 
-                  element={
-                    <AdminRoute>
-                      <AdminPage />
-                    </AdminRoute>
-                  } 
-                />
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
+              
+              <Route path="/" element={<ProtectedRoute />}>
+                <Route element={<Layout />}>
+                  <Route index element={<Dashboard />} />
+                  <Route path="analytics" element={<AnalyticsPage />} />
+                  <Route path="signals" element={<SignalsPage />} />
+                  <Route path="alerts" element={<AlertsPage />} />
+                  <Route path="monitoring" element={<MonitoringPage />} />
+                  <Route path="settings" element={<SettingsPage />} />
+                  <Route path="news" element={<ForexNewsPage />} />
+                  <Route 
+                    path="admin" 
+                    element={
+                      <AdminRoute>
+                        <AdminPage />
+                      </AdminRoute>
+                    } 
+                  />
+                </Route>
               </Route>
-            </Route>
+              
+              <Route path="*" element={<NotFound />} />
+            </Routes>
             
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-          
-          <SonnerToaster position="top-right" closeButton />
-          <Toaster />
-        </AuthProvider>
-      </QueryClientProvider>
-    </ThemeProvider>
+            <SonnerToaster position="top-right" closeButton />
+            <Toaster />
+          </AuthProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
+    </React.StrictMode>
   );
 }
 

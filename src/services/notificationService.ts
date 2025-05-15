@@ -1,7 +1,5 @@
-
 import { toast } from "sonner";
 import { useMutation } from "@tanstack/react-query";
-import { API_KEYS } from "@/config/apiConfig";
 
 export interface SignalNotification {
   symbol: string;
@@ -49,53 +47,13 @@ export const sendEmailNotification = async (subject: string, body: string, to: s
   }
 };
 
-// Function to create news alert
-export const createNewsAlert = async (params: NewsAlertParams): Promise<boolean> => {
-  try {
-    console.log("Creating news alert for keywords:", params.keywords.join(', '));
-    
-    // Format the message for notification
-    const message = `
-🗞️ NEWS ALERT CREATED
-📋 Keywords: ${params.keywords.join(', ')}
-📊 Importance: ${params.importance}
-📰 Sources: ${params.sources.join(', ') || 'All sources'}
-⏰ ${new Date().toLocaleString()}
-`;
-    
-    // In a production app, this would register the alert with a backend service
-    // Here we'll simulate it for the demo
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    // Log the alert creation
-    console.log("News alert created:", message);
-    
-    return true;
-  } catch (error) {
-    console.error("Error creating news alert:", error);
-    return false;
-  }
-};
-
 // Function to create technical alert
 export const createTechnicalAlert = async (params: TechnicalAlertParams): Promise<boolean> => {
   try {
-    console.log("Creating technical alert:", params);
+    console.log("Creating technical alert for:", params.symbol);
     
-    // Format the message for notification
-    const message = `
-🔔 TECHNICAL ALERT
-📊 ${params.symbol} - ${params.timeframe}
-📈 ${params.indicator} ${params.condition} ${params.value}
-⏰ ${new Date().toLocaleString()}
-`;
-    
-    // In a production app, this would send the alert to a backend service
-    // Here we'll simulate it for the demo
-    await new Promise(resolve => setTimeout(resolve, 600));
-    
-    // Log the alert creation
-    console.log("Technical alert created:", message);
+    // In a production app, this would register the alert with a backend service
+    await new Promise(resolve => setTimeout(resolve, 800));
     
     return true;
   } catch (error) {
@@ -104,47 +62,62 @@ export const createTechnicalAlert = async (params: TechnicalAlertParams): Promis
   }
 };
 
-// Function to broadcast signal to Telegram
-export const broadcastSignal = async (signal: SignalNotification): Promise<boolean> => {
+// Function to create news alert
+export const createNewsAlert = async (params: NewsAlertParams): Promise<boolean> => {
   try {
-    // Get current time if not provided
-    const signalTime = signal.time || new Date().toISOString();
+    console.log("Creating news alert for keywords:", params.keywords.join(', '));
     
-    // Format the message for Telegram
-    const message = `
-📊 TRADING SIGNAL
-${signal.type === 'BUY' ? '🟢 BUY' : '🔴 SELL'}: ${signal.symbol}
-💰 Price: ${signal.price.toFixed(5)}
-📈 Strategy: ${signal.strategy || 'AI Model'}
-🕒 Time: ${new Date(signalTime).toLocaleString()}
-`;
-    
-    // In a production app, this would send the message via an API or webhook
-    // Here we'll simulate it for the demo
-    console.log("Broadcasting signal to Telegram:", message);
-    
-    // Simulate successful broadcast
+    // In a production app, this would register the alert with a backend service
     await new Promise(resolve => setTimeout(resolve, 800));
     
-    toast.success(`Signal ${signal.type} ${signal.symbol} broadcasted to Telegram`);
     return true;
   } catch (error) {
-    console.error("Error broadcasting signal:", error);
-    toast.error(`Failed to broadcast signal to Telegram: ${(error as Error).message}`);
+    console.error("Error creating news alert:", error);
     return false;
   }
 };
 
-// Hook to broadcast signal with React Query
-export const useBroadcastSignal = () => {
+// Hook to use technical alert creation
+export const useTechnicalAlert = () => {
   return useMutation({
-    mutationFn: broadcastSignal,
+    mutationFn: createTechnicalAlert,
     onSuccess: () => {
-      // Handle success if needed
+      toast.success("Technical alert created successfully!");
     },
     onError: (error) => {
-      console.error("Error broadcasting signal:", error);
-      toast.error(`Failed to broadcast signal: ${(error as Error).message}`);
+      toast.error(`Failed to create technical alert: ${error}`);
+    }
+  });
+};
+
+// Hook to use news alert creation
+export const useNewsAlert = () => {
+  return useMutation({
+    mutationFn: createNewsAlert,
+    onSuccess: () => {
+      toast.success("News alert created successfully!");
+    },
+    onError: (error) => {
+      toast.error(`Failed to create news alert: ${error}`);
+    }
+  });
+};
+
+// Initialize signal service (placeholder for any WebSocket or notification setup)
+export const initializeSignalService = () => {
+  console.log("Initializing signal service");
+  // This would set up WebSocket connections, push notification registrations, etc.
+};
+
+export const useSignalNotification = () => {
+  return useMutation({
+    mutationFn: async (notification: SignalNotification) => {
+      // Simulate sending notification to user
+      console.log("Signal notification:", notification);
+      return notification;
+    },
+    onSuccess: () => {
+      // This would be called after successful notification
     }
   });
 };
@@ -270,4 +243,49 @@ export const toggleTradeSignalService = async (isActive: boolean): Promise<boole
     toast.error(`Failed to toggle trade signal service: ${(error as Error).message}`);
     return !isActive;
   }
+};
+
+// Function to broadcast signal to Telegram
+export const broadcastSignal = async (signal: SignalNotification): Promise<boolean> => {
+  try {
+    // Get current time if not provided
+    const signalTime = signal.time || new Date().toISOString();
+    
+    // Format the message for Telegram
+    const message = `
+📊 TRADING SIGNAL
+${signal.type === 'BUY' ? '🟢 BUY' : '🔴 SELL'}: ${signal.symbol}
+💰 Price: ${signal.price.toFixed(5)}
+📈 Strategy: ${signal.strategy || 'AI Model'}
+🕒 Time: ${new Date(signalTime).toLocaleString()}
+`;
+    
+    // In a production app, this would send the message via an API or webhook
+    // Here we'll simulate it for the demo
+    console.log("Broadcasting signal to Telegram:", message);
+    
+    // Simulate successful broadcast
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    toast.success(`Signal ${signal.type} ${signal.symbol} broadcasted to Telegram`);
+    return true;
+  } catch (error) {
+    console.error("Error broadcasting signal:", error);
+    toast.error(`Failed to broadcast signal to Telegram: ${(error as Error).message}`);
+    return false;
+  }
+};
+
+// Hook to broadcast signal with React Query
+export const useBroadcastSignal = () => {
+  return useMutation({
+    mutationFn: broadcastSignal,
+    onSuccess: () => {
+      // Handle success if needed
+    },
+    onError: (error) => {
+      console.error("Error broadcasting signal:", error);
+      toast.error(`Failed to broadcast signal: ${(error as Error).message}`);
+    }
+  });
 };

@@ -9,14 +9,16 @@ interface User {
   email: string;
   name?: string;
   role?: 'user' | 'admin';
+  subscriptionTier?: 'free' | 'premium' | 'enterprise';
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  isAuthenticated: boolean; // Added to match ProtectedRoute expectations
+  loading: boolean; // Added to match ProtectedRoute expectations
+  login: (email: string, password: string, verificationCode: string) => Promise<boolean>;
+  register: (name: string, email: string, password: string) => Promise<{success: boolean, code?: string}>;
   logout: () => void;
-  isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -46,7 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Mock authentication functions
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, verificationCode: string) => {
     setIsLoading(true);
     
     try {
@@ -62,39 +64,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setTempLoginEmail(email);
         setShowFirstLoginModal(true);
         setIsLoading(false);
-        return;
+        return false;
       }
       
-      // Simulate simple validation
-      if (email === 'admin@example.com' && password === 'admin') {
-        const adminUser: User = { id: '1', email, name: 'Admin User', role: 'admin' };
-        setUser(adminUser);
-        localStorage.setItem('user', JSON.stringify(adminUser));
-        toast.success('Logged in as admin');
-      } else if (email === 'user@example.com' && password === 'password') {
-        const normalUser: User = { id: '2', email, name: 'Regular User', role: 'user' };
-        setUser(normalUser);
-        localStorage.setItem('user', JSON.stringify(normalUser));
-        toast.success('Logged in as user');
-      } else if (existingUser && existingUser.password === password) {
-        // Login for registered users
-        const userData: User = { 
-          id: existingUser.id, 
-          email: existingUser.email, 
-          name: existingUser.name, 
-          role: existingUser.role || 'user' 
+      // Get verification code from storage
+      const storedCodes = JSON.parse(localStorage.getItem('verification_codes') || '{}');
+      const expectedCode = storedCodes[email];
+      
+      console.log("Verification attempt:", { email, providedCode: verificationCode, expectedCode });
+      
+      // Check if code exists and matches
+      if (!expectedCode) {
+        toast.error("No verification code found for this email. Please register first.");
+        setIsLoading(false);
+        return false;
+      }
+      
+      if (email && password && email.includes('@') && verificationCode === expectedCode) {
+        const user: User = {
+          id: '1',
+          name: email.split('@')[0],  // Use part of email as name for demo
+          email: email,
+          role: 'admin',
+          subscriptionTier: 'premium' // Added default subscription tier
         };
-        setUser(userData);
-        localStorage.setItem('user', JSON.stringify(userData));
-        toast.success(`Welcome back, ${existingUser.name || existingUser.email}`);
+        
+        setUser(user);
+        
+        localStorage.setItem('auth_token', 'demo_token');
+        localStorage.setItem('auth_user', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(user)); // For backwards compatibility
+        
+        toast.success('Login successful');
+        setIsLoading(false);
+        return true;
       } else {
-        toast.error('Invalid email or password');
+        throw new Error('Invalid credentials or verification code');
       }
     } catch (error) {
       console.error('Login error:', error);
-      toast.error(`Login failed: ${(error as Error).message}`);
-    } finally {
+      toast.error('Login failed. Please check your credentials and verification code.');
       setIsLoading(false);
+      return false;
     }
   };
 
@@ -109,8 +120,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const users = JSON.parse(localStorage.getItem('users') || '[]');
       if (users.some((u: any) => u.email === email)) {
         toast.error('Email already in use');
-        return;
+        setIsLoading(false);
+        return { success: false };
       }
+      
+      // Generate verification code
+      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+      
+      // Store verification code in localStorage for persistence
+      const currentCodes = JSON.parse(localStorage.getItem('verification_codes') || '{}');
+      currentCodes[email] = verificationCode;
+      localStorage.setItem('verification_codes', JSON.stringify(currentCodes));
       
       // Create new user
       const newUser: User & { password: string } = {
@@ -118,6 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email,
         name,
         role: 'user',
+        subscriptionTier: 'free', // Added default subscription tier
         password // In a real app, this would be hashed
       };
       
@@ -125,22 +146,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       users.push(newUser);
       localStorage.setItem('users', JSON.stringify(users));
       
-      // Log user in
-      const userData: User = { id: newUser.id, email, name, role: 'user' };
-      setUser(userData);
-      localStorage.setItem('user', JSON.stringify(userData));
-      
-      toast.success('Registration successful');
+      setIsLoading(false);
+      return { success: true, code: verificationCode };
     } catch (error) {
       console.error('Registration error:', error);
       toast.error(`Registration failed: ${(error as Error).message}`);
-    } finally {
       setIsLoading(false);
+      return { success: false };
     }
   };
 
   const logout = () => {
     setUser(null);
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_user');
     localStorage.removeItem('user');
     toast.info('Logged out successfully');
   };
@@ -163,9 +182,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         id: users[userIndex].id, 
         email, 
         name: users[userIndex].name,
-        role: users[userIndex].role || 'user'
+        role: users[userIndex].role || 'user',
+        subscriptionTier: 'free' // Default subscription tier
       };
       setUser(userData);
+      localStorage.setItem('auth_token', 'demo_token');
+      localStorage.setItem('auth_user', JSON.stringify(userData));
       localStorage.setItem('user', JSON.stringify(userData));
       
       // Hide modal
@@ -177,7 +199,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, isLoading }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      isAuthenticated: !!user, 
+      loading: isLoading, 
+      login, 
+      register, 
+      logout 
+    }}>
       {children}
       <FirstLoginPasswordModal 
         open={showFirstLoginModal}
