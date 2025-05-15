@@ -1,7 +1,7 @@
-
 import { MarketData } from './marketDataService';
 import { CONFIG_FLAGS } from '@/config/apiConfig';
 import { toast } from 'sonner';
+import { MT5AccountDetails } from './types/broker';
 
 export interface TradeSignal {
   id: number;
@@ -18,17 +18,6 @@ export interface TradeSignal {
   takeProfit4?: number;
   risk?: number;
   lotSize?: number;
-}
-
-// Enhanced account details interface for MT5 connection
-export interface MT5AccountDetails {
-  login: string;
-  password: string;
-  server: string;
-  platform?: 'MT4' | 'MT5' | 'cTrader';
-  accountType?: 'demo' | 'real';
-  lotSize?: number;
-  maxRisk?: number;
 }
 
 // Technical indicators calculation

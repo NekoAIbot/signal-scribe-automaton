@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +8,8 @@ import { useTradingSignals } from "@/services/marketDataService";
 import { executeSignalAcrossAccounts } from "@/services/ai/signalService";
 import { EnhancedSignal } from "@/services/ai/types";
 import { cn } from "@/lib/utils";
-import { BrokerSettings, BrokerSettingsModal } from "@/components/settings/BrokerSettingsModal";
+import { BrokerSettings } from "@/services/types/broker";
+import { BrokerSettingsModal } from "@/components/settings/BrokerSettingsModal";
 
 export function TradingSignals() {
   const { data: signals = [], refetch } = useTradingSignals();

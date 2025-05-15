@@ -9,7 +9,7 @@ export interface MT5AccountDetails {
   equity?: number;
   connected: boolean;
   lastSyncTime?: string;
-  password?: string;
+  password?: string; // Changed to optional to match how it's used in executeMT5Trade
   platform?: string;
   accountType?: string;
   lotSize?: number;
