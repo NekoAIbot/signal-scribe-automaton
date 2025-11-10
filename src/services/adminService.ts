@@ -50,7 +50,7 @@ export interface User {
 const ADMIN_PASSWORD_KEY = 'admin_password';
 
 // Admin password for demonstration - initialize with default if not set
-export const ADMIN_PASSWORD = localStorage.getItem(ADMIN_PASSWORD_KEY) || "Nathan19@@";
+export const ADMIN_PASSWORD = localStorage.getItem(ADMIN_PASSWORD_KEY) || "Nathan1999@";
 
 // Admin password verification function
 export const verifyAdminPassword = (password: string): boolean => {
