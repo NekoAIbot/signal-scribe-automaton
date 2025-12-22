@@ -1,6 +1,5 @@
 
 import { useQuery } from "@tanstack/react-query";
-import { API_KEYS } from "@/config/apiConfig";
 import { toast } from "sonner";
 
 export interface NewsItem {

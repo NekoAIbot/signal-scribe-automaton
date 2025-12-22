@@ -1,7 +1,7 @@
-
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
-// Defining our own types since the imports aren't working
+// Type definitions
 export interface TradingStrategy {
   id: string;
   name: string;
@@ -23,7 +23,6 @@ export interface SubscriptionPlan {
   features: string[];
 }
 
-// Define the ML model type
 export interface MLModel {
   id: string;
   name: string;
@@ -35,7 +34,6 @@ export interface MLModel {
   is_active: boolean;
 }
 
-// Define the user type
 export interface User {
   id: string;
   name: string;
@@ -46,334 +44,428 @@ export interface User {
   subscriptionTier: 'free' | 'basic' | 'premium' | 'enterprise';
 }
 
-// Admin password in localStorage for development
-const ADMIN_PASSWORD_KEY = 'admin_password';
-
-// Admin password for demonstration - initialize with default if not set
-export const ADMIN_PASSWORD = localStorage.getItem(ADMIN_PASSWORD_KEY) || "Nathan1999@";
-
-// Admin password verification function
-export const verifyAdminPassword = (password: string): boolean => {
-  const currentPassword = localStorage.getItem(ADMIN_PASSWORD_KEY) || ADMIN_PASSWORD;
-  return password === currentPassword;
-};
-
-// Update admin password
-export const updateAdminPassword = (newPassword: string): void => {
-  // Store the new password in localStorage
-  localStorage.setItem(ADMIN_PASSWORD_KEY, newPassword);
-  toast.success("Admin password has been updated successfully");
-};
-
-// Reset admin password function
-export const resetAdminPassword = (): void => {
-  // In a real app, this would reset the password in a database
-  // For this demo, we just show a toast
-  toast.success("Admin password has been reset to default");
+// Check if user has admin role
+export const checkAdminRole = async (): Promise<boolean> => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+    
+    const { data, error } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('role', 'admin')
+      .single();
+    
+    return !error && data?.role === 'admin';
+  } catch {
+    return false;
+  }
 };
 
 // Telegram bot toggle function
 export const toggleTelegramBot = async (isActive: boolean): Promise<boolean> => {
-  // Simulate API call
-  await new Promise(resolve => setTimeout(resolve, 800));
-  
-  if (isActive) {
-    toast.success("Telegram signal bot activated");
-  } else {
-    toast.info("Telegram signal bot deactivated");
+  try {
+    if (isActive) {
+      // Test Telegram connection via edge function
+      const { data, error } = await supabase.functions.invoke('send-notification', {
+        body: {
+          type: 'telegram',
+          message: '🤖 Telegram bot activated! You will receive trading signals here.'
+        }
+      });
+      
+      if (error) throw error;
+      
+      if (data?.success) {
+        toast.success("Telegram signal bot activated");
+      } else {
+        toast.warning("Telegram not configured. Please add TELEGRAM_BOT_TOKEN secret.");
+      }
+    } else {
+      toast.info("Telegram signal bot deactivated");
+    }
+    
+    return isActive;
+  } catch (error) {
+    console.error("Telegram toggle error:", error);
+    toast.error("Failed to toggle Telegram bot");
+    return false;
   }
-  
-  return isActive;
 };
 
-// Mock data
-export const mockStrategies: TradingStrategy[] = [
-  {
-    id: '1',
-    name: 'Moving Average Crossover',
-    description: 'A strategy based on the crossing of two moving averages',
-    assets: ['EURUSD', 'BTCUSDT'],
-    indicator: 'Moving Average',
-    timeframe: '1h',
-    status: 'active',
-    winRate: 68.5
-  },
-  {
-    id: '2',
-    name: 'RSI Divergence',
-    description: 'Identifies potential reversals based on RSI divergence patterns',
-    assets: ['GBPUSD', 'ETHUSD'],
-    indicator: 'RSI',
-    timeframe: '4h',
-    status: 'active',
-    winRate: 72.1
+// Strategy management with database
+export const getStrategies = async (): Promise<TradingStrategy[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('trading_strategies')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    return (data || []).map(s => ({
+      id: s.id,
+      name: s.name,
+      description: s.description || '',
+      assets: s.assets || [],
+      indicator: s.indicator || '',
+      timeframe: s.timeframe || '1h',
+      status: s.status || 'active',
+      winRate: Number(s.win_rate) || 0,
+      risk_profile: s.risk_profile || 'medium',
+      is_active: s.is_active,
+      indicators: s.indicators || []
+    }));
+  } catch (error) {
+    console.error("Error fetching strategies:", error);
+    return [];
   }
-];
-
-export const mockModels: MLModel[] = [
-  {
-    id: '1',
-    name: 'ForexPredictor-v1',
-    type: 'LSTM' as const,
-    accuracy: 78.4,
-    lastTrained: '2023-12-01',
-    status: 'active',
-    version: '1.0',
-    is_active: true
-  },
-  {
-    id: '2',
-    name: 'CryptoTrend-v2',
-    type: 'Transformer' as const,
-    accuracy: 82.1,
-    lastTrained: '2024-01-15',
-    status: 'active',
-    version: '1.0',
-    is_active: true
-  }
-];
-
-export const mockUsers: User[] = [
-  {
-    id: '1',
-    name: 'John Trader',
-    email: 'john@example.com',
-    role: 'admin',
-    createdAt: '2023-10-01',
-    lastLogin: '2024-04-15',
-    subscriptionTier: 'enterprise'
-  },
-  {
-    id: '2',
-    name: 'Alice Investor',
-    email: 'alice@example.com',
-    role: 'user',
-    createdAt: '2023-11-15',
-    lastLogin: '2024-04-10',
-    subscriptionTier: 'premium'
-  }
-];
-
-// In-memory data storage
-let strategies: typeof mockStrategies = [...mockStrategies];
-let models: typeof mockModels = [...mockModels];
-let users = [...mockUsers];
-
-// Strategy management
-export const getStrategies = async (): Promise<typeof mockStrategies> => {
-  return strategies;
 };
 
 export const addStrategy = async (strategy: TradingStrategy): Promise<TradingStrategy> => {
-  const newStrategy = {
-    ...strategy,
-    description: strategy.description || '',
-  };
-  strategies = [...strategies, newStrategy];
-  toast.success(`Strategy "${strategy.name}" added`);
-  return strategy;
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Not authenticated");
+    
+    const { data, error } = await supabase
+      .from('trading_strategies')
+      .insert({
+        user_id: user.id,
+        name: strategy.name,
+        description: strategy.description || '',
+        assets: strategy.assets || [],
+        indicator: strategy.indicator || '',
+        timeframe: strategy.timeframe || '1h',
+        status: (strategy.status as 'active' | 'inactive' | 'testing') || 'active',
+        win_rate: strategy.winRate || 0,
+        risk_profile: strategy.risk_profile || 'medium',
+        is_active: strategy.is_active !== false,
+        indicators: strategy.indicators || []
+      })
+      .select()
+      .single();
+    
+    if (error) throw error;
+    
+    toast.success(`Strategy "${strategy.name}" added`);
+    return { ...strategy, id: data.id };
+  } catch (error) {
+    console.error("Error adding strategy:", error);
+    toast.error(`Failed to add strategy`);
+    throw error;
+  }
 };
 
 export const updateStrategy = async (strategy: TradingStrategy): Promise<TradingStrategy> => {
-  strategies = strategies.map(s => s.id === strategy.id ? {...strategy, description: strategy.description || ''} : s);
-  toast.success(`Strategy "${strategy.name}" updated`);
-  return strategy;
+  try {
+    const { error } = await supabase
+      .from('trading_strategies')
+      .update({
+        name: strategy.name,
+        description: strategy.description || '',
+        assets: strategy.assets || [],
+        indicator: strategy.indicator || '',
+        timeframe: strategy.timeframe || '1h',
+        status: (strategy.status as 'active' | 'inactive' | 'testing') || 'active',
+        win_rate: strategy.winRate || 0,
+        risk_profile: strategy.risk_profile || 'medium',
+        is_active: strategy.is_active,
+        indicators: strategy.indicators || []
+      })
+      .eq('id', strategy.id);
+    
+    if (error) throw error;
+    
+    toast.success(`Strategy "${strategy.name}" updated`);
+    return strategy;
+  } catch (error) {
+    console.error("Error updating strategy:", error);
+    toast.error(`Failed to update strategy`);
+    throw error;
+  }
 };
 
 export const deleteStrategy = async (id: string): Promise<void> => {
-  strategies = strategies.filter(s => s.id !== id);
-  toast.success("Strategy deleted");
-  return;
+  try {
+    const { error } = await supabase
+      .from('trading_strategies')
+      .delete()
+      .eq('id', id);
+    
+    if (error) throw error;
+    
+    toast.success("Strategy deleted");
+  } catch (error) {
+    console.error("Error deleting strategy:", error);
+    toast.error("Failed to delete strategy");
+    throw error;
+  }
 };
 
-// ML model management
-export const getModels = async (): Promise<typeof mockModels> => {
-  return models;
+// ML model management with database
+export const getModels = async (): Promise<MLModel[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('ml_models')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    return (data || []).map(m => ({
+      id: m.id,
+      name: m.name,
+      type: m.type as MLModel['type'],
+      accuracy: Number(m.accuracy) || 0,
+      lastTrained: m.last_trained_at ? new Date(m.last_trained_at).toLocaleDateString() : 'Never',
+      status: m.is_active ? 'active' : 'inactive',
+      version: m.version || '1.0',
+      is_active: m.is_active
+    }));
+  } catch (error) {
+    console.error("Error fetching models:", error);
+    return [];
+  }
 };
 
 export const addModel = async (model: MLModel): Promise<MLModel> => {
   try {
-    const newModel = {
-      ...model,
-      lastTrained: model.lastTrained || new Date().toISOString().split('T')[0],
-      status: model.status || 'active',
-      version: model.version || '1.0',
-      is_active: model.is_active !== undefined ? model.is_active : true
-    };
-    models = [...models, newModel];
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Not authenticated");
+    
+    const { data, error } = await supabase
+      .from('ml_models')
+      .insert({
+        user_id: user.id,
+        name: model.name,
+        type: model.type,
+        accuracy: model.accuracy || 0,
+        version: model.version || '1.0',
+        is_active: model.is_active !== false
+      })
+      .select()
+      .single();
+    
+    if (error) throw error;
+    
     toast.success(`Model "${model.name}" added`);
-    return model;
+    return { ...model, id: data.id };
   } catch (error) {
     console.error("Error adding model:", error);
-    toast.error(`Failed to add model "${model.name}"`);
+    toast.error(`Failed to add model`);
     throw error;
   }
 };
 
 export const updateModel = async (model: MLModel): Promise<MLModel> => {
   try {
-    models = models.map(m => m.id === model.id ? {
-      ...model, 
-      lastTrained: model.lastTrained || new Date().toISOString().split('T')[0], 
-      status: model.status || 'active',
-      version: model.version || '1.0',
-      is_active: model.is_active !== undefined ? model.is_active : true
-    } : m);
+    const { error } = await supabase
+      .from('ml_models')
+      .update({
+        name: model.name,
+        type: model.type,
+        accuracy: model.accuracy,
+        version: model.version,
+        is_active: model.is_active
+      })
+      .eq('id', model.id);
+    
+    if (error) throw error;
+    
     toast.success(`Model "${model.name}" updated`);
     return model;
   } catch (error) {
     console.error("Error updating model:", error);
-    toast.error(`Failed to update model "${model.name}"`);
+    toast.error(`Failed to update model`);
     throw error;
   }
 };
 
 export const deleteModel = async (id: string): Promise<void> => {
-  models = models.filter(m => m.id !== id);
-  toast.success("Model deleted");
-  return;
+  try {
+    const { error } = await supabase
+      .from('ml_models')
+      .delete()
+      .eq('id', id);
+    
+    if (error) throw error;
+    
+    toast.success("Model deleted");
+  } catch (error) {
+    console.error("Error deleting model:", error);
+    toast.error("Failed to delete model");
+    throw error;
+  }
 };
 
 export const trainModel = async (id: string): Promise<MLModel> => {
   try {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
-    // Update the model
-    const updatedModels = models.map(m => {
-      if (m.id === id) {
-        return {
-          ...m,
-          lastTrained: new Date().toISOString().split('T')[0],
-          accuracy: parseFloat((m.accuracy + (Math.random() * 5 - 2)).toFixed(1)) // Slightly adjust accuracy
-        };
-      }
-      return m;
+    const { data, error } = await supabase.functions.invoke('train-ml-model', {
+      body: { modelId: id }
     });
     
-    models = updatedModels;
+    if (error) throw error;
     
+    // Update the model's last trained timestamp
+    await supabase
+      .from('ml_models')
+      .update({ last_trained_at: new Date().toISOString() })
+      .eq('id', id);
+    
+    const models = await getModels();
     const updatedModel = models.find(m => m.id === id);
+    
     if (!updatedModel) throw new Error("Model not found");
     
     toast.success(`Model "${updatedModel.name}" has been trained`);
     return updatedModel;
   } catch (error) {
     console.error("Error training model:", error);
-    toast.error(`Failed to train model: ${(error as Error).message}`);
+    toast.error(`Failed to train model`);
     throw error;
   }
 };
 
-// User management
+// User management (admin only)
 export const getUsers = async (): Promise<User[]> => {
-  return users;
+  try {
+    const isAdmin = await checkAdminRole();
+    if (!isAdmin) {
+      toast.error("Admin access required");
+      return [];
+    }
+    
+    const { data: profiles, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    // Get roles for all users
+    const userIds = (profiles || []).map(p => p.id);
+    const { data: roles } = await supabase
+      .from('user_roles')
+      .select('user_id, role')
+      .in('user_id', userIds);
+    
+    const roleMap = new Map(roles?.map(r => [r.user_id, r.role]) || []);
+    
+    return (profiles || []).map(p => ({
+      id: p.id,
+      name: p.name || '',
+      email: p.email || '',
+      role: roleMap.get(p.id) === 'admin' ? 'admin' : 'user',
+      createdAt: p.created_at ? new Date(p.created_at).toLocaleDateString() : '',
+      lastLogin: p.updated_at ? new Date(p.updated_at).toLocaleDateString() : '',
+      subscriptionTier: (p.subscription_tier as User['subscriptionTier']) || 'free'
+    }));
+  } catch (error) {
+    console.error("Error fetching users:", error);
+    return [];
+  }
 };
 
 export const addUser = async (user: User): Promise<User> => {
+  toast.info("User registration is handled through the signup flow");
+  return user;
+};
+
+export const updateUser = async (user: User): Promise<User> => {
   try {
-    // Generate a temporary password for new users
-    const temporaryPassword = Math.random().toString(36).slice(-8);
+    const isAdmin = await checkAdminRole();
+    if (!isAdmin) throw new Error("Admin access required");
     
-    // In a real app, you would send an email with this password
-    console.log(`Temporary password for ${user.email}: ${temporaryPassword}`);
+    // Update profile
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .update({
+        name: user.name,
+        subscription_tier: user.subscriptionTier
+      })
+      .eq('id', user.id);
     
-    // Add user with generated ID
-    const newUser = {
-      ...user, 
-      id: (users.length + 1).toString(),
-      temporaryPassword // This would be hashed in a real app
-    };
+    if (profileError) throw profileError;
     
-    users = [...users, newUser];
-    toast.success(`User "${user.name}" added with temporary password`);
+    // Update role if changed
+    if (user.role === 'admin') {
+      await supabase
+        .from('user_roles')
+        .upsert({
+          user_id: user.id,
+          role: 'admin'
+        }, { onConflict: 'user_id,role' });
+    }
+    
+    toast.success(`User "${user.name}" updated`);
     return user;
   } catch (error) {
-    console.error("Error adding user:", error);
-    toast.error(`Failed to add user "${user.name}"`);
+    console.error("Error updating user:", error);
+    toast.error("Failed to update user");
     throw error;
   }
 };
 
-export const updateUser = async (user: User): Promise<User> => {
-  users = users.map(u => u.id === user.id ? user : u);
-  toast.success(`User "${user.name}" updated`);
-  return user;
-};
-
 export const deleteUser = async (id: string): Promise<void> => {
-  users = users.filter(u => u.id !== id);
-  toast.success("User deleted");
-  return;
+  toast.warning("User deletion must be done through the backend for security");
 };
 
-// Subscription plan management
+// Subscription plans (from database)
 export const getSubscriptionPlans = async (): Promise<SubscriptionPlan[]> => {
-  // These would typically come from a database
-  return [
-    {
-      id: 'free',
-      name: 'Free',
-      price: 0,
-      features: [
-        'Basic market data',
-        '2 trading strategies',
-        'Manual trading signals',
-        'Email support'
-      ]
-    },
-    {
-      id: 'basic',
-      name: 'Basic',
-      price: 29.99,
-      features: [
-        'Real-time market data',
-        '5 trading strategies',
-        'Automated trading signals',
-        'Technical indicators',
-        'Priority email support'
-      ]
-    },
-    {
-      id: 'premium',
-      name: 'Premium',
-      price: 99.99,
-      features: [
-        'Advanced real-time data',
-        'Unlimited trading strategies',
-        'Custom ML models',
-        'API access',
-        '24/7 support',
-        'Strategy backtesting'
-      ]
-    },
-    {
-      id: 'enterprise',
-      name: 'Enterprise',
-      price: 499.99,
-      features: [
-        'All Premium features',
-        'Dedicated account manager',
-        'Custom development',
-        'White-label solution',
-        'Multi-user access'
-      ]
-    }
-  ];
+  try {
+    const { data, error } = await supabase
+      .from('subscription_plans')
+      .select('*')
+      .eq('is_active', true)
+      .order('price', { ascending: true });
+    
+    if (error) throw error;
+    
+    return (data || []).map(p => ({
+      id: p.id,
+      name: p.name,
+      price: Number(p.price),
+      features: p.features || []
+    }));
+  } catch (error) {
+    console.error("Error fetching subscription plans:", error);
+    return [];
+  }
 };
 
-// System admin functions
+// System status
 export const getSystemStatus = async (): Promise<Record<string, any>> => {
-  // This would typically come from monitoring services
-  return {
-    apiStatus: 'operational',
-    databaseStatus: 'operational',
-    mlServiceStatus: 'operational',
-    tradingEngineStatus: 'operational',
-    lastIncident: '2024-03-15',
-    uptime: '99.98%',
-    activeUsers: 142,
-    signalsToday: 28,
-    tradesExecuted: 315
-  };
+  try {
+    // Get real counts from database
+    const [
+      { count: userCount },
+      { count: signalCount },
+      { count: strategyCount }
+    ] = await Promise.all([
+      supabase.from('profiles').select('*', { count: 'exact', head: true }),
+      supabase.from('trading_signals').select('*', { count: 'exact', head: true }),
+      supabase.from('trading_strategies').select('*', { count: 'exact', head: true })
+    ]);
+    
+    return {
+      apiStatus: 'operational',
+      databaseStatus: 'operational',
+      mlServiceStatus: 'operational',
+      tradingEngineStatus: 'operational',
+      lastIncident: 'None',
+      uptime: '99.98%',
+      activeUsers: userCount || 0,
+      signalsToday: signalCount || 0,
+      strategiesActive: strategyCount || 0
+    };
+  } catch (error) {
+    console.error("Error fetching system status:", error);
+    return {
+      apiStatus: 'unknown',
+      databaseStatus: 'error',
+      mlServiceStatus: 'unknown',
+      tradingEngineStatus: 'unknown'
+    };
+  }
 };

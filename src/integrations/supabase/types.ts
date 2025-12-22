@@ -14,16 +14,316 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      ml_models: {
+        Row: {
+          accuracy: number | null
+          created_at: string | null
+          id: string
+          indicators: string[] | null
+          is_active: boolean | null
+          last_trained_at: string | null
+          name: string
+          params: Json | null
+          type: Database["public"]["Enums"]["model_type"]
+          updated_at: string | null
+          user_id: string
+          version: string | null
+        }
+        Insert: {
+          accuracy?: number | null
+          created_at?: string | null
+          id?: string
+          indicators?: string[] | null
+          is_active?: boolean | null
+          last_trained_at?: string | null
+          name: string
+          params?: Json | null
+          type: Database["public"]["Enums"]["model_type"]
+          updated_at?: string | null
+          user_id: string
+          version?: string | null
+        }
+        Update: {
+          accuracy?: number | null
+          created_at?: string | null
+          id?: string
+          indicators?: string[] | null
+          is_active?: boolean | null
+          last_trained_at?: string | null
+          name?: string
+          params?: Json | null
+          type?: Database["public"]["Enums"]["model_type"]
+          updated_at?: string | null
+          user_id?: string
+          version?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          email: string | null
+          id: string
+          name: string | null
+          subscription_tier:
+            | Database["public"]["Enums"]["subscription_tier"]
+            | null
+          updated_at: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email?: string | null
+          id: string
+          name?: string | null
+          subscription_tier?:
+            | Database["public"]["Enums"]["subscription_tier"]
+            | null
+          updated_at?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          name?: string | null
+          subscription_tier?:
+            | Database["public"]["Enums"]["subscription_tier"]
+            | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      subscription_plans: {
+        Row: {
+          created_at: string | null
+          features: string[] | null
+          id: string
+          is_active: boolean | null
+          name: string
+          price: number
+        }
+        Insert: {
+          created_at?: string | null
+          features?: string[] | null
+          id: string
+          is_active?: boolean | null
+          name: string
+          price: number
+        }
+        Update: {
+          created_at?: string | null
+          features?: string[] | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          price?: number
+        }
+        Relationships: []
+      }
+      trading_signals: {
+        Row: {
+          confidence: number | null
+          created_at: string | null
+          entry_price: number | null
+          expires_at: string | null
+          id: string
+          is_active: boolean | null
+          model_id: string | null
+          signal_type: Database["public"]["Enums"]["signal_type"]
+          stop_loss: number | null
+          strategy_id: string | null
+          symbol: string
+          target_price: number | null
+          timeframe: string | null
+          user_id: string | null
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string | null
+          entry_price?: number | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          model_id?: string | null
+          signal_type: Database["public"]["Enums"]["signal_type"]
+          stop_loss?: number | null
+          strategy_id?: string | null
+          symbol: string
+          target_price?: number | null
+          timeframe?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string | null
+          entry_price?: number | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          model_id?: string | null
+          signal_type?: Database["public"]["Enums"]["signal_type"]
+          stop_loss?: number | null
+          strategy_id?: string | null
+          symbol?: string
+          target_price?: number | null
+          timeframe?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trading_signals_model_id_fkey"
+            columns: ["model_id"]
+            isOneToOne: false
+            referencedRelation: "ml_models"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trading_signals_strategy_id_fkey"
+            columns: ["strategy_id"]
+            isOneToOne: false
+            referencedRelation: "trading_strategies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trading_strategies: {
+        Row: {
+          assets: string[] | null
+          created_at: string | null
+          description: string | null
+          id: string
+          indicator: string | null
+          indicators: string[] | null
+          is_active: boolean | null
+          name: string
+          risk_profile: string | null
+          status: Database["public"]["Enums"]["strategy_status"] | null
+          timeframe: string | null
+          updated_at: string | null
+          user_id: string
+          win_rate: number | null
+        }
+        Insert: {
+          assets?: string[] | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          indicator?: string | null
+          indicators?: string[] | null
+          is_active?: boolean | null
+          name: string
+          risk_profile?: string | null
+          status?: Database["public"]["Enums"]["strategy_status"] | null
+          timeframe?: string | null
+          updated_at?: string | null
+          user_id: string
+          win_rate?: number | null
+        }
+        Update: {
+          assets?: string[] | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          indicator?: string | null
+          indicators?: string[] | null
+          is_active?: boolean | null
+          name?: string
+          risk_profile?: string | null
+          status?: Database["public"]["Enums"]["strategy_status"] | null
+          timeframe?: string | null
+          updated_at?: string | null
+          user_id?: string
+          win_rate?: number | null
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_subscriptions: {
+        Row: {
+          created_at: string | null
+          ends_at: string | null
+          id: string
+          plan_id: string | null
+          starts_at: string | null
+          status: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          ends_at?: string | null
+          id?: string
+          plan_id?: string | null
+          starts_at?: string | null
+          status?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          ends_at?: string | null
+          id?: string
+          plan_id?: string | null
+          starts_at?: string | null
+          status?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "moderator" | "user"
+      model_type:
+        | "LSTM"
+        | "Transformer"
+        | "DQN"
+        | "PPO"
+        | "GRU"
+        | "RandomForest"
+        | "XGBoost"
+      signal_type: "buy" | "sell" | "hold"
+      strategy_status: "active" | "inactive" | "testing"
+      subscription_tier: "free" | "basic" | "premium" | "enterprise"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +450,20 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "moderator", "user"],
+      model_type: [
+        "LSTM",
+        "Transformer",
+        "DQN",
+        "PPO",
+        "GRU",
+        "RandomForest",
+        "XGBoost",
+      ],
+      signal_type: ["buy", "sell", "hold"],
+      strategy_status: ["active", "inactive", "testing"],
+      subscription_tier: ["free", "basic", "premium", "enterprise"],
+    },
   },
 } as const

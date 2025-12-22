@@ -14,7 +14,6 @@ const LoginPage = () => {
   const { user, login, loading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [verificationCode, setVerificationCode] = useState('');
 
   // Check if user is already logged in and redirect if needed
   useEffect(() => {
@@ -32,12 +31,11 @@ const LoginPage = () => {
     }
     
     try {
-      const success = await login(email, password, verificationCode);
+      const success = await login(email, password);
       if (success) {
         // Get the redirect location or default to dashboard
         const from = location.state?.from?.pathname || '/';
         navigate(from, { replace: true });
-        toast.success('Login successful! Welcome back.');
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -78,18 +76,6 @@ const LoginPage = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-              />
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="verificationCode" className="text-sm font-medium">
-                Verification Code (if required)
-              </label>
-              <Input
-                id="verificationCode"
-                type="text"
-                placeholder="123456"
-                value={verificationCode}
-                onChange={(e) => setVerificationCode(e.target.value)}
               />
             </div>
             <Button

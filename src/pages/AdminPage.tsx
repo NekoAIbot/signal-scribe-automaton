@@ -39,8 +39,7 @@ import {
   addUser, 
   updateUser, 
   deleteUser, 
-  toggleTelegramBot, 
-  resetAdminPassword 
+  toggleTelegramBot
 } from '@/services/adminService';
 
 const AdminPage = () => {
