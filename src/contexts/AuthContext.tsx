@@ -1,7 +1,7 @@
-
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { toast } from 'sonner';
 import { supabase } from "@/integrations/supabase/client";
+import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 
 interface User {
   id: string;
@@ -13,105 +13,138 @@ interface User {
 
 interface AuthContextType {
   user: User | null;
+  session: Session | null;
   loading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string, code?: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   register: (name: string, email: string, password: string) => Promise<{success: boolean, showVerification: boolean}>;
 }
 
-// Create context with a default value
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   
-  // Load user from localStorage on initial render
-  useEffect(() => {
-    const storedUser = localStorage.getItem('auth_user');
-    const token = localStorage.getItem('auth_token');
-    
-    if (storedUser && token) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (error) {
-        console.error('Error parsing stored user:', error);
-        localStorage.removeItem('auth_user');
-        localStorage.removeItem('auth_token');
-      }
-    }
-    
-    setLoading(false);
-  }, []);
-  
-  // Send verification email
-  const sendVerificationEmail = async (email: string, verificationCode: string, template = 'verification') => {
+  // Fetch user profile and role from database
+  const fetchUserProfile = async (userId: string, email: string) => {
     try {
-      const response = await fetch(`${window.location.origin}/api/functions/v1/send-verification-email`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}`
-        },
-        body: JSON.stringify({
-          email,
-          verificationCode,
-          template
-        })
-      });
+      // Fetch profile
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('name, subscription_tier')
+        .eq('id', userId)
+        .single();
       
-      const data = await response.json();
+      // Fetch role
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .single();
       
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to send verification email');
-      }
+      const userRole = roleData?.role === 'admin' ? 'admin' : 'user';
       
-      return true;
+      const userData: User = {
+        id: userId,
+        name: profile?.name || email.split('@')[0],
+        email: email,
+        role: userRole,
+        subscriptionTier: (profile?.subscription_tier as User['subscriptionTier']) || 'free'
+      };
+      
+      setUser(userData);
     } catch (error) {
-      console.error('Error sending verification email:', error);
-      toast.error(`Failed to send verification email: ${(error as Error).message}`);
-      return false;
+      console.error('Error fetching user profile:', error);
+      // Set basic user data if profile fetch fails
+      setUser({
+        id: userId,
+        name: email.split('@')[0],
+        email: email,
+        role: 'user',
+        subscriptionTier: 'free'
+      });
     }
   };
+  
+  useEffect(() => {
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, currentSession) => {
+        setSession(currentSession);
+        
+        if (currentSession?.user) {
+          // Defer profile fetch to avoid deadlock
+          setTimeout(() => {
+            fetchUserProfile(currentSession.user.id, currentSession.user.email || '');
+          }, 0);
+        } else {
+          setUser(null);
+        }
+        
+        setLoading(false);
+      }
+    );
+
+    // THEN check for existing session
+    supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
+      setSession(existingSession);
+      
+      if (existingSession?.user) {
+        fetchUserProfile(existingSession.user.id, existingSession.user.email || '');
+      }
+      
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
   
   // Register function
   const register = async (name: string, email: string, password: string): Promise<{success: boolean, showVerification: boolean}> => {
     try {
       setLoading(true);
       
-      // Simple validation
       if (!name || !email || !password) {
         throw new Error('All fields are required');
       }
       
-      // Check if email is valid
       if (!email.includes('@')) {
         throw new Error('Please enter a valid email address');
       }
       
-      // Check if password is strong enough
       if (password.length < 6) {
         throw new Error('Password must be at least 6 characters long');
       }
       
-      // In a real app, you would call an API endpoint here
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const redirectUrl = `${window.location.origin}/`;
       
-      // Generate verification code
-      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: redirectUrl,
+          data: {
+            name: name
+          }
+        }
+      });
       
-      // Store in localStorage for persistence in the demo app
-      const verificationCodes = JSON.parse(localStorage.getItem('verification_codes') || '{}');
-      verificationCodes[email] = verificationCode;
-      localStorage.setItem('verification_codes', JSON.stringify(verificationCodes));
+      if (error) {
+        if (error.message.includes('already registered')) {
+          throw new Error('This email is already registered. Please login instead.');
+        }
+        throw error;
+      }
       
-      // Send verification email
-      await sendVerificationEmail(email, verificationCode);
+      if (data.user) {
+        toast.success('Account created successfully! You can now log in.');
+        return { success: true, showVerification: false };
+      }
       
-      toast.success('Verification code sent to your email');
-      
-      return { success: true, showVerification: true };
+      return { success: false, showVerification: false };
     } catch (error) {
       toast.error(`Registration failed: ${(error as Error).message}`);
       return { success: false, showVerification: false };
@@ -121,43 +154,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
   
   // Login function
-  const login = async (email: string, password: string, code = ''): Promise<boolean> => {
+  const login = async (email: string, password: string): Promise<boolean> => {
     try {
       setLoading(true);
       
-      // In a real app, you would call an API endpoint here
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Verify credentials (simplified mock)
       if (!email || !password) {
         throw new Error('Email and password are required');
       }
       
-      // Check verification code if provided
-      if (code) {
-        const verificationCodes = JSON.parse(localStorage.getItem('verification_codes') || '{}');
-        const expectedCode = verificationCodes[email];
-        
-        if (code !== expectedCode) {
-          throw new Error('Invalid verification code');
-        }
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+      
+      if (error) {
+        throw error;
       }
       
-      // Create a mock user based on the email
-      const mockUser: User = {
-        id: '1',
-        name: email.split('@')[0],
-        email: email,
-        role: email.includes('admin') ? 'admin' : 'user',
-        subscriptionTier: 'free'
-      };
+      if (data.user) {
+        toast.success('Login successful!');
+        return true;
+      }
       
-      // Store user in state and localStorage
-      setUser(mockUser);
-      localStorage.setItem('auth_user', JSON.stringify(mockUser));
-      localStorage.setItem('auth_token', 'mock-jwt-token');
-      
-      return true;
+      return false;
     } catch (error) {
       toast.error(`Login failed: ${(error as Error).message}`);
       return false;
@@ -167,19 +186,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
   
   // Logout function
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('auth_user');
-    localStorage.removeItem('auth_token');
-    toast.success('You have been logged out');
+  const logout = async () => {
+    try {
+      await supabase.auth.signOut();
+      setUser(null);
+      setSession(null);
+      toast.success('You have been logged out');
+    } catch (error) {
+      console.error('Logout error:', error);
+      toast.error('Failed to log out');
+    }
   };
   
-  // Provide auth context
   return (
     <AuthContext.Provider value={{
       user,
+      session,
       loading,
-      isAuthenticated: !!user,
+      isAuthenticated: !!session && !!user,
       login,
       logout,
       register

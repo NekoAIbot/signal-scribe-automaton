@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
-import { API_KEYS, CONFIG_FLAGS } from "@/config/apiConfig";
+import { CONFIG_FLAGS } from "@/config/apiConfig";
 import { useWebSocketMarketData } from "./websocketService";
 import { 
   generateTradingSignals, 

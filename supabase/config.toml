@@ -1,1 +1,25 @@
 project_id = "fawhoknwutwcaejzhqkg"
+
+[functions.ai-chat]
+verify_jwt = false
+
+[functions.market-data]
+verify_jwt = false
+
+[functions.send-notification]
+verify_jwt = true
+
+[functions.send-verification-email]
+verify_jwt = false
+
+[functions.train-ml-model]
+verify_jwt = true
+
+[functions.backtest-strategy]
+verify_jwt = true
+
+[functions.execute-trade]
+verify_jwt = true
+
+[functions.ml-predictions]
+verify_jwt = true

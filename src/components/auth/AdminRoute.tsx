@@ -1,80 +1,58 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { ADMIN_PASSWORD, verifyAdminPassword } from "@/services/adminService";
+import { checkAdminRole } from "@/services/adminService";
+import { Loader2 } from "lucide-react";
 
 interface AdminRouteProps {
   children: React.ReactNode;
 }
 
 export function AdminRoute({ children }: AdminRouteProps) {
-  const { user } = useAuth();
-  const [isAuthenticated, setIsAuthenticated] = useState(
-    localStorage.getItem('adminAuthenticated') === 'true'
-  );
-  const [password, setPassword] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { user, isAuthenticated } = useAuth();
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    
-    // Check password
-    setTimeout(() => {
-      if (verifyAdminPassword(password)) {
-        localStorage.setItem('adminAuthenticated', 'true');
-        setIsAuthenticated(true);
-        toast.success("Admin access granted");
-      } else {
-        toast.error("Invalid admin password");
+  useEffect(() => {
+    const verifyAdmin = async () => {
+      if (isAuthenticated && user) {
+        const adminStatus = await checkAdminRole();
+        setIsAdmin(adminStatus);
       }
-      setIsSubmitting(false);
-    }, 1000);
-  };
+      setLoading(false);
+    };
+    verifyAdmin();
+  }, [isAuthenticated, user]);
 
-  // First check if the user is even logged in
-  if (!user) {
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  if (isAuthenticated) {
-    return <>{children}</>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
   }
 
-  return (
-    <div className="flex items-center justify-center min-h-screen bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Admin Authentication Required</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div className="space-y-2">
-              <Input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter admin password"
-                required
-              />
-            </div>
-            <Button 
-              type="submit" 
-              className="w-full" 
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? "Verifying..." : "Login as Admin"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
-  );
+  if (!isAdmin) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Access Denied</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p>You don't have admin privileges to access this page.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
 }
 
 export default AdminRoute;

@@ -1,27 +1,5 @@
-
-// API Configuration
-export const API_KEYS = {
-  FOREX_API_KEY: 'GPOZJH719YQB4HZQ',
-  NEWSAPI_KEY: '3a35a4219c3e41b8b9ff607f4582ffd8',
-  ECONOMIC_API_KEY: '88e340238ef4c559ed2031f4fa308f10f50b249e',
-  TELEGRAM_BOT_TOKEN: '950251170:AAEHwpGH4SKQIG8KgRS6EoHupBX-lZeknlQ',
-  TELEGRAM_CHAT_ID: '734698844',
-  TELEGRAM_CHANNEL_ID: '-1002307192278',
-  SECRET_KEY: 'e2b3537690b87ba1759757e6b900bf5f4dd950111bfc1b4e',
-  TWELVEDATA_API_KEY: 'e2e78984189542ff8e73239f0e2eca75',
-  ALPHAVANTAGE_API_KEY: 'G36VG3DCABU72T0H',
-  MT5_LOGIN: '40512995',
-  MT5_PASSWORD: 'Nathan1999@@',
-  MT5_SERVER: 'Deriv-Demo',
-  ENCRYPTION_KEY: 'CxaHSPCZH1qcsrw7pUf-Zy0ZPdxr3g8rprpB7qM-fto=',
-  OPENAI_API_KEY: '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'
-};
-
-export const EMAIL_CONFIG = {
-  SMTP_SERVER: 'smtp.gmail.com',
-  EMAIL_FROM: 'ahow0166@gmail.com',
-  SMTP_PORT: 587
-};
+// API Configuration - Only publishable/non-sensitive keys
+// All sensitive API keys have been moved to Lovable Cloud secrets
 
 export const API_LIMITS = {
   TWELVEDATA_DAILY_LIMIT: 800,
@@ -29,6 +7,12 @@ export const API_LIMITS = {
 };
 
 export const CONFIG_FLAGS = {
-  USE_MOCK_MT5: false, // Set to false to use real data
+  USE_MOCK_MT5: true, // Set to false when MT5 integration is configured
   EXHAUSTIVE_SEARCH: true
+};
+
+// Email configuration (non-sensitive)
+export const EMAIL_CONFIG = {
+  SMTP_SERVER: 'smtp.gmail.com',
+  SMTP_PORT: 587
 };

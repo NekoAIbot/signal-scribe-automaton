@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { API_KEYS, CONFIG_FLAGS } from '@/config/apiConfig';
+import { CONFIG_FLAGS } from '@/config/apiConfig';
 
 // Mock market data for development
 const MOCK_DATA = {

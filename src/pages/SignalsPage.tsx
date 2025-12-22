@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { broadcastSignal } from '@/services/notificationService';
 import { useTradingSignals } from '@/services/marketDataService';
 import { executeMT5Trade, TradeSignal } from '@/services/signalGenerationService';
-import { API_KEYS } from '@/config/apiConfig';
+import { CONFIG_FLAGS } from '@/config/apiConfig';
 import { MT5AccountDetails } from '@/services/types/broker';
 
 const formatDate = (timeString: string) => {
