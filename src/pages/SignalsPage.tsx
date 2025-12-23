@@ -62,15 +62,15 @@ const SignalsPage = () => {
         s.id === signal.id ? { ...s, status: 'executing' as const } : s
       ));
 
-      // Execute on MT5 (using default credentials from config)
+      // Execute on MT5 (using demo mode - actual credentials should be configured in settings)
       const mt5Account: MT5AccountDetails = {
         id: 'default-mt5',
         name: 'Default MT5 Account',
-        login: API_KEYS.MT5_LOGIN,
-        password: API_KEYS.MT5_PASSWORD,
-        server: API_KEYS.MT5_SERVER,
+        login: '',
+        password: '',
+        server: 'demo-server',
         type: 'demo',
-        connected: true
+        connected: CONFIG_FLAGS.USE_MOCK_MT5
       };
       
       const success = await executeMT5Trade(signal, mt5Account);
