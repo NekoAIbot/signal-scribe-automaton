@@ -1,8 +1,8 @@
-
 import React, { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SubscriptionPlans } from "@/components/settings/SubscriptionPlans";
+import { MT5AccountSettings } from "@/components/settings/MT5AccountSettings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -76,9 +76,10 @@ const SettingsPage = () => {
       <h1 className="text-2xl font-bold mb-6">Settings</h1>
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="subscription">Subscription</TabsTrigger>
           <TabsTrigger value="account">Account</TabsTrigger>
+          <TabsTrigger value="broker">Broker</TabsTrigger>
           <TabsTrigger value="preferences">Preferences</TabsTrigger>
         </TabsList>
         
@@ -125,6 +126,10 @@ const SettingsPage = () => {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+        
+        <TabsContent value="broker">
+          <MT5AccountSettings />
         </TabsContent>
         
         <TabsContent value="preferences" className="space-y-4">

@@ -1,6 +1,6 @@
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { CONFIG_FLAGS } from '@/config/apiConfig';
+import { supabase } from '@/integrations/supabase/client';
 
 // Mock market data for development
 const MOCK_DATA = {
@@ -22,140 +22,66 @@ interface MarketData {
 export const useWebSocketMarketData = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [marketData, setMarketData] = useState<MarketData>(MOCK_DATA);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<number | null>(null);
-  const connectAttemptRef = useRef(0);
-  const MAX_RECONNECT_ATTEMPTS = 5;
-  const [shouldConnect, setShouldConnect] = useState(true);
-  const [usingMockData, setUsingMockData] = useState(CONFIG_FLAGS.USE_MOCK_MT5);
+  const [usingMockData, setUsingMockData] = useState(true);
+  const pollIntervalRef = useRef<number | null>(null);
   const prevConnectedRef = useRef(isConnected);
   const connectionNotifiedRef = useRef(false);
-  const messageRateRef = useRef(0);
-  const lastNotificationTime = useRef(Date.now());
+  
+  // Fetch market data from edge function
+  const fetchMarketData = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('fetch-market-quotes', {
+        body: { symbols: 'EUR/USD,GBP/USD,USD/JPY,AUD/USD,USD/CAD' }
+      });
+      
+      if (error) {
+        console.error('Error fetching market data:', error);
+        return;
+      }
+      
+      if (data?.quotes) {
+        setMarketData(data.quotes);
+        setUsingMockData(data.source === 'mock');
+        setIsConnected(true);
+      }
+    } catch (error) {
+      console.error('Error fetching market data:', error);
+    }
+  }, []);
   
   const connect = useCallback(() => {
-    if (!shouldConnect || wsRef.current?.readyState === WebSocket.OPEN) {
-      return;
-    }
-    
-    // For demo, prefer mock data to avoid hitting API limits
+    // For demo mode, use simulated data updates
     if (CONFIG_FLAGS.USE_MOCK_MT5) {
       setUsingMockData(true);
       setIsConnected(true);
       return;
     }
     
-    try {
-      // TwelveData API key should be configured as a secret - using mock data for now
-      const apiKey = '';
-      const wsEndpoint = `wss://ws.twelvedata.com/v1/quotes/price?apikey=${apiKey}`;
-
-      if (connectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
-        console.log('Maximum reconnection attempts reached, using mock data');
-        setUsingMockData(true);
-        setIsConnected(true);
-        return;
-      }
-      
-      // Only log connection attempts with appropriate spacing
-      if (Date.now() - lastNotificationTime.current > 60000) {
-        console.log('Connecting to WebSocket for market data...');
-        lastNotificationTime.current = Date.now();
-      }
-      
-      wsRef.current = new WebSocket(wsEndpoint);
-      
-      wsRef.current.onopen = () => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-          connectAttemptRef.current = 0;
-          setIsConnected(true);
-          setUsingMockData(false);
-          
-          // Subscribe to forex symbols
-          const symbols = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD'];
-          wsRef.current.send(JSON.stringify({
-            action: 'subscribe',
-            params: {
-              symbols: symbols.join(',')
-            }
-          }));
-        }
-      };
-      
-      wsRef.current.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data && data.symbol) {
-            // Rate limiting logs 
-            messageRateRef.current++;
-            if (messageRateRef.current % 100 === 0) {
-              console.log(`Received ${messageRateRef.current} market data updates`);
-            }
-            
-            const normalizedSymbol = data.symbol.replace('/', '');
-            setMarketData(prev => ({
-              ...prev,
-              [normalizedSymbol]: {
-                bid: parseFloat(data.price) - 0.0002,
-                ask: parseFloat(data.price) + 0.0002,
-                timestamp: Date.now()
-              }
-            }));
-          }
-        } catch (error) {
-          console.error('Error processing WebSocket message:', error);
-        }
-      };
-      
-      wsRef.current.onclose = () => {
-        if (prevConnectedRef.current !== false) {
-          setIsConnected(false);
-        }
-      };
-      
-      wsRef.current.onerror = (error) => {
-        connectAttemptRef.current++;
-        setIsConnected(false);
-      };
-    } catch (error) {
-      setIsConnected(false);
+    // Start polling the edge function for market data
+    fetchMarketData();
+    
+    // Poll every 5 seconds
+    if (pollIntervalRef.current) {
+      window.clearInterval(pollIntervalRef.current);
     }
-  }, [shouldConnect]);
+    pollIntervalRef.current = window.setInterval(fetchMarketData, 5000);
+  }, [fetchMarketData]);
   
   const disconnect = useCallback(() => {
-    if (reconnectTimeoutRef.current) {
-      window.clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
+    if (pollIntervalRef.current) {
+      window.clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
     }
     
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-    
-    // Only update state if connected (prevents redundant renders)
     if (isConnected) {
       setIsConnected(false);
     }
-    
-    setShouldConnect(false);
   }, [isConnected]);
   
   const reconnect = useCallback(() => {
-    setShouldConnect(true);
-    
-    if (reconnectTimeoutRef.current) {
-      window.clearTimeout(reconnectTimeoutRef.current);
-    }
-    
-    reconnectTimeoutRef.current = window.setTimeout(() => {
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-      connect();
-    }, 1000);
-  }, [connect]);
+    disconnect();
+    setTimeout(connect, 1000);
+  }, [connect, disconnect]);
   
   useEffect(() => {
     // Update previous connection state ref
@@ -164,30 +90,24 @@ export const useWebSocketMarketData = () => {
       
       // Only log significant connection state changes
       if (isConnected && !connectionNotifiedRef.current) {
-        console.log(usingMockData ? 'Using mock market data' : 'WebSocket connected to live data');
+        console.log(usingMockData ? 'Using mock market data' : 'Connected to live market data');
         connectionNotifiedRef.current = true;
       } else if (!isConnected && connectionNotifiedRef.current) {
-        console.log('WebSocket disconnected');
+        console.log('Disconnected from market data');
         connectionNotifiedRef.current = false;
       }
     }
   }, [isConnected, usingMockData]);
   
   useEffect(() => {
-    if (shouldConnect) {
-      connect();
-    }
+    connect();
     
     return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-      
-      if (reconnectTimeoutRef.current) {
-        window.clearTimeout(reconnectTimeoutRef.current);
+      if (pollIntervalRef.current) {
+        window.clearInterval(pollIntervalRef.current);
       }
     };
-  }, [connect, shouldConnect]);
+  }, [connect]);
   
   // Simulate market data updates for mock mode
   useEffect(() => {
