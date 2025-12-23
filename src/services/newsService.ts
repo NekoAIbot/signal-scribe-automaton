@@ -42,11 +42,12 @@ const mockNews: NewsItem[] = [
 
 const fetchNews = async (): Promise<NewsItem[]> => {
   try {
-    const apiKey = API_KEYS.NEWSAPI_KEY;
+    // NewsAPI key should be configured as a secret - for now use mock data
+    const apiKey = '';
     
     // If no API key is available, return mock data
-    if (!apiKey || apiKey === 'YOUR_NEWS_API_KEY') {
-      console.log("No NewsAPI key found, using mock data");
+    if (!apiKey) {
+      console.log("No NewsAPI key configured, using mock data");
       return mockNews;
     }
     

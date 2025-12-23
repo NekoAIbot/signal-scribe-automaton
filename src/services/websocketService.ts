@@ -46,9 +46,10 @@ export const useWebSocketMarketData = () => {
     }
     
     try {
-      // Replace with your actual WebSocket endpoint
-      const wsEndpoint = `wss://ws.twelvedata.com/v1/quotes/price?apikey=${API_KEYS.TWELVEDATA_API_KEY}`;
-      
+      // TwelveData API key should be configured as a secret - using mock data for now
+      const apiKey = '';
+      const wsEndpoint = `wss://ws.twelvedata.com/v1/quotes/price?apikey=${apiKey}`;
+
       if (connectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
         console.log('Maximum reconnection attempts reached, using mock data');
         setUsingMockData(true);
