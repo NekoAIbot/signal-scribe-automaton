@@ -14,6 +14,48 @@ export type Database = {
   }
   public: {
     Tables: {
+      broker_credentials: {
+        Row: {
+          account_name: string
+          account_type: string
+          broker_type: string
+          created_at: string | null
+          encrypted_password: string
+          id: string
+          is_active: boolean | null
+          login: string
+          server: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          account_name: string
+          account_type?: string
+          broker_type?: string
+          created_at?: string | null
+          encrypted_password: string
+          id?: string
+          is_active?: boolean | null
+          login: string
+          server: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          account_name?: string
+          account_type?: string
+          broker_type?: string
+          created_at?: string | null
+          encrypted_password?: string
+          id?: string
+          is_active?: boolean | null
+          login?: string
+          server?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       ml_models: {
         Row: {
           accuracy: number | null

@@ -1,6 +1,6 @@
-
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface NewsItem {
   title: string;
@@ -42,32 +42,22 @@ const mockNews: NewsItem[] = [
 
 const fetchNews = async (): Promise<NewsItem[]> => {
   try {
-    // NewsAPI key should be configured as a secret - for now use mock data
-    const apiKey = '';
+    console.log("Fetching news via edge function...");
     
-    // If no API key is available, return mock data
-    if (!apiKey) {
-      console.log("No NewsAPI key configured, using mock data");
+    const { data, error } = await supabase.functions.invoke('fetch-news');
+    
+    if (error) {
+      console.error("Edge function error:", error);
       return mockNews;
     }
     
-    const url = `https://newsapi.org/v2/everything?q=forex+trading+finance&apiKey=${apiKey}&pageSize=10&language=en`;
-    
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      throw new Error(`News API error: ${response.status}`);
+    if (data?.articles && Array.isArray(data.articles) && data.articles.length > 0) {
+      console.log(`Fetched ${data.articles.length} news articles from ${data.source}`);
+      return data.articles;
     }
     
-    const data = await response.json();
-    
-    // Check if articles array exists
-    if (!data.articles || !Array.isArray(data.articles) || data.articles.length === 0) {
-      console.warn("No articles found in API response, using mock data");
-      return mockNews;
-    }
-    
-    return data.articles;
+    console.warn("No articles found, using mock data");
+    return mockNews;
   } catch (error) {
     console.error("Error fetching news:", error);
     toast.error("Failed to fetch news. Using fallback data.");

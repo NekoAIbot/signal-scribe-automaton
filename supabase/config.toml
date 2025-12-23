@@ -23,3 +23,9 @@ verify_jwt = true
 
 [functions.ml-predictions]
 verify_jwt = true
+
+[functions.fetch-news]
+verify_jwt = false
+
+[functions.fetch-market-quotes]
+verify_jwt = false
