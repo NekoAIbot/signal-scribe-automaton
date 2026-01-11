@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,20 +10,24 @@ import {
   PlayCircle, 
   StopCircle, 
   UserPlus, 
-  Settings, 
   BarChart2, 
   Trash2,
   Edit,
   LogOut,
-  Key
+  Key,
+  Brain,
+  Sparkles
 } from 'lucide-react';
 import { AdminPasswordModal } from "@/components/admin/AdminPasswordModal";
 import { ResetPasswordModal } from "@/components/admin/ResetPasswordModal";
 import { StrategyFormModal } from "@/components/admin/StrategyFormModal";
 import { ModelFormModal } from "@/components/admin/ModelFormModal";
 import { UserFormModal } from "@/components/admin/UserFormModal";
+import { ModelTrainingModal } from "@/components/admin/ModelTrainingModal";
+import { AIStrategySelector } from "@/components/admin/AIStrategySelector";
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { Badge } from "@/components/ui/badge";
 import { 
   getStrategies, 
   getModels, 
@@ -36,7 +39,6 @@ import {
   updateModel, 
   deleteModel, 
   trainModel, 
-  addUser, 
   updateUser, 
   deleteUser, 
   toggleTelegramBot
@@ -110,11 +112,9 @@ const AdminPage = () => {
   const handleSaveStrategy = async (strategy: any) => {
     try {
       if (selectedStrategy) {
-        // Update existing strategy
         const updated = await updateStrategy(strategy);
         setStrategies(strategies.map(s => s.id === updated.id ? updated : s));
       } else {
-        // Add new strategy
         const added = await addStrategy(strategy);
         setStrategies([...strategies, added]);
       }
@@ -151,11 +151,9 @@ const AdminPage = () => {
   const handleSaveModel = async (model: any) => {
     try {
       if (selectedModel) {
-        // Update existing model
         const updated = await updateModel(model);
         setModels(models.map(m => m.id === updated.id ? updated : m));
       } else {
-        // Add new model
         const added = await addModel(model);
         setModels([...models, added]);
       }
@@ -165,38 +163,21 @@ const AdminPage = () => {
     }
   };
   
-  const handleTrainModel = () => {
-    setSelectedModel(null);
+  const handleTrainNewModel = () => {
     setModelTrainingModalOpen(true);
+  };
+  
+  const handleTrainingComplete = (newModel: any) => {
+    setModels([newModel, ...models]);
+    loadAllData(); // Refresh to get latest from DB
   };
   
   const handleTrainSpecificModel = async (id: string) => {
     try {
-      toast.info(`Training model ${id}...`);
+      toast.info(`Retraining model...`);
       const trainedModel = await trainModel(id);
-      
-      // Update models list
       setModels(models.map(m => m.id === trainedModel.id ? trainedModel : m));
-      
-      toast.success(`Model ${trainedModel.name} trained successfully`);
-    } catch (error) {
-      console.error('Error training model:', error);
-      toast.error('Failed to train model');
-    }
-  };
-  
-  const handleSaveTraining = async (modelData: any) => {
-    try {
-      const modelId = selectedModel ? selectedModel.id : `model-${Date.now()}`;
-      const trained = await trainModel(modelId);
-      
-      // Update models list if this was retraining
-      if (selectedModel) {
-        setModels(models.map(m => m.id === trained.id ? trained : m));
-      } else {
-        // Add new model if it was training a new one
-        setModels([...models, trained]);
-      }
+      toast.success(`Model retrained successfully`);
     } catch (error) {
       console.error('Error training model:', error);
       toast.error('Failed to train model');
@@ -230,13 +211,8 @@ const AdminPage = () => {
   const handleSaveUser = async (user: any) => {
     try {
       if (selectedUser) {
-        // Update existing user
         const updated = await updateUser(user);
         setUsers(users.map(u => u.id === updated.id ? updated : u));
-      } else {
-        // Add new user
-        const added = await addUser(user);
-        setUsers([...users, added]);
       }
     } catch (error) {
       console.error('Error saving user:', error);
@@ -276,24 +252,44 @@ const AdminPage = () => {
     navigate('/login');
   };
 
+  // Apply AI recommendations
+  const handleApplyAIRecommendations = async (strategyIds: string[], modelIds: string[]) => {
+    try {
+      // Activate recommended strategies
+      for (const strategyId of strategyIds) {
+        const strategy = strategies.find(s => s.id === strategyId);
+        if (strategy && !strategy.is_active) {
+          await updateStrategy({ ...strategy, is_active: true });
+        }
+      }
+
+      // Deactivate non-recommended strategies
+      for (const strategy of strategies) {
+        if (!strategyIds.includes(strategy.id) && strategy.is_active) {
+          await updateStrategy({ ...strategy, is_active: false });
+        }
+      }
+
+      // Reload data
+      await loadAllData();
+    } catch (error) {
+      console.error('Error applying AI recommendations:', error);
+      toast.error('Failed to apply recommendations');
+    }
+  };
+
   // Test real AI signal generation
   const testAISignalGeneration = async () => {
     try {
       toast.info("Testing AI signal generation...");
-      
-      // Get enhanced signals
       const signals = await getEnhancedSignals(5);
       
       if (signals && signals.length > 0) {
-        // Display samples of the generated signals
-        signals.forEach((signal, index) => {
-          if (index < 3) { // Only show max 3 sample signals in notifications
-            toast.success(`AI Signal: ${signal.type} ${signal.symbol} at ${signal.price.toFixed(5)}`, {
-              description: `Strategy: ${signal.strategy_name || 'AI Model'}, Confidence: ${signal.confidence_score ? (signal.confidence_score * 100).toFixed(1) + '%' : 'N/A'}`
-            });
-          }
+        signals.slice(0, 3).forEach((signal) => {
+          toast.success(`AI Signal: ${signal.type} ${signal.symbol} at ${signal.price.toFixed(5)}`, {
+            description: `Strategy: ${signal.strategy_name || 'AI Model'}, Confidence: ${signal.confidence_score ? (signal.confidence_score * 100).toFixed(1) + '%' : 'N/A'}`
+          });
         });
-        
         toast.success(`Generated ${signals.length} AI signals successfully`);
       } else {
         toast.info("No signals generated at this time");
@@ -381,20 +377,35 @@ const AdminPage = () => {
             </TabsList>
             
             <TabsContent value="strategies" className="space-y-4 mt-4">
+              {/* AI Strategy Selector */}
+              <AIStrategySelector 
+                strategies={strategies}
+                models={models}
+                onApplyRecommendations={handleApplyAIRecommendations}
+              />
+
               <div className="flex justify-end mb-2">
                 <Button variant="outline" onClick={handleAddStrategy}>
                   <TrendingUp className="mr-2 h-4 w-4" /> Add Strategy
                 </Button>
               </div>
               
-              <ScrollArea className="h-[50vh] rounded-md border">
+              <ScrollArea className="h-[40vh] rounded-md border">
                 <div className="p-4 space-y-4">
                   {strategies.length > 0 ? (
                     strategies.map((strategy) => (
                       <Card key={strategy.id} className="mb-4">
                         <CardHeader className="pb-2">
                           <div className="flex items-center justify-between">
-                            <CardTitle className="text-base">{strategy.name}</CardTitle>
+                            <div className="flex items-center gap-2">
+                              <CardTitle className="text-base">{strategy.name}</CardTitle>
+                              {strategy.ai_auto_select && (
+                                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
+                                  <Sparkles className="h-3 w-3 mr-1" />
+                                  AI Auto
+                                </Badge>
+                              )}
+                            </div>
                             <div className="flex items-center gap-2">
                               <Button 
                                 variant="ghost" 
@@ -415,13 +426,22 @@ const AdminPage = () => {
                         </CardHeader>
                         <CardContent className="pb-4">
                           <p className="text-sm text-muted-foreground mb-2">{strategy.description}</p>
-                          <div className="flex items-center gap-2 text-xs">
-                            <div className="bg-secondary px-2 py-1 rounded">Risk: {strategy.risk_profile}</div>
-                            <div className="bg-secondary px-2 py-1 rounded">Active: {strategy.is_active ? 'Yes' : 'No'}</div>
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <Badge variant={strategy.is_active ? "default" : "secondary"}>
+                              {strategy.is_active ? 'Active' : 'Inactive'}
+                            </Badge>
+                            <Badge variant="outline">Risk: {strategy.risk_profile}</Badge>
+                            {strategy.model_ids?.length > 0 && (
+                              <Badge variant="outline">
+                                <Brain className="h-3 w-3 mr-1" />
+                                {strategy.model_ids.length} Models
+                              </Badge>
+                            )}
                             {strategy.indicators && strategy.indicators.length > 0 && (
-                              <div className="bg-secondary px-2 py-1 rounded">
-                                Indicators: {strategy.indicators.join(', ')}
-                              </div>
+                              <span className="text-muted-foreground">
+                                Indicators: {strategy.indicators.slice(0, 3).join(', ')}
+                                {strategy.indicators.length > 3 && ` +${strategy.indicators.length - 3}`}
+                              </span>
                             )}
                           </div>
                         </CardContent>
@@ -445,10 +465,18 @@ const AdminPage = () => {
             </TabsContent>
             
             <TabsContent value="models" className="mt-4">
-              <div className="flex justify-end mb-2">
-                <Button variant="outline" onClick={handleTrainModel}>
-                  <BarChart2 className="mr-2 h-4 w-4" /> Train New Model
-                </Button>
+              <div className="flex justify-between items-center mb-4">
+                <div className="text-sm text-muted-foreground">
+                  {models.length} model(s) available
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={handleAddModel}>
+                    <Brain className="mr-2 h-4 w-4" /> Add Model
+                  </Button>
+                  <Button onClick={handleTrainNewModel}>
+                    <BarChart2 className="mr-2 h-4 w-4" /> Train New Model
+                  </Button>
+                </div>
               </div>
               
               <ScrollArea className="h-[50vh] rounded-md border">
@@ -458,7 +486,10 @@ const AdminPage = () => {
                       <Card key={model.id} className="mb-4">
                         <CardHeader className="pb-2">
                           <div className="flex items-center justify-between">
-                            <CardTitle className="text-base">{model.name}</CardTitle>
+                            <div className="flex items-center gap-2">
+                              <CardTitle className="text-base">{model.name}</CardTitle>
+                              <Badge variant="outline">{model.type}</Badge>
+                            </div>
                             <div className="flex items-center gap-2">
                               <Button 
                                 variant="secondary" 
@@ -486,16 +517,26 @@ const AdminPage = () => {
                         </CardHeader>
                         <CardContent className="pb-4">
                           <div className="flex items-center justify-between text-sm">
-                            <div>Type: {model.type}</div>
-                            <div>Accuracy: {model.accuracy}%</div>
-                            <div className="text-muted-foreground">Last Trained: {model.lastTrained}</div>
+                            <div className="flex items-center gap-4">
+                              <span>
+                                Accuracy: <strong className="text-green-500">{typeof model.accuracy === 'number' ? (model.accuracy * 100).toFixed(1) : model.accuracy}%</strong>
+                              </span>
+                              <Badge variant={model.is_active ? "default" : "secondary"}>
+                                {model.is_active ? 'Active' : 'Inactive'}
+                              </Badge>
+                            </div>
+                            <div className="text-muted-foreground">
+                              Last Trained: {model.lastTrained || 'Never'}
+                            </div>
                           </div>
                         </CardContent>
                       </Card>
                     ))
                   ) : (
-                    <div className="text-center py-4 text-muted-foreground">
-                      No ML models found. Train a model to get started.
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Brain className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>No ML models found.</p>
+                      <p className="text-sm">Train a model to get started with AI-powered trading.</p>
                     </div>
                   )}
                 </div>
@@ -503,7 +544,7 @@ const AdminPage = () => {
               
               <div className="mt-4">
                 <Button 
-                  variant="default" 
+                  variant="outline" 
                   onClick={testAISignalGeneration}
                 >
                   Test AI Signal Generation
@@ -517,12 +558,10 @@ const AdminPage = () => {
                 onSave={handleSaveModel}
               />
               
-              <ModelFormModal 
-                open={modelTrainingModalOpen} 
+              <ModelTrainingModal
+                open={modelTrainingModalOpen}
                 onOpenChange={setModelTrainingModalOpen}
-                initialModel={selectedModel}
-                onSave={handleSaveTraining}
-                isTraining={true}
+                onTrainingComplete={handleTrainingComplete}
               />
             </TabsContent>
             
@@ -563,12 +602,14 @@ const AdminPage = () => {
                           <div className="space-y-1 text-sm">
                             <div>{user.email}</div>
                             <div className="flex items-center gap-2 text-xs">
-                              <div className="bg-secondary px-2 py-1 rounded">Role: {user.role}</div>
-                              <div className="bg-secondary px-2 py-1 rounded capitalize">
-                                Plan: {user.subscriptionTier || 'None'}
-                              </div>
+                              <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
+                                {user.role}
+                              </Badge>
+                              <Badge variant="outline" className="capitalize">
+                                {user.subscriptionTier || 'Free'}
+                              </Badge>
                               {user.lastLogin && (
-                                <div className="text-muted-foreground">Last Login: {user.lastLogin}</div>
+                                <span className="text-muted-foreground">Last Login: {user.lastLogin}</span>
                               )}
                             </div>
                           </div>
@@ -577,7 +618,7 @@ const AdminPage = () => {
                     ))
                   ) : (
                     <div className="text-center py-4 text-muted-foreground">
-                      No users found. Add a user to get started.
+                      No users found.
                     </div>
                   )}
                 </div>
