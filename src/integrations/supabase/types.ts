@@ -14,6 +14,50 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_strategy_recommendations: {
+        Row: {
+          confidence_score: number | null
+          created_at: string | null
+          expires_at: string | null
+          id: string
+          market_analysis: Json
+          reasoning: string | null
+          recommended_models: string[] | null
+          strategy_id: string | null
+          user_id: string
+        }
+        Insert: {
+          confidence_score?: number | null
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          market_analysis?: Json
+          reasoning?: string | null
+          recommended_models?: string[] | null
+          strategy_id?: string | null
+          user_id: string
+        }
+        Update: {
+          confidence_score?: number | null
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          market_analysis?: Json
+          reasoning?: string | null
+          recommended_models?: string[] | null
+          strategy_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_strategy_recommendations_strategy_id_fkey"
+            columns: ["strategy_id"]
+            isOneToOne: false
+            referencedRelation: "trading_strategies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       broker_credentials: {
         Row: {
           account_name: string
@@ -232,6 +276,7 @@ export type Database = {
       }
       trading_strategies: {
         Row: {
+          ai_auto_select: boolean | null
           assets: string[] | null
           created_at: string | null
           description: string | null
@@ -239,6 +284,8 @@ export type Database = {
           indicator: string | null
           indicators: string[] | null
           is_active: boolean | null
+          market_conditions: Json | null
+          model_ids: string[] | null
           name: string
           risk_profile: string | null
           status: Database["public"]["Enums"]["strategy_status"] | null
@@ -248,6 +295,7 @@ export type Database = {
           win_rate: number | null
         }
         Insert: {
+          ai_auto_select?: boolean | null
           assets?: string[] | null
           created_at?: string | null
           description?: string | null
@@ -255,6 +303,8 @@ export type Database = {
           indicator?: string | null
           indicators?: string[] | null
           is_active?: boolean | null
+          market_conditions?: Json | null
+          model_ids?: string[] | null
           name: string
           risk_profile?: string | null
           status?: Database["public"]["Enums"]["strategy_status"] | null
@@ -264,6 +314,7 @@ export type Database = {
           win_rate?: number | null
         }
         Update: {
+          ai_auto_select?: boolean | null
           assets?: string[] | null
           created_at?: string | null
           description?: string | null
@@ -271,6 +322,8 @@ export type Database = {
           indicator?: string | null
           indicators?: string[] | null
           is_active?: boolean | null
+          market_conditions?: Json | null
+          model_ids?: string[] | null
           name?: string
           risk_profile?: string | null
           status?: Database["public"]["Enums"]["strategy_status"] | null

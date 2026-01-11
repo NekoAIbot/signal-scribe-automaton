@@ -1,20 +1,24 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { toast } from 'sonner';
+import { Badge } from "@/components/ui/badge";
+import { Brain, Sparkles, X } from 'lucide-react';
 
 export interface TradingStrategy {
   id: string;
   name: string;
   description: string;
   model_id: string;
+  model_ids?: string[];
   risk_profile: 'Low' | 'Medium' | 'High';
   is_active: boolean;
   indicators: string[];
+  ai_auto_select?: boolean;
 }
 
 interface StrategyFormModalProps {
@@ -22,8 +26,10 @@ interface StrategyFormModalProps {
   onOpenChange: (open: boolean) => void;
   initialStrategy?: TradingStrategy;
   onSave: (strategy: TradingStrategy) => void;
-  models: Array<{id: string, name: string}>;
+  models: Array<{id: string, name: string, type?: string}>;
 }
+
+const COMMON_INDICATORS = ['RSI', 'MACD', 'EMA', 'SMA', 'Bollinger Bands', 'ATR', 'Stochastic', 'ADX', 'CCI', 'Williams %R', 'Fibonacci'];
 
 export function StrategyFormModal({
   open,
@@ -37,12 +43,38 @@ export function StrategyFormModal({
     name: '',
     description: '',
     model_id: models[0]?.id || '',
+    model_ids: [],
     risk_profile: 'Medium',
     is_active: true,
-    indicators: []
+    indicators: [],
+    ai_auto_select: false
   });
 
   const [indicatorInput, setIndicatorInput] = useState('');
+  const [useMultipleModels, setUseMultipleModels] = useState(false);
+
+  // Reset form when modal opens with new data
+  useEffect(() => {
+    if (open) {
+      if (initialStrategy) {
+        setStrategy(initialStrategy);
+        setUseMultipleModels(initialStrategy.model_ids && initialStrategy.model_ids.length > 0);
+      } else {
+        setStrategy({
+          id: `strategy-${Date.now()}`,
+          name: '',
+          description: '',
+          model_id: models[0]?.id || '',
+          model_ids: [],
+          risk_profile: 'Medium',
+          is_active: true,
+          indicators: [],
+          ai_auto_select: false
+        });
+        setUseMultipleModels(false);
+      }
+    }
+  }, [open, initialStrategy, models]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -66,16 +98,29 @@ export function StrategyFormModal({
     });
   };
 
-  const addIndicator = () => {
-    if (!indicatorInput.trim()) return;
-    if (strategy.indicators.includes(indicatorInput.trim())) {
+  const toggleModel = (modelId: string) => {
+    const currentModelIds = strategy.model_ids || [];
+    const newModelIds = currentModelIds.includes(modelId)
+      ? currentModelIds.filter(id => id !== modelId)
+      : [...currentModelIds, modelId];
+    
+    setStrategy({
+      ...strategy,
+      model_ids: newModelIds
+    });
+  };
+
+  const addIndicator = (indicator?: string) => {
+    const toAdd = indicator || indicatorInput.trim();
+    if (!toAdd) return;
+    if (strategy.indicators.includes(toAdd)) {
       toast.error("Indicator already added");
       return;
     }
     
     setStrategy({
       ...strategy,
-      indicators: [...strategy.indicators, indicatorInput.trim()]
+      indicators: [...strategy.indicators, toAdd]
     });
     setIndicatorInput('');
   };
@@ -90,8 +135,19 @@ export function StrategyFormModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!strategy.name || !strategy.model_id) {
-      toast.error("Please fill all required fields");
+    if (!strategy.name) {
+      toast.error("Please enter a strategy name");
+      return;
+    }
+
+    // Validate model selection
+    if (useMultipleModels) {
+      if (!strategy.model_ids || strategy.model_ids.length === 0) {
+        toast.error("Please select at least one model");
+        return;
+      }
+    } else if (!strategy.model_id && !strategy.ai_auto_select) {
+      toast.error("Please select a model or enable AI auto-selection");
       return;
     }
     
@@ -101,21 +157,20 @@ export function StrategyFormModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-trading-card border-trading-border sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{initialStrategy ? 'Edit Strategy' : 'Add New Strategy'}</DialogTitle>
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           <div className="space-y-2">
-            <Label htmlFor="name">Strategy Name</Label>
+            <Label htmlFor="name">Strategy Name *</Label>
             <Input 
               id="name"
               name="name"
               value={strategy.name}
               onChange={handleChange}
               placeholder="Enter strategy name"
-              className="bg-trading-bg border-trading-border"
               required
             />
           </div>
@@ -128,28 +183,98 @@ export function StrategyFormModal({
               value={strategy.description}
               onChange={handleChange}
               placeholder="Describe the strategy's approach"
-              className="bg-trading-bg border-trading-border"
             />
           </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="model_id">ML Model</Label>
-            <Select 
-              value={strategy.model_id} 
-              onValueChange={(value) => handleSelectChange('model_id', value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select ML model" />
-              </SelectTrigger>
-              <SelectContent>
-                {models.map(model => (
-                  <SelectItem key={model.id} value={model.id}>
-                    {model.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+
+          {/* AI Auto-Select Toggle */}
+          <div className="flex items-center justify-between p-4 bg-primary/5 rounded-lg border border-primary/20">
+            <div className="flex items-center gap-3">
+              <Sparkles className="h-5 w-5 text-primary" />
+              <div>
+                <p className="font-medium">AI Auto-Selection</p>
+                <p className="text-sm text-muted-foreground">Let AI choose the best model based on market conditions</p>
+              </div>
+            </div>
+            <Switch
+              checked={strategy.ai_auto_select}
+              onCheckedChange={(checked) => setStrategy({ ...strategy, ai_auto_select: checked })}
+            />
           </div>
+
+          {!strategy.ai_auto_select && (
+            <>
+              {/* Multiple Models Toggle */}
+              <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Brain className="h-4 w-4" />
+                  <span className="text-sm font-medium">Use Multiple Models</span>
+                </div>
+                <Switch
+                  checked={useMultipleModels}
+                  onCheckedChange={setUseMultipleModels}
+                />
+              </div>
+
+              {!useMultipleModels ? (
+                <div className="space-y-2">
+                  <Label htmlFor="model_id">ML Model</Label>
+                  <Select 
+                    value={strategy.model_id} 
+                    onValueChange={(value) => handleSelectChange('model_id', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={models.length === 0 ? "No models available - train one first" : "Select ML model"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {models.map(model => (
+                        <SelectItem key={model.id} value={model.id}>
+                          <div className="flex items-center gap-2">
+                            <Brain className="h-3 w-3" />
+                            {model.name}
+                            {model.type && <span className="text-xs text-muted-foreground">({model.type})</span>}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {models.length === 0 && (
+                    <p className="text-xs text-yellow-500">⚠️ No models available. Train a model first in the ML Models tab.</p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label>Select Models (multi-select)</Label>
+                  {models.length === 0 ? (
+                    <p className="text-sm text-yellow-500 p-3 bg-yellow-500/10 rounded-md">
+                      ⚠️ No models available. Train a model first in the ML Models tab.
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2 p-3 bg-muted rounded-md">
+                      {models.map(model => (
+                        <Badge
+                          key={model.id}
+                          variant={(strategy.model_ids || []).includes(model.id) ? "default" : "outline"}
+                          className="cursor-pointer"
+                          onClick={() => toggleModel(model.id)}
+                        >
+                          <Brain className="h-3 w-3 mr-1" />
+                          {model.name}
+                          {(strategy.model_ids || []).includes(model.id) && (
+                            <X className="h-3 w-3 ml-1" />
+                          )}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                  {(strategy.model_ids || []).length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {strategy.model_ids?.length} model(s) selected
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
           
           <div className="space-y-2">
             <Label htmlFor="risk_profile">Risk Profile</Label>
@@ -161,9 +286,9 @@ export function StrategyFormModal({
                 <SelectValue placeholder="Select risk profile" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Low">Low Risk</SelectItem>
-                <SelectItem value="Medium">Medium Risk</SelectItem>
-                <SelectItem value="High">High Risk</SelectItem>
+                <SelectItem value="Low">Low Risk (Conservative)</SelectItem>
+                <SelectItem value="Medium">Medium Risk (Balanced)</SelectItem>
+                <SelectItem value="High">High Risk (Aggressive)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -175,6 +300,7 @@ export function StrategyFormModal({
                 type="button"
                 variant={strategy.is_active ? "default" : "outline"}
                 onClick={handleToggleActive}
+                size="sm"
               >
                 Active
               </Button>
@@ -182,6 +308,7 @@ export function StrategyFormModal({
                 type="button"
                 variant={!strategy.is_active ? "default" : "outline"}
                 onClick={handleToggleActive}
+                size="sm"
               >
                 Inactive
               </Button>
@@ -190,38 +317,54 @@ export function StrategyFormModal({
           
           <div className="space-y-2">
             <Label>Technical Indicators</Label>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {COMMON_INDICATORS.filter(i => !strategy.indicators.includes(i)).slice(0, 6).map(indicator => (
+                <Badge
+                  key={indicator}
+                  variant="outline"
+                  className="cursor-pointer hover:bg-primary/10"
+                  onClick={() => addIndicator(indicator)}
+                >
+                  + {indicator}
+                </Badge>
+              ))}
+            </div>
             <div className="flex space-x-2">
               <Input 
                 value={indicatorInput}
                 onChange={(e) => setIndicatorInput(e.target.value)}
-                placeholder="Add indicator (e.g., RSI, MACD)"
-                className="bg-trading-bg border-trading-border"
+                placeholder="Add custom indicator"
+                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addIndicator())}
               />
-              <Button type="button" onClick={addIndicator}>Add</Button>
+              <Button type="button" onClick={() => addIndicator()} variant="secondary">Add</Button>
             </div>
             
             {strategy.indicators.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-2">
                 {strategy.indicators.map(indicator => (
-                  <div 
+                  <Badge
                     key={indicator} 
-                    className="bg-secondary/30 px-2 py-1 rounded flex items-center gap-1"
+                    variant="default"
+                    className="flex items-center gap-1"
                   >
                     {indicator}
                     <button 
                       type="button" 
                       onClick={() => removeIndicator(indicator)}
-                      className="text-red-500 hover:text-red-700 font-bold"
+                      className="ml-1 hover:text-red-300"
                     >
                       ×
                     </button>
-                  </div>
+                  </Badge>
                 ))}
               </div>
             )}
           </div>
           
           <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
             <Button type="submit">Save Strategy</Button>
           </DialogFooter>
         </form>
