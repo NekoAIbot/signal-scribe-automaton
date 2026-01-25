@@ -208,6 +208,81 @@ export type Database = {
         }
         Relationships: []
       }
+      trades: {
+        Row: {
+          broker_account_id: string | null
+          close_price: number | null
+          close_time: string | null
+          commission: number | null
+          created_at: string
+          current_price: number | null
+          entry_price: number
+          id: string
+          lot_size: number
+          model_id: string | null
+          open_time: string
+          profit: number | null
+          status: string
+          stop_loss: number | null
+          strategy_id: string | null
+          swap: number | null
+          symbol: string
+          take_profit: number | null
+          ticket_number: string | null
+          trade_type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          broker_account_id?: string | null
+          close_price?: number | null
+          close_time?: string | null
+          commission?: number | null
+          created_at?: string
+          current_price?: number | null
+          entry_price: number
+          id?: string
+          lot_size?: number
+          model_id?: string | null
+          open_time?: string
+          profit?: number | null
+          status?: string
+          stop_loss?: number | null
+          strategy_id?: string | null
+          swap?: number | null
+          symbol: string
+          take_profit?: number | null
+          ticket_number?: string | null
+          trade_type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          broker_account_id?: string | null
+          close_price?: number | null
+          close_time?: string | null
+          commission?: number | null
+          created_at?: string
+          current_price?: number | null
+          entry_price?: number
+          id?: string
+          lot_size?: number
+          model_id?: string | null
+          open_time?: string
+          profit?: number | null
+          status?: string
+          stop_loss?: number | null
+          strategy_id?: string | null
+          swap?: number | null
+          symbol?: string
+          take_profit?: number | null
+          ticket_number?: string | null
+          trade_type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       trading_signals: {
         Row: {
           confidence: number | null
