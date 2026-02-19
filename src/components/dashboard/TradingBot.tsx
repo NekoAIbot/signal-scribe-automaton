@@ -18,7 +18,6 @@ export function TradingBot() {
   });
   
   const { user } = useAuth();
-  const hasActiveSubscription = user?.subscriptionTier && user.subscriptionTier !== 'free';
 
   const toggleBot = () => {
     // Check if broker is configured before starting
@@ -64,17 +63,10 @@ export function TradingBot() {
               )}
             </div>
             
-            {!hasActiveSubscription && (
-              <div className="p-2 bg-warning-DEFAULT/10 border border-warning-DEFAULT/20 rounded-md text-xs text-warning-DEFAULT">
-                Upgrade your subscription to enable automatic trading with the bot.
-              </div>
-            )}
-            
             <div className="flex items-center gap-2">
               <Button
                 variant={isRunning ? "destructive" : "default"}
                 onClick={toggleBot}
-                disabled={!hasActiveSubscription}
                 className="flex-1"
               >
                 {isRunning ? (

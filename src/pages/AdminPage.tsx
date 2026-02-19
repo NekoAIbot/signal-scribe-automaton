@@ -18,7 +18,7 @@ import {
   Brain,
   Sparkles
 } from 'lucide-react';
-import { AdminPasswordModal } from "@/components/admin/AdminPasswordModal";
+
 import { ResetPasswordModal } from "@/components/admin/ResetPasswordModal";
 import { StrategyFormModal } from "@/components/admin/StrategyFormModal";
 import { ModelFormModal } from "@/components/admin/ModelFormModal";
@@ -50,8 +50,7 @@ const AdminPage = () => {
   const [models, setModels] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [telegramBotActive, setTelegramBotActive] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [passwordModalOpen, setPasswordModalOpen] = useState(true);
+  
   const [resetPasswordModalOpen, setResetPasswordModalOpen] = useState(false);
   
   // Form modals state
@@ -68,12 +67,10 @@ const AdminPage = () => {
   const navigate = useNavigate();
   const { logout } = useAuth();
   
-  // Load data
+  // Load data on mount
   useEffect(() => {
-    if (isAuthenticated) {
-      loadAllData();
-    }
-  }, [isAuthenticated]);
+    loadAllData();
+  }, []);
   
   const loadAllData = async () => {
     try {
@@ -92,10 +89,6 @@ const AdminPage = () => {
     }
   };
   
-  // Authentication
-  const handleAuthenticated = () => {
-    setIsAuthenticated(true);
-  };
   
   // Strategy management
   const handleAddStrategy = () => {
@@ -303,30 +296,6 @@ const AdminPage = () => {
     }
   };
   
-  if (!isAuthenticated) {
-    return (
-      <div className="flex items-center justify-center min-h-[80vh]">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="text-center">Admin Authentication Required</CardTitle>
-          </CardHeader>
-          <CardContent className="text-center">
-            <Button 
-              onClick={() => setPasswordModalOpen(true)}
-              className="mt-4"
-            >
-              Enter Admin Password
-            </Button>
-            <AdminPasswordModal 
-              open={passwordModalOpen} 
-              onOpenChange={setPasswordModalOpen} 
-              onAuthenticated={handleAuthenticated}
-            />
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
   
   return (
     <div className="space-y-6">
