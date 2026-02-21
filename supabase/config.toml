@@ -13,7 +13,7 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.train-ml-model]
-verify_jwt = true
+verify_jwt = false
 
 [functions.backtest-strategy]
 verify_jwt = true
