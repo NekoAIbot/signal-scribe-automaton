@@ -31,8 +31,28 @@ serve(async (req) => {
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
     if (userError || !user) throw new Error('User not authenticated');
     
+    // If modelId is provided, fetch existing model for retraining
+    let existingModel = null;
+    if (params.modelId) {
+      const { data: m } = await supabaseClient
+        .from('ml_models')
+        .select('*')
+        .eq('id', params.modelId)
+        .single();
+      existingModel = m;
+    }
+    
+    const modelType = params.modelType || existingModel?.type;
+    if (!modelType) throw new Error('Missing required parameter: modelType');
+    
+    const modelName = params.name || existingModel?.name || `${modelType} ${new Date().toLocaleDateString()}`;
+    const indicators = params.indicators || existingModel?.indicators || ['RSI', 'MACD', 'EMA'];
+    const epochs = params.epochs || 100;
+    const learningRate = params.learningRate || 0.001;
+    const batchSize = params.batchSize || 32;
+    
     // Fetch historical trade data for training enrichment
-    const { data: tradeHistory, error: tradeError } = await supabaseClient
+    const { data: tradeHistory } = await supabaseClient
       .from('trades')
       .select('*')
       .eq('user_id', user.id)
@@ -75,9 +95,9 @@ serve(async (req) => {
               {
                 role: 'user',
                 content: `Analyze this ML model training config:
-Model: ${params.modelType}
-Epochs: ${params.epochs}, LR: ${params.learningRate}, Batch: ${params.batchSize}
-Indicators: ${(params.indicators || []).join(', ')}
+Model: ${modelType}
+Epochs: ${epochs}, LR: ${learningRate}, Batch: ${batchSize}
+Indicators: ${indicators.join(', ')}
 Historical trades: ${tradeCount} (Win rate: ${(historicalWinRate * 100).toFixed(1)}%)
 Signals available: ${signalCount}
 Suggest accuracy improvements in 2-3 sentences.`
@@ -95,13 +115,13 @@ Suggest accuracy improvements in 2-3 sentences.`
       }
     }
     
-    // Simulate training with realistic time
-    const trainingTime = Math.min((params.epochs || 100) * 20, 5000);
+    // Simulate training
+    const trainingTime = Math.min(epochs * 20, 5000);
     await new Promise(resolve => setTimeout(resolve, trainingTime));
     
     // Generate accuracy boosted by historical data
     let baseAccuracy = 0.70;
-    switch (params.modelType) {
+    switch (modelType) {
       case 'Transformer': baseAccuracy = 0.78; break;
       case 'LSTM': baseAccuracy = 0.75; break;
       case 'XGBoost': baseAccuracy = 0.77; break;
@@ -110,9 +130,8 @@ Suggest accuracy improvements in 2-3 sentences.`
       case 'GRU': baseAccuracy = 0.74; break;
     }
     
-    const epochBonus = Math.min(params.epochs / 1000, 0.1);
-    const indicatorBonus = Math.min((params.indicators?.length || 3) * 0.01, 0.05);
-    // Boost from historical trade data
+    const epochBonus = Math.min(epochs / 1000, 0.1);
+    const indicatorBonus = Math.min((indicators.length || 3) * 0.01, 0.05);
     const tradeDataBonus = Math.min(tradeCount * 0.0002, 0.05);
     const winRateBonus = historicalWinRate > 0.5 ? (historicalWinRate - 0.5) * 0.1 : 0;
     const signalBonus = Math.min(signalCount * 0.0001, 0.03);
@@ -122,36 +141,56 @@ Suggest accuracy improvements in 2-3 sentences.`
       0.97
     );
     
-    const modelData = {
-      user_id: user.id,
-      name: params.name || `${params.modelType} ${new Date().toLocaleDateString()}`,
-      type: params.modelType,
-      version: '1.0.0',
-      params: {
-        epochs: params.epochs,
-        learningRate: params.learningRate,
-        batchSize: params.batchSize,
-        dataWindow: params.dataWindow,
-        symbols: params.symbols || ['EUR/USD', 'GBP/USD'],
-        trainingDataStats: {
-          tradeCount,
-          signalCount,
-          historicalWinRate: parseFloat(historicalWinRate.toFixed(4)),
-          closedTradeCount: closedTrades.length
-        },
-        aiAnalysis: aiAnalysis || null
+    const trainingStats = {
+      epochs, learningRate, batchSize,
+      dataWindow: params.dataWindow,
+      symbols: params.symbols || ['EUR/USD', 'GBP/USD'],
+      trainingDataStats: {
+        tradeCount, signalCount,
+        historicalWinRate: parseFloat(historicalWinRate.toFixed(4)),
+        closedTradeCount: closedTrades.length
       },
-      is_active: true,
-      accuracy: parseFloat(accuracy.toFixed(4)),
-      indicators: params.indicators || ['RSI', 'MACD', 'EMA'],
-      last_trained_at: new Date().toISOString()
+      aiAnalysis: aiAnalysis || null
     };
     
-    const { data: model, error } = await supabaseClient
-      .from('ml_models')
-      .insert(modelData)
-      .select()
-      .single();
+    let model;
+    
+    if (existingModel) {
+      // Update existing model (retrain)
+      const { data, error } = await supabaseClient
+        .from('ml_models')
+        .update({
+          accuracy: parseFloat(accuracy.toFixed(4)),
+          params: trainingStats,
+          indicators,
+          last_trained_at: new Date().toISOString(),
+          version: `${parseFloat(existingModel.version || '1.0') + 0.1}`
+        })
+        .eq('id', existingModel.id)
+        .select()
+        .single();
+      if (error) throw error;
+      model = data;
+    } else {
+      // Create new model
+      const { data, error } = await supabaseClient
+        .from('ml_models')
+        .insert({
+          user_id: user.id,
+          name: modelName,
+          type: modelType,
+          version: '1.0.0',
+          params: trainingStats,
+          is_active: true,
+          accuracy: parseFloat(accuracy.toFixed(4)),
+          indicators,
+          last_trained_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      model = data;
+    }
     
     if (error) throw error;
     
