@@ -192,9 +192,7 @@ Suggest accuracy improvements in 2-3 sentences.`
       model = data;
     }
     
-    if (error) throw error;
-    
-    console.log('Model created:', model.id, 'accuracy:', model.accuracy);
+    console.log('Model processed:', model.id, 'accuracy:', model.accuracy);
     
     return new Response(
       JSON.stringify({
