@@ -4,90 +4,128 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Sparkles, Bot, User, RefreshCcw } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 
 interface Message {
   id: string;
+  role: 'user' | 'assistant';
   content: string;
-  sender: 'user' | 'bot';
-  timestamp: Date;
 }
+
+const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat`;
 
 export function AIAssistant() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      content: "Hello! I'm your AI trading assistant. Ask me about signals, market conditions, or trading decisions.",
-      sender: 'bot',
-      timestamp: new Date()
+      role: 'assistant',
+      content: "Hello! I'm your AI trading assistant. Ask me about signals, market conditions, risk management, or trading strategies.",
     }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to the bottom when messages update
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Handle sending a message
   const handleSendMessage = async () => {
     if (!input.trim() || isLoading) return;
-    
-    // Add user message
+
     const userMessage: Message = {
       id: Date.now().toString(),
+      role: 'user',
       content: input,
-      sender: 'user',
-      timestamp: new Date()
     };
-    
-    setMessages(prevMessages => [...prevMessages, userMessage]);
+
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
     setInput('');
     setIsLoading(true);
-    
-    // In a production app, this would call an AI service
-    // For this demo, we'll simulate an AI response
-    setTimeout(() => {
-      const botResponses: { [key: string]: string } = {
-        'signal': "The latest signal for EUR/USD is a BUY with 72% confidence. This is based on the recent bullish momentum and positive sentiment from central bank announcements.",
-        'market': "Current market conditions show moderate volatility across forex pairs. The EUR/USD has broken a key resistance level with strong volume, suggesting potential for continued upward movement.",
-        'risk': "Based on your risk profile, I recommend limiting position sizes to 2% of your account. Current market volatility suggests using wider stop losses than usual.",
-        'why': "The recent trade failed because the stop loss was hit during an unexpected news announcement that caused a temporary spike in volatility. The technical factors were actually sound.",
-        'strategy': "Your current strategy is performing well with a 68% win rate over the past month. The ML model is adapting to recent market conditions successfully."
+
+    let assistantContent = '';
+
+    try {
+      const resp = await fetch(CHAT_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          messages: updatedMessages.map(m => ({ role: m.role, content: m.content })),
+          type: 'trading',
+        }),
+      });
+
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({}));
+        throw new Error(errData.error || `Request failed (${resp.status})`);
+      }
+
+      if (!resp.body) throw new Error('No response body');
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let textBuffer = '';
+
+      const upsertAssistant = (content: string) => {
+        setMessages(prev => {
+          const last = prev[prev.length - 1];
+          if (last?.role === 'assistant' && last.id.startsWith('ai-')) {
+            return prev.map((m, i) => i === prev.length - 1 ? { ...m, content } : m);
+          }
+          return [...prev, { id: `ai-${Date.now()}`, role: 'assistant', content }];
+        });
       };
-      
-      // Determine which response to use based on keywords in the user's message
-      let responseContent = "I don't have enough information to answer that question yet. As you use the trading platform more, I'll learn and provide more personalized assistance.";
-      
-      const lowercaseInput = input.toLowerCase();
-      for (const [keyword, response] of Object.entries(botResponses)) {
-        if (lowercaseInput.includes(keyword)) {
-          responseContent = response;
-          break;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        textBuffer += decoder.decode(value, { stream: true });
+
+        let newlineIndex: number;
+        while ((newlineIndex = textBuffer.indexOf('\n')) !== -1) {
+          let line = textBuffer.slice(0, newlineIndex);
+          textBuffer = textBuffer.slice(newlineIndex + 1);
+          if (line.endsWith('\r')) line = line.slice(0, -1);
+          if (line.startsWith(':') || line.trim() === '') continue;
+          if (!line.startsWith('data: ')) continue;
+
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === '[DONE]') break;
+
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const delta = parsed.choices?.[0]?.delta?.content;
+            if (delta) {
+              assistantContent += delta;
+              upsertAssistant(assistantContent);
+            }
+          } catch {
+            textBuffer = line + '\n' + textBuffer;
+            break;
+          }
         }
       }
-      
-      const aiResponse: Message = {
-        id: (Date.now() + 1).toString(),
-        content: responseContent,
-        sender: 'bot',
-        timestamp: new Date()
-      };
-      
-      setMessages(prevMessages => [...prevMessages, aiResponse]);
+    } catch (error) {
+      console.error('AI chat error:', error);
+      setMessages(prev => [...prev, {
+        id: `err-${Date.now()}`,
+        role: 'assistant',
+        content: `Sorry, I encountered an error: ${(error as Error).message}. Please try again.`,
+      }]);
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
-  // Handle pressing Enter key
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleSendMessage();
-    }
+    if (e.key === 'Enter') handleSendMessage();
   };
 
   return (
@@ -98,53 +136,61 @@ export function AIAssistant() {
           <CardTitle className="text-base font-medium">AI Trading Assistant</CardTitle>
         </div>
         <Badge variant="outline" className="bg-primary/10 text-primary border-primary">
-          <Sparkles className="h-3 w-3 mr-1" /> Beta
+          <Sparkles className="h-3 w-3 mr-1" /> Live
         </Badge>
       </CardHeader>
-      
+
       <CardContent className="p-0 flex-grow flex flex-col overflow-hidden">
         <ScrollArea className="flex-grow p-4">
           <div className="space-y-4">
             {messages.map((message) => (
-              <div 
-                key={message.id} 
-                className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+              <div
+                key={message.id}
+                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                <div className={`flex items-start gap-2 max-w-[80%] ${message.sender === 'user' ? 'flex-row-reverse' : ''}`}>
-                  <Avatar className="h-8 w-8 border border-primary/10">
-                    {message.sender === 'bot' ? (
-                      <>
-                        <AvatarImage src="" />
-                        <AvatarFallback className="bg-primary/20 text-primary">
-                          <Bot className="h-4 w-4" />
-                        </AvatarFallback>
-                      </>
-                    ) : (
-                      <>
-                        <AvatarImage src="" />
-                        <AvatarFallback className="bg-muted">
-                          <User className="h-4 w-4" />
-                        </AvatarFallback>
-                      </>
-                    )}
+                <div className={`flex items-start gap-2 max-w-[85%] ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                  <Avatar className="h-7 w-7 border border-primary/10 shrink-0">
+                    <AvatarFallback className={message.role === 'assistant' ? 'bg-primary/20 text-primary' : 'bg-muted'}>
+                      {message.role === 'assistant' ? <Bot className="h-3.5 w-3.5" /> : <User className="h-3.5 w-3.5" />}
+                    </AvatarFallback>
                   </Avatar>
-                  
-                  <div 
+
+                  <div
                     className={`rounded-lg px-3 py-2 text-sm ${
-                      message.sender === 'bot' 
-                        ? 'bg-trading-bg border border-trading-border' 
+                      message.role === 'assistant'
+                        ? 'bg-trading-bg border border-trading-border'
                         : 'bg-primary text-primary-foreground'
                     }`}
                   >
-                    {message.content}
+                    {message.role === 'assistant' ? (
+                      <div className="prose prose-sm dark:prose-invert max-w-none [&>p]:mb-1.5 [&>ul]:mb-1.5 [&>ol]:mb-1.5">
+                        <ReactMarkdown>{message.content}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      message.content
+                    )}
                   </div>
                 </div>
               </div>
             ))}
+            {isLoading && messages[messages.length - 1]?.role === 'user' && (
+              <div className="flex justify-start">
+                <div className="flex items-center gap-2">
+                  <Avatar className="h-7 w-7 border border-primary/10">
+                    <AvatarFallback className="bg-primary/20 text-primary">
+                      <Bot className="h-3.5 w-3.5" />
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="bg-trading-bg border border-trading-border rounded-lg px-3 py-2 text-sm">
+                    <RefreshCcw className="h-4 w-4 animate-spin" />
+                  </div>
+                </div>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
-        
+
         <div className="p-3 border-t border-trading-border">
           <div className="flex gap-2">
             <Input
@@ -155,12 +201,12 @@ export function AIAssistant() {
               disabled={isLoading}
               className="flex-grow bg-trading-bg border-trading-border"
             />
-            <Button 
-              size="icon" 
+            <Button
+              size="icon"
               disabled={!input.trim() || isLoading}
               onClick={handleSendMessage}
             >
-              {isLoading ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              <Send className="h-4 w-4" />
             </Button>
           </div>
         </div>

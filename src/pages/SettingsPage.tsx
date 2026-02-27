@@ -1,76 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SubscriptionPlans } from "@/components/settings/SubscriptionPlans";
 import { MT5AccountSettings } from "@/components/settings/MT5AccountSettings";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePreferences } from "@/hooks/usePreferences";
 
 const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState("subscription");
   const { user, logout } = useAuth();
+  const { preferences, updatePreference, setThemePreference } = usePreferences();
 
-  // User preferences
-  const [preferences, setPreferences] = useState({
-    theme: 'dark',
-    notifications: {
-      email: true,
-      telegram: false,
-      push: true,
-      signals: true,
-      news: false,
-      systemAlerts: true,
-    },
-    trading: {
-      defaultLotSize: 0.01,
-      defaultRisk: 1,
-      confirmTradeExecution: true,
-      autocloseEnabled: false,
-      autocloseProfit: 50,
-      autocloseLoss: 25,
-    },
-    display: {
-      chartTimeframe: '1h',
-      defaultAssetClass: 'forex',
-      dashboardLayout: 'default',
-    }
-  });
-
-  // Load preferences from localStorage on component mount
-  useEffect(() => {
-    const savedPreferences = localStorage.getItem('userPreferences');
-    if (savedPreferences) {
-      try {
-        setPreferences(JSON.parse(savedPreferences));
-      } catch (e) {
-        console.error('Failed to parse saved preferences:', e);
-      }
-    }
-  }, []);
-
-  // Save preferences to localStorage
-  const savePreferences = () => {
-    localStorage.setItem('userPreferences', JSON.stringify(preferences));
-    toast.success('Preferences saved successfully');
-  };
-
-  // Helper to handle nested state updates
-  const updatePreference = (category: string, setting: string, value: any) => {
-    setPreferences((prev) => ({
-      ...prev,
-      [category]: {
-        ...(prev[category as keyof typeof prev] as object),  // Fixed spread operator with explicit casting
-        [setting]: value
-      }
-    }));
-  };
-  
   return (
     <div className="container mx-auto p-6 max-w-5xl">
       <h1 className="text-2xl font-bold mb-6">Settings</h1>
@@ -91,28 +37,23 @@ const SettingsPage = () => {
           <Card>
             <CardHeader>
               <CardTitle>Account Information</CardTitle>
-              <CardDescription>
-                Manage your account details and preferences
-              </CardDescription>
+              <CardDescription>Manage your account details and preferences</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-1">
                 <p className="text-sm font-medium">Email</p>
                 <p className="text-sm">{user?.email}</p>
               </div>
-              
               <div className="space-y-1">
                 <p className="text-sm font-medium">Name</p>
                 <p className="text-sm">{user?.name}</p>
               </div>
-              
               <div className="space-y-1">
                 <p className="text-sm font-medium">Account Type</p>
                 <p className="text-sm capitalize">{user?.role || 'user'}</p>
               </div>
-              
               <div className="pt-4">
-                <Button 
+                <Button
                   variant="destructive"
                   onClick={() => {
                     if (confirm('Are you sure you want to log out?')) {
@@ -136,18 +77,16 @@ const SettingsPage = () => {
           <Card>
             <CardHeader>
               <CardTitle>Display Settings</CardTitle>
-              <CardDescription>
-                Customize how the application appears
-              </CardDescription>
+              <CardDescription>Customize how the application appears</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="theme">Theme</Label>
-                    <Select 
-                      value={preferences.theme} 
-                      onValueChange={(value) => setPreferences({...preferences, theme: value})}
+                    <Select
+                      value={preferences.theme}
+                      onValueChange={(value) => setThemePreference(value)}
                     >
                       <SelectTrigger id="theme">
                         <SelectValue placeholder="Select theme" />
@@ -162,8 +101,8 @@ const SettingsPage = () => {
 
                   <div className="space-y-2">
                     <Label htmlFor="chartTimeframe">Default Chart Timeframe</Label>
-                    <Select 
-                      value={preferences.display.chartTimeframe} 
+                    <Select
+                      value={preferences.display.chartTimeframe}
                       onValueChange={(value) => updatePreference('display', 'chartTimeframe', value)}
                     >
                       <SelectTrigger id="chartTimeframe">
@@ -185,8 +124,8 @@ const SettingsPage = () => {
 
                 <div className="space-y-2">
                   <Label htmlFor="defaultAssetClass">Default Asset Class</Label>
-                  <Select 
-                    value={preferences.display.defaultAssetClass} 
+                  <Select
+                    value={preferences.display.defaultAssetClass}
                     onValueChange={(value) => updatePreference('display', 'defaultAssetClass', value)}
                   >
                     <SelectTrigger id="defaultAssetClass">
@@ -201,11 +140,11 @@ const SettingsPage = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="dashboardLayout">Dashboard Layout</Label>
-                  <Select 
-                    value={preferences.display.dashboardLayout} 
+                  <Select
+                    value={preferences.display.dashboardLayout}
                     onValueChange={(value) => updatePreference('display', 'dashboardLayout', value)}
                   >
                     <SelectTrigger id="dashboardLayout">
@@ -223,47 +162,40 @@ const SettingsPage = () => {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardHeader>
               <CardTitle>Notification Settings</CardTitle>
-              <CardDescription>
-                Manage how you receive alerts and notifications
-              </CardDescription>
+              <CardDescription>Manage how you receive alerts and notifications</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <Label htmlFor="email-notifications">Email Notifications</Label>
+                    <Label>Email Notifications</Label>
                     <p className="text-sm text-muted-foreground">Receive important alerts via email</p>
                   </div>
                   <Switch
-                    id="email-notifications"
                     checked={preferences.notifications.email}
                     onCheckedChange={(checked) => updatePreference('notifications', 'email', checked)}
                   />
                 </div>
-                
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <Label htmlFor="telegram-notifications">Telegram Notifications</Label>
+                    <Label>Telegram Notifications</Label>
                     <p className="text-sm text-muted-foreground">Receive alerts via Telegram</p>
                   </div>
                   <Switch
-                    id="telegram-notifications"
                     checked={preferences.notifications.telegram}
                     onCheckedChange={(checked) => updatePreference('notifications', 'telegram', checked)}
                   />
                 </div>
-                
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <Label htmlFor="push-notifications">Push Notifications</Label>
+                    <Label>Push Notifications</Label>
                     <p className="text-sm text-muted-foreground">Receive in-browser push notifications</p>
                   </div>
                   <Switch
-                    id="push-notifications"
                     checked={preferences.notifications.push}
                     onCheckedChange={(checked) => updatePreference('notifications', 'push', checked)}
                   />
@@ -271,30 +203,24 @@ const SettingsPage = () => {
 
                 <div className="border-t pt-4 mt-4">
                   <h3 className="text-sm font-medium mb-2">Notification Types</h3>
-                  
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="signal-notifications">Trading Signals</Label>
+                      <Label>Trading Signals</Label>
                       <Switch
-                        id="signal-notifications"
                         checked={preferences.notifications.signals}
                         onCheckedChange={(checked) => updatePreference('notifications', 'signals', checked)}
                       />
                     </div>
-                    
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="news-notifications">Market News</Label>
+                      <Label>Market News</Label>
                       <Switch
-                        id="news-notifications"
                         checked={preferences.notifications.news}
                         onCheckedChange={(checked) => updatePreference('notifications', 'news', checked)}
                       />
                     </div>
-                    
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="system-notifications">System Alerts</Label>
+                      <Label>System Alerts</Label>
                       <Switch
-                        id="system-notifications"
                         checked={preferences.notifications.systemAlerts}
                         onCheckedChange={(checked) => updatePreference('notifications', 'systemAlerts', checked)}
                       />
@@ -304,23 +230,20 @@ const SettingsPage = () => {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardHeader>
               <CardTitle>Trading Preferences</CardTitle>
-              <CardDescription>
-                Configure your default trading parameters
-              </CardDescription>
+              <CardDescription>Configure your default trading parameters</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-6">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="default-lot-size">Default Lot Size: {preferences.trading.defaultLotSize}</Label>
+                    <Label>Default Lot Size</Label>
                     <span className="text-sm text-muted-foreground">{preferences.trading.defaultLotSize}</span>
                   </div>
                   <Slider
-                    id="default-lot-size"
                     min={0.01}
                     max={1}
                     step={0.01}
@@ -328,14 +251,13 @@ const SettingsPage = () => {
                     onValueChange={(value) => updatePreference('trading', 'defaultLotSize', value[0])}
                   />
                 </div>
-                
+
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="default-risk">Default Risk: {preferences.trading.defaultRisk}%</Label>
+                    <Label>Default Risk: {preferences.trading.defaultRisk}%</Label>
                     <span className="text-sm text-muted-foreground">{preferences.trading.defaultRisk}%</span>
                   </div>
                   <Slider
-                    id="default-risk"
                     min={0.1}
                     max={5}
                     step={0.1}
@@ -343,38 +265,35 @@ const SettingsPage = () => {
                     onValueChange={(value) => updatePreference('trading', 'defaultRisk', value[0])}
                   />
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <Label htmlFor="confirm-execution">Confirm Trade Execution</Label>
+                    <Label>Confirm Trade Execution</Label>
                     <p className="text-sm text-muted-foreground">Show confirmation dialog before executing trades</p>
                   </div>
                   <Switch
-                    id="confirm-execution"
                     checked={preferences.trading.confirmTradeExecution}
                     onCheckedChange={(checked) => updatePreference('trading', 'confirmTradeExecution', checked)}
                   />
                 </div>
-                
+
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label htmlFor="autoclose">Autoclose Trades</Label>
-                      <p className="text-sm text-muted-foreground">Automatically close trades based on profit/loss thresholds</p>
+                      <Label>Autoclose Trades</Label>
+                      <p className="text-sm text-muted-foreground">Automatically close trades based on thresholds</p>
                     </div>
                     <Switch
-                      id="autoclose"
                       checked={preferences.trading.autocloseEnabled}
                       onCheckedChange={(checked) => updatePreference('trading', 'autocloseEnabled', checked)}
                     />
                   </div>
-                  
+
                   {preferences.trading.autocloseEnabled && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-4 pt-2">
                       <div className="space-y-2">
-                        <Label htmlFor="autoclose-profit">Take Profit at {preferences.trading.autocloseProfit}%</Label>
+                        <Label>Take Profit at {preferences.trading.autocloseProfit}%</Label>
                         <Slider
-                          id="autoclose-profit"
                           min={1}
                           max={100}
                           step={1}
@@ -382,11 +301,9 @@ const SettingsPage = () => {
                           onValueChange={(value) => updatePreference('trading', 'autocloseProfit', value[0])}
                         />
                       </div>
-                      
                       <div className="space-y-2">
-                        <Label htmlFor="autoclose-loss">Stop Loss at {preferences.trading.autocloseLoss}%</Label>
+                        <Label>Stop Loss at {preferences.trading.autocloseLoss}%</Label>
                         <Slider
-                          id="autoclose-loss"
                           min={1}
                           max={50}
                           step={1}
@@ -400,14 +317,10 @@ const SettingsPage = () => {
               </div>
             </CardContent>
           </Card>
-          
-          <div className="flex justify-end">
-            <Button
-              onClick={savePreferences}
-            >
-              Save Preferences
-            </Button>
-          </div>
+
+          <p className="text-xs text-muted-foreground text-center">
+            All preferences are saved and applied automatically.
+          </p>
         </TabsContent>
       </Tabs>
     </div>
