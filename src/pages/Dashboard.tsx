@@ -5,7 +5,7 @@ import { TradingStatus } from "@/components/dashboard/TradingStatus";
 import { MarketCard } from "@/components/dashboard/MarketCard";
 import { PerformanceMetrics } from "@/components/dashboard/PerformanceMetrics";
 import { TradingSignals } from "@/components/dashboard/TradingSignals";
-import { AIAssistant } from "@/components/dashboard/AIAssistant";
+
 import { RiskEngine } from "@/components/dashboard/RiskEngine";
 import { MarketSentiment } from "@/components/dashboard/MarketSentiment";
 import { TradingBot } from "@/components/dashboard/TradingBot";
@@ -80,9 +80,6 @@ const Dashboard = () => {
         <div className="space-y-4">
           <TradingStatus />
           <PerformanceMetrics />
-          <div className="h-[400px]">
-            <AIAssistant />
-          </div>
         </div>
       </div>
     </div>

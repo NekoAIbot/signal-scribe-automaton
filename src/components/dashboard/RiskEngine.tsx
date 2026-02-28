@@ -1,18 +1,56 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { ArrowRight } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 export function RiskEngine() {
-  // In a real app, this would come from a risk engine service
-  const [riskData] = useState({
-    correlationRisk: 28,
-    leverageRisk: 62,
-    volatilityRisk: 45,
-    overallRisk: 42,
+  const [riskData, setRiskData] = useState({
+    correlationRisk: 0,
+    leverageRisk: 0,
+    volatilityRisk: 0,
+    overallRisk: 0,
   });
+
+  useEffect(() => {
+    fetchRiskData();
+    const interval = setInterval(fetchRiskData, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchRiskData = async () => {
+    try {
+      // Calculate risk from user's open trades
+      const { data: trades } = await supabase
+        .from('trades')
+        .select('*')
+        .eq('status', 'open');
+
+      if (trades && trades.length > 0) {
+        // Correlation: how many trades on similar pairs
+        const symbols = trades.map(t => t.symbol);
+        const uniqueSymbols = new Set(symbols);
+        const correlationRisk = Math.min(100, Math.round((1 - uniqueSymbols.size / Math.max(symbols.length, 1)) * 100));
+
+        // Leverage: total lot size exposure
+        const totalLots = trades.reduce((sum, t) => sum + (t.lot_size || 0.01), 0);
+        const leverageRisk = Math.min(100, Math.round(totalLots * 50));
+
+        // Volatility: based on unrealized PnL swing
+        const totalProfit = trades.reduce((sum, t) => sum + Math.abs(t.profit || 0), 0);
+        const volatilityRisk = Math.min(100, Math.round(totalProfit * 2));
+
+        const overallRisk = Math.round((correlationRisk + leverageRisk + volatilityRisk) / 3);
+
+        setRiskData({ correlationRisk, leverageRisk, volatilityRisk, overallRisk });
+      } else {
+        setRiskData({ correlationRisk: 0, leverageRisk: 0, volatilityRisk: 0, overallRisk: 0 });
+      }
+    } catch (err) {
+      console.error('Risk calculation error:', err);
+    }
+  };
   
   // Function to determine risk level description and styling
   const getRiskLevel = (value: number): { 
