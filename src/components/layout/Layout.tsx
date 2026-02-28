@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/AuthContext";
+import { FloatingAIChat } from "@/components/chat/FloatingAIChat";
 
 // Navigation item component
 const NavItem = ({
@@ -159,6 +160,9 @@ export function Layout() {
           </div>
         </main>
       </div>
+      
+      {/* Global floating AI assistant */}
+      <FloatingAIChat />
     </div>
   );
 }

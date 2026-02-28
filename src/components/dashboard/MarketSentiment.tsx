@@ -1,8 +1,8 @@
-
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Twitter, Newspaper, TrendingUp, BarChart2 } from 'lucide-react';
+import { Twitter, Newspaper, TrendingUp, BarChart2, RefreshCcw } from 'lucide-react';
+import { supabase } from "@/integrations/supabase/client";
 
 interface SentimentSource {
   source: string;
@@ -11,18 +11,50 @@ interface SentimentSource {
 }
 
 export function MarketSentiment() {
-  // This would normally come from an API call to the ML Predictions edge function
-  const sentimentData = {
+  const [loading, setLoading] = useState(true);
+  const [sentimentData, setSentimentData] = useState({
     symbol: 'EUR/USD',
-    overall: 0.32, // -1.0 to 1.0
-    sources: [
-      { source: 'Twitter', value: 0.45, icon: <Twitter className="h-4 w-4" /> },
-      { source: 'News', value: 0.25, icon: <Newspaper className="h-4 w-4" /> },
-      { source: 'Technical', value: 0.28, icon: <TrendingUp className="h-4 w-4" /> },
-      { source: 'Economic', value: 0.18, icon: <BarChart2 className="h-4 w-4" /> },
-    ] as SentimentSource[],
-    keywords: ['Federal Reserve', 'inflation', 'rate hike', 'economic growth'],
-    updated: '3 minutes ago',
+    overall: 0,
+    sources: [] as SentimentSource[],
+    keywords: [] as string[],
+    updated: 'loading...',
+  });
+
+  useEffect(() => {
+    fetchSentiment();
+    const interval = setInterval(fetchSentiment, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchSentiment = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('ml-predictions', {
+        body: { type: 'sentiment', symbol: 'EUR/USD' },
+      });
+
+      if (error) throw error;
+
+      if (data?.sentiment) {
+        const s = data.sentiment;
+        setSentimentData({
+          symbol: s.symbol || 'EUR/USD',
+          overall: s.overall ?? 0,
+          sources: [
+            { source: 'Twitter', value: s.twitter ?? 0, icon: <Twitter className="h-4 w-4" /> },
+            { source: 'News', value: s.news ?? 0, icon: <Newspaper className="h-4 w-4" /> },
+            { source: 'Technical', value: s.technical ?? 0, icon: <TrendingUp className="h-4 w-4" /> },
+            { source: 'Economic', value: s.economic ?? 0, icon: <BarChart2 className="h-4 w-4" /> },
+          ],
+          keywords: s.keywords || ['Market analysis', 'Interest rates', 'Economic data'],
+          updated: 'just now',
+        });
+      }
+    } catch (err) {
+      console.error('Sentiment fetch error:', err);
+      // Keep previous data on error
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Helper function to determine sentiment class
