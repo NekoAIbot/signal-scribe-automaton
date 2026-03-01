@@ -1,8 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
-import { CONFIG_FLAGS } from "@/config/apiConfig";
-import { useWebSocketMarketData } from "./websocketService";
+import { useWebSocketMarketData, ALL_SYMBOLS, ASSET_CATEGORIES } from "./websocketService";
 import { 
   generateTradingSignals, 
   updateHistoricalPrices, 
@@ -16,28 +15,31 @@ export interface MarketData {
   change: number;
   volume: number;
   timestamp?: string;
+  category?: string;
 }
 
-const mockMarketData: MarketData[] = [
-  { symbol: 'EUR/USD', price: 1.05432, change: 0.42, volume: 12540 },
-  { symbol: 'GBP/USD', price: 1.24356, change: -0.28, volume: 9870 },
-  { symbol: 'USD/JPY', price: 153.742, change: 0.65, volume: 15260 },
-  { symbol: 'AUD/USD', price: 0.65832, change: -0.18, volume: 7320 },
-];
+export { ASSET_CATEGORIES };
 
-// Function to convert WebSocket data to MarketData format
+// Determine category for a symbol
+const getCategory = (symbol: string): string => {
+  const clean = symbol.replace('/', '');
+  for (const [cat, syms] of Object.entries(ASSET_CATEGORIES)) {
+    if (syms.some(s => s.replace('/', '') === clean)) return cat;
+  }
+  return 'forex';
+};
+
+// Convert WebSocket data to MarketData format
 const convertToMarketData = (wsMarketData: Record<string, { bid: number; ask: number; timestamp?: number }>): MarketData[] => {
   return Object.entries(wsMarketData).map(([key, data]) => {
-    // Add slash to forex pair symbol
-    const symbol = key.slice(0, 3) + '/' + key.slice(3);
+    // Add slash to forex pair symbol if needed
+    let symbol = key;
+    if (key.length === 6 && !key.includes('/') && !['USOIL'].includes(key)) {
+      symbol = key.slice(0, 3) + '/' + key.slice(3);
+    }
     
-    // Calculate average price
     const price = (data.bid + data.ask) / 2;
-    
-    // Generate a realistic change percentage (-1% to 1%)
     const change = (Math.random() * 2 - 1) * 0.8;
-    
-    // Generate realistic volume data
     const volume = Math.floor(5000 + Math.random() * 15000);
     
     return {
@@ -45,47 +47,30 @@ const convertToMarketData = (wsMarketData: Record<string, { bid: number; ask: nu
       price,
       change,
       volume,
-      timestamp: data.timestamp ? new Date(data.timestamp).toISOString() : undefined
+      timestamp: data.timestamp ? new Date(data.timestamp).toISOString() : undefined,
+      category: getCategory(key)
     };
   });
 };
 
-const fetchMarketData = async (): Promise<MarketData[]> => {
-  try {
-    // Always use mock data since the TwelveData API is causing issues
-    return mockMarketData;
-  } catch (error) {
-    console.error("Error fetching market data:", error);
-    toast.error("Failed to fetch market data. Using fallback data.");
-    // Return mock data as fallback
-    return mockMarketData;
-  }
-};
-
-export const useMarketData = () => {
+export const useMarketData = (category?: string) => {
   const { marketData: wsMarketData, isConnected } = useWebSocketMarketData();
   const queryClient = useQueryClient();
   
-  // Effect to update market data from WebSocket
   useEffect(() => {
     if (isConnected && Object.keys(wsMarketData).length > 0) {
-      // Update historical prices for signal generation
       updateHistoricalPrices(wsMarketData);
-      
-      // Convert WebSocket data to MarketData format
       const formattedData = convertToMarketData(wsMarketData);
-      
-      // Update the query data
       queryClient.setQueryData(['marketData'], formattedData);
     }
   }, [wsMarketData, isConnected, queryClient]);
   
   return useQuery({
     queryKey: ['marketData'],
-    queryFn: fetchMarketData,
-    refetchInterval: 30000, // Fallback fetch every 30 seconds if WebSocket fails
-    staleTime: 5000,
-    enabled: !isConnected // Only call REST API if WebSocket is not connected
+    queryFn: async () => convertToMarketData(wsMarketData),
+    refetchInterval: 5000,
+    staleTime: 3000,
+    select: (data) => category ? data.filter(d => d.category === category) : data
   });
 };
 
@@ -94,7 +79,6 @@ export const useTradingSignals = () => {
   const { marketData: wsMarketData, isConnected } = useWebSocketMarketData();
   const queryClient = useQueryClient();
   
-  // Generate signals and update the state
   const generateSignals = useCallback(() => {
     const historicalPrices = getHistoricalPrices();
     
@@ -102,19 +86,15 @@ export const useTradingSignals = () => {
       const signals = generateTradingSignals(wsMarketData, historicalPrices);
       
       if (signals.length > 0) {
-        // Get existing signals
         const existingSignals = queryClient.getQueryData<TradeSignal[]>(['tradingSignals']) || [];
-        
-        // Merge new signals, avoiding duplicates by checking strategy and symbol
         const mergedSignals = [...existingSignals];
         
         signals.forEach(signal => {
-          // Check if a similar signal already exists
           const existingIndex = mergedSignals.findIndex(
             s => s.symbol === signal.symbol && 
                  s.strategy === signal.strategy && 
                  s.status === 'new' && 
-                 new Date(s.time).getTime() > Date.now() - 3600000 // Only check last hour
+                 new Date(s.time).getTime() > Date.now() - 3600000
           );
           
           if (existingIndex === -1) {
@@ -122,7 +102,6 @@ export const useTradingSignals = () => {
           }
         });
         
-        // Keep only the latest 20 signals
         const trimmedSignals = mergedSignals.sort((a, b) => 
           new Date(b.time).getTime() - new Date(a.time).getTime()
         ).slice(0, 20);
@@ -132,26 +111,19 @@ export const useTradingSignals = () => {
     }
   }, [wsMarketData, isConnected, queryClient]);
   
-  // Effect to periodically generate signals
   useEffect(() => {
-    const interval = setInterval(() => {
-      generateSignals();
-    }, 60000); // Generate new signals every minute
-    
-    // Initial signal generation
+    const interval = setInterval(generateSignals, 60000);
     generateSignals();
-    
     return () => clearInterval(interval);
   }, [generateSignals]);
   
   return useQuery({
     queryKey: ['tradingSignals'],
     queryFn: async () => {
-      // Initial set of signals
       const historicalPrices = getHistoricalPrices();
       return generateTradingSignals(wsMarketData, historicalPrices);
     },
-    refetchInterval: 60000, // Refresh every minute
+    refetchInterval: 60000,
     staleTime: 30000
   });
 };

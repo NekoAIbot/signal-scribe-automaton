@@ -22,12 +22,12 @@ import {
 import { ResetPasswordModal } from "@/components/admin/ResetPasswordModal";
 import { StrategyFormModal } from "@/components/admin/StrategyFormModal";
 import { ModelFormModal } from "@/components/admin/ModelFormModal";
-import { UserFormModal } from "@/components/admin/UserFormModal";
 import { ModelTrainingModal } from "@/components/admin/ModelTrainingModal";
 import { AIStrategySelector } from "@/components/admin/AIStrategySelector";
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Badge } from "@/components/ui/badge";
+import { useTelegramBot } from '@/hooks/useTelegramBot';
 import { 
   getStrategies, 
   getModels, 
@@ -35,21 +35,20 @@ import {
   addStrategy, 
   updateStrategy, 
   deleteStrategy, 
-  addModel, 
   updateModel, 
   deleteModel, 
   trainModel, 
   updateUser, 
-  deleteUser, 
-  toggleTelegramBot
+  deleteUser
 } from '@/services/adminService';
+import { UserFormModal } from "@/components/admin/UserFormModal";
 
 const AdminPage = () => {
   const [activeTab, setActiveTab] = useState('strategies');
   const [strategies, setStrategies] = useState<any[]>([]);
   const [models, setModels] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
-  const [telegramBotActive, setTelegramBotActive] = useState(false);
+  const { isActive: telegramBotActive, toggle: handleToggleTelegramBot } = useTelegramBot();
   
   const [resetPasswordModalOpen, setResetPasswordModalOpen] = useState(false);
   
@@ -88,7 +87,6 @@ const AdminPage = () => {
       toast.error('Failed to load administrative data');
     }
   };
-  
   
   // Strategy management
   const handleAddStrategy = () => {
@@ -130,11 +128,6 @@ const AdminPage = () => {
   };
   
   // Model management
-  const handleAddModel = () => {
-    setSelectedModel(null);
-    setModelModalOpen(true);
-  };
-  
   const handleEditModel = (id: string) => {
     const model = models.find(m => m.id === id);
     setSelectedModel(model);
@@ -146,9 +139,6 @@ const AdminPage = () => {
       if (selectedModel) {
         const updated = await updateModel(model);
         setModels(models.map(m => m.id === updated.id ? updated : m));
-      } else {
-        const added = await addModel(model);
-        setModels([...models, added]);
       }
     } catch (error) {
       console.error('Error saving model:', error);
@@ -162,7 +152,7 @@ const AdminPage = () => {
   
   const handleTrainingComplete = (newModel: any) => {
     setModels([newModel, ...models]);
-    loadAllData(); // Refresh to get latest from DB
+    loadAllData();
   };
   
   const handleTrainSpecificModel = async (id: string) => {
@@ -225,17 +215,6 @@ const AdminPage = () => {
     }
   };
 
-  const handleToggleTelegramBot = async () => {
-    try {
-      const isActive = !telegramBotActive;
-      await toggleTelegramBot(isActive);
-      setTelegramBotActive(isActive);
-    } catch (error) {
-      console.error('Error toggling Telegram bot:', error);
-      toast.error('Failed to toggle Telegram bot');
-    }
-  };
-
   const handleOpenResetPassword = () => {
     setResetPasswordModalOpen(true);
   };
@@ -248,22 +227,17 @@ const AdminPage = () => {
   // Apply AI recommendations
   const handleApplyAIRecommendations = async (strategyIds: string[], modelIds: string[]) => {
     try {
-      // Activate recommended strategies
       for (const strategyId of strategyIds) {
         const strategy = strategies.find(s => s.id === strategyId);
         if (strategy && !strategy.is_active) {
           await updateStrategy({ ...strategy, is_active: true });
         }
       }
-
-      // Deactivate non-recommended strategies
       for (const strategy of strategies) {
         if (!strategyIds.includes(strategy.id) && strategy.is_active) {
           await updateStrategy({ ...strategy, is_active: false });
         }
       }
-
-      // Reload data
       await loadAllData();
     } catch (error) {
       console.error('Error applying AI recommendations:', error);
@@ -271,7 +245,6 @@ const AdminPage = () => {
     }
   };
 
-  // Test real AI signal generation
   const testAISignalGeneration = async () => {
     try {
       toast.info("Testing AI signal generation...");
@@ -287,15 +260,11 @@ const AdminPage = () => {
       } else {
         toast.info("No signals generated at this time");
       }
-      
-      return signals;
     } catch (error) {
       console.error("Error testing AI signal generation:", error);
       toast.error("Failed to test AI signal generation");
-      throw error;
     }
   };
-  
   
   return (
     <div className="space-y-6">
@@ -321,13 +290,9 @@ const AdminPage = () => {
             className="flex items-center gap-2"
           >
             {telegramBotActive ? (
-              <>
-                <StopCircle className="h-4 w-4" /> Stop Telegram Signals
-              </>
+              <><StopCircle className="h-4 w-4" /> Stop Telegram Signals</>
             ) : (
-              <>
-                <PlayCircle className="h-4 w-4" /> Start Telegram Signals
-              </>
+              <><PlayCircle className="h-4 w-4" /> Start Telegram Signals</>
             )}
           </Button>
         </div>
@@ -438,14 +403,9 @@ const AdminPage = () => {
                 <div className="text-sm text-muted-foreground">
                   {models.length} model(s) available
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={handleAddModel}>
-                    <Brain className="mr-2 h-4 w-4" /> Add Model
-                  </Button>
-                  <Button onClick={handleTrainNewModel}>
-                    <BarChart2 className="mr-2 h-4 w-4" /> Train New Model
-                  </Button>
-                </div>
+                <Button onClick={handleTrainNewModel}>
+                  <BarChart2 className="mr-2 h-4 w-4" /> Train New Model
+                </Button>
               </div>
               
               <ScrollArea className="h-[50vh] rounded-md border">

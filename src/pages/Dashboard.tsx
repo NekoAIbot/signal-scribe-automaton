@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { PriceChart } from "@/components/dashboard/PriceChart";
 import { TradingStatus } from "@/components/dashboard/TradingStatus";
 import { MarketCard } from "@/components/dashboard/MarketCard";
@@ -9,30 +9,35 @@ import { TradingSignals } from "@/components/dashboard/TradingSignals";
 import { RiskEngine } from "@/components/dashboard/RiskEngine";
 import { MarketSentiment } from "@/components/dashboard/MarketSentiment";
 import { TradingBot } from "@/components/dashboard/TradingBot";
-import { useMarketData } from "@/services/marketDataService";
+import { useMarketData, ASSET_CATEGORIES } from "@/services/marketDataService";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowUpRight } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
+import { usePreferences } from "@/hooks/usePreferences";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const Dashboard = () => {
+  const { preferences } = usePreferences();
+  const [assetCategory, setAssetCategory] = useState(preferences.display?.defaultAssetClass || 'forex');
   const { data: marketData, isLoading } = useMarketData();
   const { user } = useAuth();
   const navigate = useNavigate();
   
   useScrollToTop();
   
-  const getMarketDataForSymbol = (symbol: string) => {
-    if (!marketData) return { symbol, price: 0, change: 0, volume: 0 };
-    const symbolData = marketData.find(item => item.symbol === symbol);
-    return symbolData || { symbol, price: 0, change: 0, volume: 0 };
-  };
-  
-  const eurusdData = getMarketDataForSymbol('EUR/USD');
-  const gbpusdData = getMarketDataForSymbol('GBP/USD');
-  const usdjpyData = getMarketDataForSymbol('USD/JPY');
+  // Get top 3 assets for current category
+  const categorySymbols = ASSET_CATEGORIES[assetCategory] || ASSET_CATEGORIES.forex;
+  const displayedAssets = categorySymbols.slice(0, 3).map(sym => {
+    const clean = sym.replace('/', '');
+    const display = sym.includes('/') ? sym : (clean.length === 6 ? clean.slice(0, 3) + '/' + clean.slice(3) : clean);
+    const found = marketData?.find(item => 
+      item.symbol === display || item.symbol === clean || item.symbol.replace('/', '') === clean
+    );
+    return found || { symbol: display, price: 0, change: 0, volume: 0 };
+  });
   
   const showSubscriptionCard = user?.subscriptionTier === 'free';
   
@@ -40,6 +45,17 @@ const Dashboard = () => {
     <div className="p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">AI Enhanced Trading Platform</h1>
+        <Select value={assetCategory} onValueChange={setAssetCategory}>
+          <SelectTrigger className="w-[160px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="forex">Forex</SelectItem>
+            <SelectItem value="crypto">Cryptocurrency</SelectItem>
+            <SelectItem value="indices">Indices</SelectItem>
+            <SelectItem value="commodities">Commodities</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
       
       {/* Trading Bot moved to top */}
@@ -60,9 +76,16 @@ const Dashboard = () => {
       )}
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <MarketCard symbol={eurusdData.symbol} price={eurusdData.price} change={eurusdData.change} volume={eurusdData.volume} />
-        <MarketCard symbol={gbpusdData.symbol} price={gbpusdData.price} change={gbpusdData.change} volume={gbpusdData.volume} />
-        <MarketCard symbol={usdjpyData.symbol} price={usdjpyData.price} change={usdjpyData.change} volume={usdjpyData.volume} />
+        {displayedAssets.map((asset) => (
+          <MarketCard 
+            key={asset.symbol}
+            symbol={asset.symbol} 
+            price={asset.price} 
+            change={asset.change} 
+            volume={asset.volume} 
+            timestamp={asset.timestamp}
+          />
+        ))}
       </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

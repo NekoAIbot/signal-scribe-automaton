@@ -7,7 +7,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.send-notification]
-verify_jwt = true
+verify_jwt = false
 
 [functions.send-verification-email]
 verify_jwt = false
@@ -28,4 +28,7 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.fetch-market-quotes]
+verify_jwt = false
+
+[functions.ai-strategy-selector]
 verify_jwt = false
