@@ -1,42 +1,41 @@
 import { useState, useEffect, useCallback } from 'react';
-
-// Persist bot state globally across navigation
-let globalBotRunning = false;
-const listeners = new Set<(running: boolean) => void>();
-const notify = () => listeners.forEach(fn => fn(globalBotRunning));
-
-// Load initial state from localStorage
-try {
-  globalBotRunning = localStorage.getItem('tradingBotRunning') === 'true';
-} catch {}
+import { setBotEnabled, getBotEnabled, onSignalsUpdate, UnifiedSignal } from '@/services/unifiedSignalService';
 
 export function useTradingBot() {
-  const [isRunning, setIsRunning] = useState(globalBotRunning);
+  const [isRunning, setIsRunning] = useState(getBotEnabled());
+  const [latestSignals, setLatestSignals] = useState<UnifiedSignal[]>([]);
 
   useEffect(() => {
-    const listener = (running: boolean) => setIsRunning(running);
-    listeners.add(listener);
-    return () => { listeners.delete(listener); };
+    // Sync with unified service
+    const unsub = onSignalsUpdate((signals) => {
+      setLatestSignals(signals);
+    });
+    return unsub;
+  }, []);
+
+  // Listen for external changes (e.g. from admin page)
+  useEffect(() => {
+    const handler = () => setIsRunning(getBotEnabled());
+    window.addEventListener('bot-state-change', handler);
+    return () => window.removeEventListener('bot-state-change', handler);
   }, []);
 
   const start = useCallback(() => {
-    globalBotRunning = true;
-    localStorage.setItem('tradingBotRunning', 'true');
+    setBotEnabled(true);
     setIsRunning(true);
-    notify();
+    window.dispatchEvent(new Event('bot-state-change'));
   }, []);
 
   const stop = useCallback(() => {
-    globalBotRunning = false;
-    localStorage.setItem('tradingBotRunning', 'false');
+    setBotEnabled(false);
     setIsRunning(false);
-    notify();
+    window.dispatchEvent(new Event('bot-state-change'));
   }, []);
 
   const toggle = useCallback(() => {
-    if (globalBotRunning) stop();
+    if (getBotEnabled()) stop();
     else start();
   }, [start, stop]);
 
-  return { isRunning, start, stop, toggle };
+  return { isRunning, start, stop, toggle, latestSignals };
 }
