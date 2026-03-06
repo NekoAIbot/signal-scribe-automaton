@@ -175,7 +175,7 @@ const PropAccountsPage = () => {
       </div>
 
       {/* Risk guidelines */}
-      <Card className="border-yellow-500/20 bg-yellow-500/5">
+      <Card className="border-border bg-muted/30">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
             <AlertTriangle className="h-5 w-5 text-yellow-500 mt-0.5" />
