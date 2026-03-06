@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { HomeIcon, ActivityIcon, BellIcon, BarChart4Icon, ShieldIcon, SettingsIcon, LineChart } from 'lucide-react';
+import { HomeIcon, ActivityIcon, BellIcon, BarChart4Icon, ShieldIcon, SettingsIcon, LineChart, Building2, Newspaper } from 'lucide-react';
 import { cn } from "@/lib/utils";
 
 interface SidebarProps {
@@ -22,7 +22,6 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
     <div className="flex h-full max-w-[280px] flex-col border-r bg-secondary">
       <div className="flex-1 space-y-2 p-6">
         <div className="hidden shrink-0 lg:flex items-center space-x-2">
-          {/* Your logo or brand */}
           <p className="font-bold text-lg">AI Trading Platform</p>
         </div>
         
@@ -39,6 +38,10 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
             <LineChart size={16} className="mr-2" />
             Monitoring
           </NavLink>
+          <NavLink to="/prop-accounts" className={getLinkClass}>
+            <Building2 size={16} className="mr-2" />
+            Prop Accounts
+          </NavLink>
           <NavLink to="/alerts" className={getLinkClass}>
             <BellIcon size={16} className="mr-2" />
             Alerts
@@ -46,6 +49,10 @@ export function Sidebar({ isCollapsed = false }: SidebarProps) {
           <NavLink to="/analytics" className={getLinkClass}>
             <BarChart4Icon size={16} className="mr-2" />
             Analytics
+          </NavLink>
+          <NavLink to="/news" className={getLinkClass}>
+            <Newspaper size={16} className="mr-2" />
+            Forex News
           </NavLink>
           <NavLink to="/admin" className={getLinkClass}>
             <ShieldIcon size={16} className="mr-2" />

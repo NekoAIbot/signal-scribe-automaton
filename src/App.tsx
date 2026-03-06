@@ -17,6 +17,7 @@ import AdminPage from './pages/AdminPage';
 import MonitoringPage from './pages/MonitoringPage';
 import SettingsPage from './pages/SettingsPage';
 import ForexNewsPage from './pages/ForexNewsPage';
+import PropAccountsPage from './pages/PropAccountsPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import NotFound from './pages/NotFound';
@@ -63,6 +64,7 @@ function App() {
                   <Route path="monitoring" element={<MonitoringPage />} />
                   <Route path="settings" element={<SettingsPage />} />
                   <Route path="news" element={<ForexNewsPage />} />
+                  <Route path="prop-accounts" element={<PropAccountsPage />} />
                   <Route 
                     path="admin" 
                     element={

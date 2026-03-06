@@ -34,11 +34,16 @@ serve(async (req) => {
     
     let executionResult: any;
     
-    if (METAAPI_TOKEN && requestData.metaApiAccountId) {
-      // MetaApi execution
-      executionResult = await executeViaMetaApi(METAAPI_TOKEN, requestData);
+    if (METAAPI_TOKEN && requestData.brokerAccountId) {
+      // Try MetaApi - get account credentials from db
+      const { data: creds } = await supabaseClient
+        .from('broker_credentials')
+        .select('login, server, broker_type')
+        .eq('id', requestData.brokerAccountId)
+        .single();
+      
+      executionResult = await executeViaMetaApi(METAAPI_TOKEN, { ...requestData, metaApiAccountId: creds?.login });
     } else if (MT5_BRIDGE_URL) {
-      // Self-hosted Python bridge execution
       executionResult = await executeViaBridge(MT5_BRIDGE_URL, MT5_BRIDGE_API_KEY || '', requestData);
     } else {
       // Simulated execution (no bridge configured)
@@ -50,24 +55,26 @@ serve(async (req) => {
       await new Promise(resolve => setTimeout(resolve, 500));
     }
     
-    // Record trade in database for retraining
-    const { data: tradeRecord, error: tradeError } = await supabaseClient
+    // Record trade with full details including indicators and calculations
+    const tradeRecord: any = {
+      user_id: user.id,
+      symbol: requestData.symbol,
+      trade_type: requestData.type,
+      entry_price: requestData.price,
+      current_price: requestData.price,
+      lot_size: requestData.lotSize || 0.01,
+      stop_loss: requestData.stopLoss || null,
+      take_profit: requestData.takeProfit || null,
+      status: 'open',
+      ticket_number: executionResult.ticketNumber,
+      strategy_id: requestData.strategyId || null,
+      model_id: requestData.modelId || null,
+      broker_account_id: requestData.brokerAccountId || null,
+    };
+
+    const { data: savedTrade, error: tradeError } = await supabaseClient
       .from('trades')
-      .insert({
-        user_id: user.id,
-        symbol: requestData.symbol,
-        trade_type: requestData.type,
-        entry_price: requestData.price,
-        current_price: requestData.price,
-        lot_size: requestData.lotSize || 0.01,
-        stop_loss: requestData.stopLoss || null,
-        take_profit: requestData.takeProfit || null,
-        status: 'open',
-        ticket_number: executionResult.ticketNumber,
-        strategy_id: requestData.strategyId || null,
-        model_id: requestData.modelId || null,
-        broker_account_id: requestData.brokerAccountId || null
-      })
+      .insert(tradeRecord)
       .select()
       .single();
     
@@ -89,7 +96,7 @@ serve(async (req) => {
         success: true,
         ticketNumber: executionResult.ticketNumber,
         volume: executionResult.volume,
-        tradeId: tradeRecord?.id,
+        tradeId: savedTrade?.id,
         simulated: executionResult.simulated || false,
         message: executionResult.simulated 
           ? 'Trade simulated (no bridge configured)' 
@@ -106,7 +113,6 @@ serve(async (req) => {
   }
 });
 
-// MetaApi execution
 async function executeViaMetaApi(token: string, data: any) {
   const accountId = data.metaApiAccountId;
   const url = `https://mt-client-api-v1.agiliumtrade.agiliumtrade.ai/users/current/accounts/${accountId}/trade`;
@@ -142,7 +148,6 @@ async function executeViaMetaApi(token: string, data: any) {
   };
 }
 
-// Self-hosted bridge execution
 async function executeViaBridge(bridgeUrl: string, apiKey: string, data: any) {
   const response = await fetch(`${bridgeUrl}/trade`, {
     method: 'POST',
@@ -173,7 +178,6 @@ async function executeViaBridge(bridgeUrl: string, apiKey: string, data: any) {
   };
 }
 
-// Telegram notification
 async function sendTelegramNotification(tradeInfo: any) {
   try {
     const TELEGRAM_BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN');
