@@ -142,7 +142,7 @@ export const getMonitoredTrades = async (): Promise<MonitoredTrade[]> => {
       stop_loss: t.stop_loss || 0,
       take_profit: t.take_profit || 0,
       profit: t.profit || 0,
-      status: t.status,
+      status: (t.status === 'open' || t.status === 'closed' || t.status === 'partially_closed') ? t.status : 'open' as const,
       open_time: t.open_time,
       symbol: t.symbol,
       pips: 0,

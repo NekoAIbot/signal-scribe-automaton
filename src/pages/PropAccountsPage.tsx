@@ -178,9 +178,9 @@ const PropAccountsPage = () => {
       <Card className="border-border bg-muted/30">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-yellow-500 mt-0.5" />
+            <AlertTriangle className="h-5 w-5 text-muted-foreground mt-0.5" />
             <div>
-              <h3 className="font-medium text-yellow-500">Prop Firm Risk Guidelines</h3>
+              <h3 className="font-medium">Prop Firm Risk Guidelines</h3>
               <ul className="text-sm text-muted-foreground mt-1 space-y-1">
                 <li>• Max daily drawdown: 4-5% (varies by firm)</li>
                 <li>• Max total drawdown: 8-12%</li>

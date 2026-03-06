@@ -64,6 +64,7 @@ function App() {
                   <Route path="monitoring" element={<MonitoringPage />} />
                   <Route path="settings" element={<SettingsPage />} />
                   <Route path="news" element={<ForexNewsPage />} />
+                  <Route path="prop-accounts" element={<PropAccountsPage />} />
                   <Route 
                     path="admin" 
                     element={
