@@ -82,6 +82,7 @@ export function Layout() {
                 <NavItem to="/analytics" label="Analytics" icon={BarChart2} />
                 <NavItem to="/alerts" label="Alerts" icon={Bell} />
                 <NavItem to="/monitoring" label="Monitoring" icon={Activity} />
+                <NavItem to="/prop-accounts" label="Prop Accounts" icon={Building2} />
                 <NavItem to="/news" label="Forex News" icon={Newspaper} />
                 <NavItem to="/admin" label="Admin" icon={Users} />
                 <NavItem to="/settings" label="Settings" icon={Settings} />
