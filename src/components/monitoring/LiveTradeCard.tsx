@@ -11,11 +11,16 @@ interface Trade {
   status: 'open' | 'closed' | 'partially_closed' | 'pending' | 'cancelled';
   entry_price: number;
   current_price: number | null;
+  close_price: number | null;
   lot_size: number;
   profit: number;
   stop_loss: number | null;
   take_profit: number | null;
   open_time: string;
+  close_time: string | null;
+  strategy_id: string | null;
+  model_id: string | null;
+  broker_account_id?: string | null;
 }
 
 interface LiveTradeCardProps {
@@ -89,6 +94,14 @@ const LiveTradeCard: React.FC<LiveTradeCardProps> = ({ trade }) => {
             <p className="font-mono text-green-400">{trade.take_profit?.toFixed(5) || '-'}</p>
           </div>
         </div>
+
+        {/* Strategy/Model info */}
+        {(trade.strategy_id || trade.model_id) && (
+          <div className="text-xs text-muted-foreground pt-2 border-t border-border">
+            {trade.strategy_id && <span>Strategy: {trade.strategy_id.slice(0, 8)}...</span>}
+            {trade.model_id && <span className="ml-2">Model: {trade.model_id.slice(0, 8)}...</span>}
+          </div>
+        )}
         
         <div className="flex items-center justify-between pt-3 border-t border-border">
           <span className="text-xs text-muted-foreground">
