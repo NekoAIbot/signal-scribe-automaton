@@ -38,7 +38,17 @@ const MODEL_DESCRIPTIONS: Record<string, { description: string; icon: React.Reac
 };
 
 const AVAILABLE_INDICATORS = ['RSI', 'MACD', 'EMA', 'SMA', 'Bollinger Bands', 'ATR', 'Stochastic', 'ADX', 'CCI', 'Williams %R'];
-const AVAILABLE_SYMBOLS = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'NZD/USD', 'USD/CHF', 'EUR/GBP'];
+const AVAILABLE_SYMBOLS = [
+  // Forex
+  'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'NZD/USD', 'USD/CHF', 'EUR/GBP',
+  'EUR/JPY', 'GBP/JPY', 'AUD/JPY', 'EUR/AUD', 'GBP/AUD', 'EUR/CAD', 'GBP/CAD',
+  // Crypto
+  'BTC/USD', 'ETH/USD', 'BNB/USD', 'SOL/USD', 'XRP/USD', 'ADA/USD',
+  // Indices
+  'US500', 'US30', 'NAS100', 'UK100', 'GER40', 'JPN225',
+  // Commodities
+  'XAU/USD', 'XAG/USD', 'USOIL', 'UKOIL', 'NATGAS',
+];
 
 export function ModelTrainingModal({
   open,

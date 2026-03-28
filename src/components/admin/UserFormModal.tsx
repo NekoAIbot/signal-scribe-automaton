@@ -38,6 +38,20 @@ export function UserFormModal({
     lastLogin: new Date().toISOString().split('T')[0]
   });
 
+  // Reset form when initialUser changes (fixes edit user not updating)
+  React.useEffect(() => {
+    if (open) {
+      setUser(initialUser || {
+        id: `user-${Date.now()}`,
+        name: '',
+        email: '',
+        role: 'user',
+        subscriptionTier: 'free',
+        lastLogin: new Date().toISOString().split('T')[0]
+      });
+    }
+  }, [initialUser, open]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setUser({

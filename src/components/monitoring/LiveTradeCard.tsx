@@ -11,11 +11,15 @@ interface Trade {
   status: 'open' | 'closed' | 'partially_closed' | 'pending' | 'cancelled';
   entry_price: number;
   current_price: number | null;
+  close_price: number | null;
   lot_size: number;
   profit: number;
   stop_loss: number | null;
   take_profit: number | null;
   open_time: string;
+  close_time: string | null;
+  strategy_id: string | null;
+  model_id: string | null;
 }
 
 interface LiveTradeCardProps {
