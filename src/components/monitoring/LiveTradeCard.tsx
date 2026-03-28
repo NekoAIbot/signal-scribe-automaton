@@ -20,6 +20,7 @@ interface Trade {
   close_time: string | null;
   strategy_id: string | null;
   model_id: string | null;
+  broker_account_id?: string | null;
 }
 
 interface LiveTradeCardProps {

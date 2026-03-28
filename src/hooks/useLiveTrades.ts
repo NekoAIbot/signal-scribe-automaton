@@ -21,6 +21,9 @@ export interface Trade {
   ticket_number: string | null;
   open_time: string;
   close_time: string | null;
+  strategy_id: string | null;
+  model_id: string | null;
+  broker_account_id: string | null;
 }
 
 export const useLiveTrades = () => {
