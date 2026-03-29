@@ -38,7 +38,26 @@ function tickPrices() {
   }
 }
 
+// In-memory candle history for indicator calculations
+const candleHistory: Record<string, number[]> = {};
+const MAX_CANDLES = 100;
+
+function updateCandleHistory() {
+  for (const [sym, data] of Object.entries(livePrices)) {
+    if (!candleHistory[sym]) candleHistory[sym] = [];
+    candleHistory[sym].push((data.bid + data.ask) / 2);
+    if (candleHistory[sym].length > MAX_CANDLES) {
+      candleHistory[sym] = candleHistory[sym].slice(-MAX_CANDLES);
+    }
+  }
+}
+
 initPrices();
+// Seed candle history with initial data
+for (let i = 0; i < 60; i++) {
+  tickPrices();
+  updateCandleHistory();
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -92,16 +111,19 @@ serve(async (req) => {
 
     // Tick all prices for realism
     tickPrices();
+    updateCandleHistory();
 
     // Return only requested symbols
     const quotes: Record<string, { bid: number; ask: number; timestamp: number }> = {};
+    const candles: Record<string, number[]> = {};
     for (const sym of requestedSymbols) {
       if (livePrices[sym]) {
         quotes[sym] = livePrices[sym];
+        candles[sym] = candleHistory[sym] || [];
       }
     }
 
-    return new Response(JSON.stringify({ quotes, source: apiKey ? 'twelvedata' : 'simulated' }), {
+    return new Response(JSON.stringify({ quotes, candles, source: apiKey ? 'twelvedata' : 'simulated' }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {
