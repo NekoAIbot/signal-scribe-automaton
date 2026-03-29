@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { PriceChart } from "@/components/dashboard/PriceChart";
+import { TradingViewChart } from "@/components/dashboard/TradingViewChart";
 import { TradingStatus } from "@/components/dashboard/TradingStatus";
 import { MarketCard } from "@/components/dashboard/MarketCard";
 import { PerformanceMetrics } from "@/components/dashboard/PerformanceMetrics";
@@ -91,7 +91,7 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">
           <div className="space-y-4">
-            <PriceChart />
+            <TradingViewChart />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <MarketSentiment />
               <RiskEngine />
