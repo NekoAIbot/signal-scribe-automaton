@@ -7,6 +7,7 @@ import { PerformanceMetrics } from "@/components/dashboard/PerformanceMetrics";
 import { TradingSignals } from "@/components/dashboard/TradingSignals";
 
 import { RiskEngine } from "@/components/dashboard/RiskEngine";
+import { PropRiskWidget } from "@/components/dashboard/PropRiskWidget";
 import { MarketSentiment } from "@/components/dashboard/MarketSentiment";
 import { TradingBot } from "@/components/dashboard/TradingBot";
 import { useMarketData, ASSET_CATEGORIES } from "@/services/marketDataService";
@@ -101,6 +102,7 @@ const Dashboard = () => {
         </div>
         
         <div className="space-y-4">
+          <PropRiskWidget />
           <TradingStatus />
           <PerformanceMetrics />
         </div>
