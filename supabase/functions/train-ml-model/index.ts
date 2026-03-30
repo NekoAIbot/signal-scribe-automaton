@@ -49,6 +49,12 @@ serve(async (req) => {
     
     const user = { id: userId };
     
+    // Use service role client for DB operations
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    );
+    
     const isPropFirm = params.mode === 'prop-firm' || params.name?.toLowerCase().includes('prop');
     const modelType = params.modelType || 'LSTM';
     const modelName = params.name || `${isPropFirm ? 'PropFirm ' : ''}${modelType} ${new Date().toLocaleDateString()}`;
