@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.ai-strategy-selector]
 verify_jwt = false
+
+[functions.prop-risk-monitor]
+verify_jwt = false
