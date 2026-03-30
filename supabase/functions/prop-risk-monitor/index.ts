@@ -141,6 +141,46 @@ serve(async (req) => {
       }
     }
 
+    // Send email notification for warning/critical/paused via send-notification
+    if (severity === 'warning' || severity === 'critical' || severity === 'paused') {
+      try {
+        const supabaseAdmin = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+        );
+        const { data: profile } = await supabaseAdmin
+          .from('profiles')
+          .select('email, name')
+          .eq('id', user.id)
+          .single();
+
+        if (profile?.email) {
+          const severityEmoji = severity === 'paused' ? '🛑' : severity === 'critical' ? '🔴' : '🟡';
+          await supabaseAdmin.functions.invoke('send-notification', {
+            body: {
+              type: 'email',
+              to: profile.email,
+              subject: `${severityEmoji} Prop Risk Alert: ${severity.toUpperCase()} - ${account.account_name}`,
+              body: `
+<h2>${severityEmoji} Prop-Firm Risk Alert</h2>
+<p><strong>Account:</strong> ${account.account_name}</p>
+<p><strong>Status:</strong> ${severity.toUpperCase()}</p>
+<p><strong>Daily Drawdown:</strong> ${dailyDrawdownUsed.toFixed(2)}% / ${limits.maxDailyDrawdownPct}%</p>
+<p><strong>Total Drawdown:</strong> ${totalDrawdownUsed.toFixed(2)}% / ${limits.maxTotalDrawdownPct}%</p>
+<p><strong>Open Positions:</strong> ${openPositions} / ${limits.maxOpenPositions}</p>
+<p><strong>Daily P&L:</strong> $${dailyPnL.toFixed(2)}</p>
+<hr/>
+<ul>${warnings.map(w => `<li>${w}</li>`).join('')}</ul>
+<p>${shouldPause ? '<strong style="color:red">Trading has been PAUSED automatically.</strong>' : 'Please monitor your account closely.'}</p>
+              `.trim(),
+            }
+          });
+        }
+      } catch (emailErr) {
+        console.error('Email notification error:', emailErr);
+      }
+    }
+
     return new Response(JSON.stringify({
       accountId,
       severity,

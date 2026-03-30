@@ -38,17 +38,14 @@ const MODEL_DESCRIPTIONS: Record<string, { description: string; icon: React.Reac
 };
 
 const AVAILABLE_INDICATORS = ['RSI', 'MACD', 'EMA', 'SMA', 'Bollinger Bands', 'ATR', 'Stochastic', 'ADX', 'CCI', 'Williams %R'];
-const AVAILABLE_SYMBOLS = [
-  // Forex
-  'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'NZD/USD', 'USD/CHF', 'EUR/GBP',
-  'EUR/JPY', 'GBP/JPY', 'AUD/JPY', 'EUR/AUD', 'GBP/AUD', 'EUR/CAD', 'GBP/CAD',
-  // Crypto
-  'BTC/USD', 'ETH/USD', 'BNB/USD', 'SOL/USD', 'XRP/USD', 'ADA/USD',
-  // Indices
-  'US500', 'US30', 'NAS100', 'UK100', 'GER40', 'JPN225',
-  // Commodities
-  'XAU/USD', 'XAG/USD', 'USOIL', 'UKOIL', 'NATGAS',
-];
+const SYMBOL_CATEGORIES: Record<string, string[]> = {
+  'Forex': ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'NZD/USD', 'USD/CHF', 'EUR/GBP',
+    'EUR/JPY', 'GBP/JPY', 'AUD/JPY', 'EUR/AUD', 'GBP/AUD', 'EUR/CAD', 'GBP/CAD'],
+  'Crypto': ['BTC/USD', 'ETH/USD', 'BNB/USD', 'SOL/USD', 'XRP/USD', 'ADA/USD'],
+  'Indices': ['US500', 'US30', 'NAS100', 'UK100', 'GER40', 'JPN225'],
+  'Commodities': ['XAU/USD', 'XAG/USD', 'USOIL', 'UKOIL', 'NATGAS'],
+};
+const AVAILABLE_SYMBOLS = Object.values(SYMBOL_CATEGORIES).flat();
 
 export function ModelTrainingModal({
   open,
@@ -269,16 +266,58 @@ export function ModelTrainingModal({
           {/* Symbols Selection */}
           <div className="space-y-2">
             <Label>Training Symbols</Label>
+            <div className="flex flex-wrap gap-1 mb-2">
+              {Object.keys(SYMBOL_CATEGORIES).map(cat => {
+                const catSymbols = SYMBOL_CATEGORIES[cat];
+                const allSelected = catSymbols.every(s => params.symbols.includes(s));
+                return (
+                  <Badge
+                    key={cat}
+                    variant={allSelected ? "default" : "outline"}
+                    className="cursor-pointer text-[10px]"
+                    onClick={() => {
+                      if (isTraining) return;
+                      setParams(prev => {
+                        const without = prev.symbols.filter(s => !catSymbols.includes(s));
+                        return { ...prev, symbols: allSelected ? without : [...new Set([...prev.symbols, ...catSymbols])] };
+                      });
+                    }}
+                  >
+                    All {cat}
+                  </Badge>
+                );
+              })}
+              <Badge
+                variant={params.symbols.length === AVAILABLE_SYMBOLS.length ? "default" : "outline"}
+                className="cursor-pointer text-[10px]"
+                onClick={() => {
+                  if (isTraining) return;
+                  setParams(prev => ({
+                    ...prev,
+                    symbols: prev.symbols.length === AVAILABLE_SYMBOLS.length ? [] : [...AVAILABLE_SYMBOLS]
+                  }));
+                }}
+              >
+                Select All
+              </Badge>
+            </div>
             <div className="flex flex-wrap gap-2">
-              {AVAILABLE_SYMBOLS.map(symbol => (
-                <Badge
-                  key={symbol}
-                  variant={params.symbols.includes(symbol) ? "default" : "outline"}
-                  className="cursor-pointer"
-                  onClick={() => !isTraining && toggleSymbol(symbol)}
-                >
-                  {symbol}
-                </Badge>
+              {Object.entries(SYMBOL_CATEGORIES).map(([cat, symbols]) => (
+                <div key={cat} className="w-full">
+                  <p className="text-[10px] text-muted-foreground uppercase font-semibold mb-1">{cat}</p>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {symbols.map(symbol => (
+                      <Badge
+                        key={symbol}
+                        variant={params.symbols.includes(symbol) ? "default" : "outline"}
+                        className="cursor-pointer text-xs"
+                        onClick={() => !isTraining && toggleSymbol(symbol)}
+                      >
+                        {symbol}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </div>
