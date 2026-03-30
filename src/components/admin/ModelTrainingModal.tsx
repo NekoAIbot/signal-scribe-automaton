@@ -266,16 +266,58 @@ export function ModelTrainingModal({
           {/* Symbols Selection */}
           <div className="space-y-2">
             <Label>Training Symbols</Label>
+            <div className="flex flex-wrap gap-1 mb-2">
+              {Object.keys(SYMBOL_CATEGORIES).map(cat => {
+                const catSymbols = SYMBOL_CATEGORIES[cat];
+                const allSelected = catSymbols.every(s => params.symbols.includes(s));
+                return (
+                  <Badge
+                    key={cat}
+                    variant={allSelected ? "default" : "outline"}
+                    className="cursor-pointer text-[10px]"
+                    onClick={() => {
+                      if (isTraining) return;
+                      setParams(prev => {
+                        const without = prev.symbols.filter(s => !catSymbols.includes(s));
+                        return { ...prev, symbols: allSelected ? without : [...new Set([...prev.symbols, ...catSymbols])] };
+                      });
+                    }}
+                  >
+                    All {cat}
+                  </Badge>
+                );
+              })}
+              <Badge
+                variant={params.symbols.length === AVAILABLE_SYMBOLS.length ? "default" : "outline"}
+                className="cursor-pointer text-[10px]"
+                onClick={() => {
+                  if (isTraining) return;
+                  setParams(prev => ({
+                    ...prev,
+                    symbols: prev.symbols.length === AVAILABLE_SYMBOLS.length ? [] : [...AVAILABLE_SYMBOLS]
+                  }));
+                }}
+              >
+                Select All
+              </Badge>
+            </div>
             <div className="flex flex-wrap gap-2">
-              {AVAILABLE_SYMBOLS.map(symbol => (
-                <Badge
-                  key={symbol}
-                  variant={params.symbols.includes(symbol) ? "default" : "outline"}
-                  className="cursor-pointer"
-                  onClick={() => !isTraining && toggleSymbol(symbol)}
-                >
-                  {symbol}
-                </Badge>
+              {Object.entries(SYMBOL_CATEGORIES).map(([cat, symbols]) => (
+                <div key={cat} className="w-full">
+                  <p className="text-[10px] text-muted-foreground uppercase font-semibold mb-1">{cat}</p>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {symbols.map(symbol => (
+                      <Badge
+                        key={symbol}
+                        variant={params.symbols.includes(symbol) ? "default" : "outline"}
+                        className="cursor-pointer text-xs"
+                        onClick={() => !isTraining && toggleSymbol(symbol)}
+                      >
+                        {symbol}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </div>
