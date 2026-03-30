@@ -13,17 +13,41 @@ serve(async (req) => {
   
   try {
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) throw new Error('Missing authorization header');
-    
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
-    );
-    
     const params = await req.json();
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    if (userError || !user) throw new Error('User not authenticated');
+    
+    let userId: string;
+    
+    if (authHeader?.startsWith('Bearer ')) {
+      const supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        { global: { headers: { Authorization: authHeader } } }
+      );
+      const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+      if (userError) {
+        console.error('Auth error details:', userError.message);
+      }
+      if (!user) {
+        // Fallback: try with service role to verify the token
+        const serviceClient = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+        );
+        const token = authHeader.replace('Bearer ', '');
+        const { data: { user: svcUser }, error: svcError } = await serviceClient.auth.getUser(token);
+        if (svcError || !svcUser) {
+          console.error('Service role auth also failed:', svcError?.message);
+          throw new Error('User not authenticated');
+        }
+        userId = svcUser.id;
+      } else {
+        userId = user.id;
+      }
+    } else {
+      throw new Error('Missing authorization header');
+    }
+    
+    const user = { id: userId };
     
     const isPropFirm = params.mode === 'prop-firm' || params.name?.toLowerCase().includes('prop');
     const modelType = params.modelType || 'LSTM';
