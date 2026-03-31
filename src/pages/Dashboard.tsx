@@ -9,6 +9,7 @@ import { TradingSignals } from "@/components/dashboard/TradingSignals";
 import { RiskEngine } from "@/components/dashboard/RiskEngine";
 import { PropRiskWidget } from "@/components/dashboard/PropRiskWidget";
 import { MarketSentiment } from "@/components/dashboard/MarketSentiment";
+import { LivePnLTracker } from "@/components/dashboard/LivePnLTracker";
 import { TradingBot } from "@/components/dashboard/TradingBot";
 import { useMarketData, ASSET_CATEGORIES } from "@/services/marketDataService";
 import { Card, CardContent } from "@/components/ui/card";
@@ -106,6 +107,7 @@ const Dashboard = () => {
         {/* Right Sidebar */}
         <div className="space-y-3 md:space-y-4">
           <TradingStatus />
+          <LivePnLTracker />
           <PropRiskWidget />
         </div>
       </div>

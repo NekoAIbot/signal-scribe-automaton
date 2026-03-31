@@ -1,131 +1,129 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Plus, Trash2, Bell, BellOff, ArrowUpRight } from "lucide-react";
+import { Plus, Trash2, Bell, BellOff, Loader2 } from "lucide-react";
 import { testAlertSystem } from "@/services/notificationService";
 import { TechnicalAlertForm } from "@/components/alerts/TechnicalAlertForm";
 import { NewsAlertForm } from "@/components/alerts/NewsAlertForm";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
-// Sample alert data
-const sampleAlerts = [
-  {
-    id: '1',
-    symbol: 'EUR/USD',
-    condition: 'Price Above',
-    value: 1.0850,
-    created: '2024-05-10',
-    active: true,
-  },
-  {
-    id: '2',
-    symbol: 'GBP/USD',
-    condition: 'Price Below',
-    value: 1.2500,
-    created: '2024-05-09',
-    active: true,
-  },
-  {
-    id: '3',
-    symbol: 'BTC/USD',
-    condition: 'Price Movement',
-    value: 5,
-    created: '2024-05-08',
-    active: false,
-  },
+interface PriceAlert {
+  id: string;
+  symbol: string;
+  condition: string;
+  value: number;
+  is_active: boolean;
+  created_at: string;
+  triggered_at: string | null;
+}
+
+const SYMBOLS = [
+  'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'NZD/USD',
+  'BTC/USD', 'ETH/USD', 'XRP/USD', 'SOL/USD',
+  'XAU/USD', 'XAG/USD', 'US OIL',
+  'SPX', 'NDX', 'DJI'
 ];
 
+const CONDITIONS = ['Price Above', 'Price Below', 'Price Movement'];
+
 const AlertsPage = () => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('price');
-  const [alerts, setAlerts] = useState(sampleAlerts);
-  const [newAlert, setNewAlert] = useState({
-    symbol: 'EUR/USD',
-    condition: 'Price Above',
-    value: '',
-  });
+  const [alerts, setAlerts] = useState<PriceAlert[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newAlert, setNewAlert] = useState({ symbol: 'EUR/USD', condition: 'Price Above', value: '' });
 
-  const symbols = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'BTC/USD', 'ETH/USD'];
-  const conditions = ['Price Above', 'Price Below', 'Price Movement'];
+  useEffect(() => {
+    if (!user) return;
+    fetchAlerts();
+  }, [user]);
 
-  const handleAddAlert = (e: React.FormEvent) => {
-    e.preventDefault();
+  const fetchAlerts = async () => {
+    const { data, error } = await supabase
+      .from('price_alerts')
+      .select('*')
+      .order('created_at', { ascending: false });
     
-    if (!newAlert.value) {
+    if (error) {
+      console.error('Error fetching alerts:', error);
+      toast.error('Failed to load alerts');
+    } else {
+      setAlerts((data || []) as PriceAlert[]);
+    }
+    setLoading(false);
+  };
+
+  const handleAddAlert = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAlert.value || !user) {
       toast.error('Please enter an alert value');
       return;
     }
-    
-    const alert = {
-      id: Date.now().toString(),
-      symbol: newAlert.symbol,
-      condition: newAlert.condition,
-      value: parseFloat(newAlert.value as string),
-      created: new Date().toISOString().split('T')[0],
-      active: true,
-    };
-    
-    setAlerts([...alerts, alert]);
-    setNewAlert({ ...newAlert, value: '' });
-    toast.success(`New ${newAlert.condition} alert created for ${newAlert.symbol}`);
-  };
 
-  const toggleAlertStatus = (id: string) => {
-    setAlerts(
-      alerts.map((alert) =>
-        alert.id === id ? { ...alert, active: !alert.active } : alert
-      )
-    );
-    
-    const alert = alerts.find(a => a.id === id);
-    if (alert) {
-      toast.success(`Alert for ${alert.symbol} ${alert.active ? 'disabled' : 'enabled'}`);
+    const { data, error } = await supabase
+      .from('price_alerts')
+      .insert({
+        user_id: user.id,
+        symbol: newAlert.symbol,
+        condition: newAlert.condition,
+        value: parseFloat(newAlert.value),
+        is_active: true
+      })
+      .select()
+      .single();
+
+    if (error) {
+      toast.error('Failed to create alert');
+    } else {
+      setAlerts([data as PriceAlert, ...alerts]);
+      setNewAlert({ ...newAlert, value: '' });
+      toast.success(`Alert created for ${newAlert.symbol}`);
     }
   };
 
-  const deleteAlert = (id: string) => {
+  const toggleAlertStatus = async (id: string) => {
     const alert = alerts.find(a => a.id === id);
-    setAlerts(alerts.filter((alert) => alert.id !== id));
-    if (alert) {
-      toast.info(`Alert for ${alert.symbol} deleted`);
+    if (!alert) return;
+
+    const { error } = await supabase
+      .from('price_alerts')
+      .update({ is_active: !alert.is_active })
+      .eq('id', id);
+
+    if (error) {
+      toast.error('Failed to update alert');
+    } else {
+      setAlerts(alerts.map(a => a.id === id ? { ...a, is_active: !a.is_active } : a));
+      toast.success(`Alert ${alert.is_active ? 'disabled' : 'enabled'}`);
     }
   };
-  
-  const handleTestAlert = async () => {
-    await testAlertSystem();
-  };
-  
-  const openChart = (symbol: string) => {
-    // Open TradingView chart in a new window
-    window.open(`https://www.tradingview.com/chart/?symbol=${symbol.replace('/', '')}`, '_blank');
+
+  const deleteAlert = async (id: string) => {
+    const { error } = await supabase
+      .from('price_alerts')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      toast.error('Failed to delete alert');
+    } else {
+      setAlerts(alerts.filter(a => a.id !== id));
+      toast.info('Alert deleted');
+    }
   };
 
   return (
     <div className="p-4 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Market Alerts</h1>
-        <Button 
-          variant="outline"
-          onClick={handleTestAlert}
-        >
+        <Button variant="outline" onClick={() => testAlertSystem()}>
           Test Alert System
         </Button>
       </div>
@@ -135,9 +133,7 @@ const AlertsPage = () => {
           <Card>
             <CardHeader>
               <CardTitle>Active Alerts</CardTitle>
-              <CardDescription>
-                Manage your price and market alerts
-              </CardDescription>
+              <CardDescription>Manage your price and market alerts</CardDescription>
             </CardHeader>
             <CardContent>
               <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -148,7 +144,11 @@ const AlertsPage = () => {
                 </TabsList>
                 
                 <TabsContent value="price" className="py-4">
-                  {alerts.length > 0 ? (
+                  {loading ? (
+                    <div className="flex justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : alerts.length > 0 ? (
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -163,29 +163,21 @@ const AlertsPage = () => {
                       <TableBody>
                         {alerts.map((alert) => (
                           <TableRow key={alert.id}>
-                            <TableCell>
-                              <Button 
-                                variant="link" 
-                                className="p-0 h-auto" 
-                                onClick={() => openChart(alert.symbol)}
-                              >
-                                {alert.symbol}
-                              </Button>
-                            </TableCell>
+                            <TableCell className="font-medium">{alert.symbol}</TableCell>
                             <TableCell>{alert.condition}</TableCell>
                             <TableCell>
                               {alert.condition === 'Price Movement' 
                                 ? `${alert.value}%` 
                                 : alert.value.toFixed(4)}
                             </TableCell>
-                            <TableCell>{alert.created}</TableCell>
+                            <TableCell>{new Date(alert.created_at).toLocaleDateString()}</TableCell>
                             <TableCell>
                               <Button
-                                variant={alert.active ? "default" : "secondary"}
+                                variant={alert.is_active ? "default" : "secondary"}
                                 size="sm"
                                 onClick={() => toggleAlertStatus(alert.id)}
                               >
-                                {alert.active ? (
+                                {alert.is_active ? (
                                   <><Bell className="mr-1 h-3 w-3" /> Active</>
                                 ) : (
                                   <><BellOff className="mr-1 h-3 w-3" /> Inactive</>
@@ -193,11 +185,7 @@ const AlertsPage = () => {
                               </Button>
                             </TableCell>
                             <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => deleteAlert(alert.id)}
-                              >
+                              <Button variant="ghost" size="sm" onClick={() => deleteAlert(alert.id)}>
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </TableCell>
@@ -228,54 +216,30 @@ const AlertsPage = () => {
           <Card>
             <CardHeader>
               <CardTitle>Create Price Alert</CardTitle>
-              <CardDescription>
-                Set up a new price alert
-              </CardDescription>
+              <CardDescription>Set up a new price alert</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleAddAlert} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="symbol">Symbol</Label>
-                  <Select
-                    value={newAlert.symbol}
-                    onValueChange={(value) => setNewAlert({ ...newAlert, symbol: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select Symbol" />
-                    </SelectTrigger>
+                  <Label>Symbol</Label>
+                  <Select value={newAlert.symbol} onValueChange={(v) => setNewAlert({ ...newAlert, symbol: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {symbols.map((symbol) => (
-                        <SelectItem key={symbol} value={symbol}>
-                          {symbol}
-                        </SelectItem>
-                      ))}
+                      {SYMBOLS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
-                
                 <div className="space-y-2">
-                  <Label htmlFor="condition">Condition</Label>
-                  <Select
-                    value={newAlert.condition}
-                    onValueChange={(value) => setNewAlert({ ...newAlert, condition: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select Condition" />
-                    </SelectTrigger>
+                  <Label>Condition</Label>
+                  <Select value={newAlert.condition} onValueChange={(v) => setNewAlert({ ...newAlert, condition: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {conditions.map((condition) => (
-                        <SelectItem key={condition} value={condition}>
-                          {condition}
-                        </SelectItem>
-                      ))}
+                      {CONDITIONS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
-                
                 <div className="space-y-2">
-                  <Label htmlFor="value">
-                    {newAlert.condition === 'Price Movement' ? 'Percentage (%)' : 'Price Value'}
-                  </Label>
+                  <Label>{newAlert.condition === 'Price Movement' ? 'Percentage (%)' : 'Price Value'}</Label>
                   <Input
                     type="number"
                     step="0.0001"
@@ -285,10 +249,8 @@ const AlertsPage = () => {
                     required
                   />
                 </div>
-                
                 <Button type="submit" className="w-full">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Alert
+                  <Plus className="mr-2 h-4 w-4" /> Create Alert
                 </Button>
               </form>
             </CardContent>

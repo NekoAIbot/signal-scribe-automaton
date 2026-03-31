@@ -63,16 +63,46 @@ export function AIStrategySelector({ strategies, models, onApplyRecommendations 
     setRecommendation(null);
 
     try {
-      // Get current market data (mock for now, would be real in production)
+      // Fetch real market data from the market quotes edge function
+      const { data: quoteData, error: quoteError } = await supabase.functions.invoke('fetch-market-quotes', {
+        body: { symbols: 'EURUSD,GBPUSD,USDJPY,AUDUSD,BTCUSD,ETHUSD,XAUUSD,SPX' }
+      });
+
+      if (quoteError) {
+        console.error('Quote fetch error:', quoteError);
+      }
+
+      const quotes = quoteData?.quotes || {};
+      const candles = quoteData?.candles || {};
+
+      // Build real market data payload from live quotes
+      const pairs = Object.entries(quotes).map(([sym, q]: [string, any]) => {
+        const history = candles[sym] || [];
+        const rsi = calculateRSI(history);
+        const ema12 = calculateEMA(history, 12);
+        const ema26 = calculateEMA(history, 26);
+        const macdValue = ema12 - ema26;
+        const mid = (q.bid + q.ask) / 2;
+        const prevMid = history.length > 1 ? history[history.length - 2] : mid;
+        const change24h = prevMid ? ((mid - prevMid) / prevMid) * 100 : 0;
+
+        return {
+          symbol: sym.length === 6 ? sym.slice(0, 3) + '/' + sym.slice(3) : sym,
+          price: mid,
+          bid: q.bid,
+          ask: q.ask,
+          change24h: Number(change24h.toFixed(4)),
+          rsi: Number(rsi.toFixed(2)),
+          macd: { value: Number(macdValue.toFixed(6)), signal: 0 },
+          dataPoints: history.length,
+        };
+      });
+
       const marketData = {
-        pairs: [
-          { symbol: 'EUR/USD', price: 1.0850, change24h: 0.15, rsi: 55, macd: { value: 0.0012, signal: 0.0008 } },
-          { symbol: 'GBP/USD', price: 1.2680, change24h: -0.22, rsi: 42, macd: { value: -0.0018, signal: -0.0010 } },
-          { symbol: 'USD/JPY', price: 149.50, change24h: 0.35, rsi: 68, macd: { value: 0.25, signal: 0.18 } },
-        ],
-        overallVolatility: 'medium',
-        marketHours: 'London/NY overlap',
-        economicEvents: ['Fed Speech', 'ECB Minutes'],
+        pairs,
+        source: quoteData?.source || 'unknown',
+        overallVolatility: pairs.some(p => Math.abs(p.change24h) > 1) ? 'high' : pairs.some(p => Math.abs(p.change24h) > 0.3) ? 'medium' : 'low',
+        marketHours: getMarketSession(),
         timestamp: new Date().toISOString()
       };
 
@@ -88,7 +118,7 @@ export function AIStrategySelector({ strategies, models, onApplyRecommendations 
 
       if (data?.success && data?.recommendation) {
         setRecommendation(data.recommendation);
-        toast.success("AI analysis complete!");
+        toast.success("AI analysis complete with live market data!");
       } else {
         throw new Error(data?.error || 'Analysis failed');
       }
@@ -102,10 +132,8 @@ export function AIStrategySelector({ strategies, models, onApplyRecommendations 
 
   const applyRecommendations = () => {
     if (!recommendation) return;
-
     const strategyIds = recommendation.recommended_strategies.map(s => s.strategy_id);
     const modelIds = recommendation.recommended_models.map(m => m.model_id);
-    
     onApplyRecommendations(strategyIds, modelIds);
     toast.success("AI recommendations applied successfully!");
   };
@@ -138,7 +166,7 @@ export function AIStrategySelector({ strategies, models, onApplyRecommendations 
           AI Strategy Selector
         </CardTitle>
         <CardDescription>
-          Let AI analyze market conditions and recommend the best strategies and models
+          AI analyzes live market data and recommends the best strategies and models
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -151,12 +179,12 @@ export function AIStrategySelector({ strategies, models, onApplyRecommendations 
           {isAnalyzing ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Analyzing Market Conditions...
+              Analyzing Live Market Data...
             </>
           ) : (
             <>
               <Brain className="mr-2 h-4 w-4" />
-              Run AI Analysis
+              Run AI Analysis (Live Data)
             </>
           )}
         </Button>
@@ -253,4 +281,37 @@ export function AIStrategySelector({ strategies, models, onApplyRecommendations 
       </CardContent>
     </Card>
   );
+}
+
+// Helper functions for technical indicators
+function calculateRSI(prices: number[], period = 14): number {
+  if (prices.length < period + 1) return 50;
+  const changes = prices.slice(-period - 1).map((p, i, arr) => i > 0 ? p - arr[i - 1] : 0).slice(1);
+  const gains = changes.filter(c => c > 0);
+  const losses = changes.filter(c => c < 0).map(c => Math.abs(c));
+  const avgGain = gains.length ? gains.reduce((a, b) => a + b, 0) / period : 0;
+  const avgLoss = losses.length ? losses.reduce((a, b) => a + b, 0) / period : 0;
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return 100 - (100 / (1 + rs));
+}
+
+function calculateEMA(prices: number[], period: number): number {
+  if (prices.length === 0) return 0;
+  if (prices.length < period) return prices[prices.length - 1];
+  const k = 2 / (period + 1);
+  let ema = prices.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  for (let i = period; i < prices.length; i++) {
+    ema = prices[i] * k + ema * (1 - k);
+  }
+  return ema;
+}
+
+function getMarketSession(): string {
+  const hour = new Date().getUTCHours();
+  if (hour >= 0 && hour < 7) return 'Asian Session';
+  if (hour >= 7 && hour < 12) return 'London Session';
+  if (hour >= 12 && hour < 16) return 'London/NY Overlap';
+  if (hour >= 16 && hour < 21) return 'New York Session';
+  return 'After Hours';
 }
