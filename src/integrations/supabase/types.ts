@@ -145,6 +145,39 @@ export type Database = {
         }
         Relationships: []
       }
+      price_alerts: {
+        Row: {
+          condition: string
+          created_at: string
+          id: string
+          is_active: boolean
+          symbol: string
+          triggered_at: string | null
+          user_id: string
+          value: number
+        }
+        Insert: {
+          condition: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          symbol: string
+          triggered_at?: string | null
+          user_id: string
+          value: number
+        }
+        Update: {
+          condition?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          symbol?: string
+          triggered_at?: string | null
+          user_id?: string
+          value?: number
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
