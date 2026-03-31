@@ -107,6 +107,7 @@ const Dashboard = () => {
         {/* Right Sidebar */}
         <div className="space-y-3 md:space-y-4">
           <TradingStatus />
+          <LivePnLTracker />
           <PropRiskWidget />
         </div>
       </div>
