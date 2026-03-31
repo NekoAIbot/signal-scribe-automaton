@@ -43,11 +43,12 @@ const Dashboard = () => {
   const showSubscriptionCard = user?.subscriptionTier === 'free';
   
   return (
-    <div className="p-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">AI Enhanced Trading Platform</h1>
+    <div className="p-3 md:p-4 space-y-3 md:space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-lg md:text-2xl font-bold truncate">AI Trading Platform</h1>
         <Select value={assetCategory} onValueChange={setAssetCategory}>
-          <SelectTrigger className="w-[160px]">
+          <SelectTrigger className="w-[130px] md:w-[160px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -59,24 +60,24 @@ const Dashboard = () => {
         </Select>
       </div>
       
-      {/* Trading Bot moved to top */}
-      <TradingBot />
-
-      {showSubscriptionCard && (
-        <Card className="bg-primary/10 border-primary/20">
-          <CardContent className="p-4 flex flex-col md:flex-row items-center justify-between">
-            <div className="mb-2 md:mb-0">
+      {/* Bot Control + Upgrade CTA */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <TradingBot />
+        {showSubscriptionCard && (
+          <Card className="bg-primary/10 border-primary/20">
+            <CardContent className="p-4 flex flex-col justify-center h-full">
               <h3 className="font-medium">Upgrade to Premium</h3>
-              <p className="text-sm text-muted-foreground">Get access to all features including automated trading</p>
-            </div>
-            <Button onClick={() => navigate("/settings")}>
-              View Plans <ArrowUpRight className="ml-2 h-4 w-4" />
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <p className="text-sm text-muted-foreground mb-2">Get access to all features including automated trading</p>
+              <Button onClick={() => navigate("/settings")} size="sm" className="w-fit">
+                View Plans <ArrowUpRight className="ml-1 h-3 w-3" />
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Market Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {displayedAssets.map((asset) => (
           <MarketCard 
             key={asset.symbol}
@@ -89,22 +90,23 @@ const Dashboard = () => {
         ))}
       </div>
       
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2">
-          <div className="space-y-4">
-            <TradingViewChart />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <MarketSentiment />
-              <RiskEngine />
-            </div>
-            <TradingSignals />
+      {/* Main Content Area */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
+        {/* Left Column - Chart + Analysis */}
+        <div className="lg:col-span-2 space-y-3 md:space-y-4">
+          <TradingViewChart />
+          <TradingSignals />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <MarketSentiment />
+            <RiskEngine />
           </div>
+          <PerformanceMetrics />
         </div>
         
-        <div className="space-y-4">
-          <PropRiskWidget />
+        {/* Right Sidebar */}
+        <div className="space-y-3 md:space-y-4">
           <TradingStatus />
-          <PerformanceMetrics />
+          <PropRiskWidget />
         </div>
       </div>
     </div>
