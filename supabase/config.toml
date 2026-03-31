@@ -19,7 +19,7 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.execute-trade]
-verify_jwt = true
+verify_jwt = false
 
 [functions.ml-predictions]
 verify_jwt = true
