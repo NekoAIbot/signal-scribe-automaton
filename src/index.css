@@ -5,84 +5,136 @@
 
 @layer base {
   :root {
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
+    --background: 222 33% 10%;
+    --foreground: 40 25% 92%;
 
-    --card: 222 47% 18%;
-    --card-foreground: 210 40% 98%;
+    --card: 222 27% 14%;
+    --card-foreground: 40 25% 92%;
 
-    --popover: 222 47% 11%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 222 29% 12%;
+    --popover-foreground: 40 25% 92%;
 
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 38 44% 63%;
+    --primary-foreground: 222 33% 10%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 221 20% 19%;
+    --secondary-foreground: 40 24% 90%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 221 18% 18%;
+    --muted-foreground: 38 14% 67%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 208 28% 22%;
+    --accent-foreground: 40 25% 92%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 72% 58%;
+    --destructive-foreground: 40 25% 96%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --border: 219 16% 24%;
+    --input: 219 16% 24%;
+    --ring: 38 44% 63%;
+
+    --success: 148 47% 48%;
+    --danger: 0 72% 58%;
+    --warning: 38 92% 60%;
+    --info: 202 78% 62%;
+    --trading-bg: 222 33% 10%;
+    --trading-card: 222 27% 14%;
+    --trading-border: 219 16% 24%;
     
-    --sidebar-background: 222 47% 11%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 217.2 91.2% 59.8%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 217.2 32.6% 17.5%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 217.2 32.6% 17.5%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: 223 30% 12%;
+    --sidebar-foreground: 40 25% 92%;
+    --sidebar-primary: 38 44% 63%;
+    --sidebar-primary-foreground: 222 33% 10%;
+    --sidebar-accent: 221 20% 19%;
+    --sidebar-accent-foreground: 40 25% 92%;
+    --sidebar-border: 219 16% 24%;
+    --sidebar-ring: 38 44% 63%;
 
-    --radius: 0.5rem;
+    --radius: 1rem;
   }
 
   .light {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 36 33% 96%;
+    --foreground: 222 33% 12%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: 36 30% 99%;
+    --card-foreground: 222 33% 12%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: 36 30% 99%;
+    --popover-foreground: 222 33% 12%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 35 43% 46%;
+    --primary-foreground: 36 33% 98%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 40 20% 92%;
+    --secondary-foreground: 222 33% 12%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 40 18% 90%;
+    --muted-foreground: 220 12% 38%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 205 42% 92%;
+    --accent-foreground: 222 33% 12%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 72% 56%;
+    --destructive-foreground: 36 33% 98%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 34 19% 82%;
+    --input: 34 19% 82%;
+    --ring: 35 43% 46%;
+
+    --success: 148 47% 40%;
+    --danger: 0 72% 56%;
+    --warning: 38 92% 48%;
+    --info: 202 78% 48%;
+    --trading-bg: 36 33% 96%;
+    --trading-card: 36 30% 99%;
+    --trading-border: 34 19% 82%;
   }
 }
 
 @layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
   * {
     @apply border-border;
   }
 
   body {
     @apply bg-trading-bg text-foreground;
+    background-image:
+      radial-gradient(circle at top, hsl(var(--primary) / 0.16), transparent 28%),
+      radial-gradient(circle at 20% 20%, hsl(var(--accent) / 0.16), transparent 30%),
+      linear-gradient(180deg, hsl(var(--background)), hsl(var(--trading-bg)) 72%);
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.32);
+    color: hsl(var(--foreground));
+  }
+}
+
+@layer components {
+  .app-shell {
+    position: relative;
+    overflow: hidden;
+    border-radius: 2rem;
+    border: 1px solid hsl(var(--border) / 0.72);
+    background: linear-gradient(180deg, hsl(var(--card) / 0.88), hsl(var(--card) / 0.7));
+    backdrop-filter: blur(18px);
+    box-shadow: 0 36px 90px -54px hsl(var(--foreground) / 0.7);
+  }
+
+  .app-shell::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(140deg, hsl(var(--primary) / 0.08), transparent 34%),
+      linear-gradient(320deg, hsl(var(--accent) / 0.08), transparent 38%);
   }
 }
 

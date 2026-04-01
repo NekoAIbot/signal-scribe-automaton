@@ -24,8 +24,10 @@ export function TradingSignals() {
     toast.info(`Executing ${signal.type} signal for ${signal.symbol} on ${activeAccounts.length} account(s)...`);
     
     try {
+      let successCount = 0;
+
       for (const account of activeAccounts) {
-        await supabase.functions.invoke('execute-trade', {
+        const { data, error } = await supabase.functions.invoke('execute-trade', {
           body: {
             symbol: signal.symbol,
             type: signal.type,
@@ -35,11 +37,22 @@ export function TradingSignals() {
             takeProfit: signal.takeProfit1,
             brokerAccountId: account.id,
             strategyId: signal.strategyId || null,
+            modelId: signal.modelId || null,
           }
         });
+
+        if (!error && data?.success) {
+          successCount += 1;
+        } else {
+          console.error(`Failed to execute on ${account.account_name}:`, error || data);
+        }
       }
-      
-      toast.success(`Signal executed on ${activeAccounts.length} broker account(s)`);
+
+      if (successCount === 0) {
+        throw new Error('Execution failed on all connected accounts');
+      }
+
+      toast.success(`Signal executed on ${successCount} broker account(s)`);
       refetch();
     } catch (error) {
       toast.error(`Failed to execute signal: ${(error as Error).message}`);

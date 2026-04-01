@@ -64,25 +64,25 @@ export default {
 					ring: 'hsl(var(--sidebar-ring))'
 				},
 				success: {
-					DEFAULT: '#10B981',
-					light: '#D1FAE5',
+					DEFAULT: 'hsl(var(--success))',
+					light: 'hsl(var(--success) / 0.16)',
 				},
 				danger: {
-					DEFAULT: '#EF4444',
-					light: '#FEE2E2',
+					DEFAULT: 'hsl(var(--danger))',
+					light: 'hsl(var(--danger) / 0.16)',
 				},
 				warning: {
-					DEFAULT: '#F59E0B',
-					light: '#FEF3C7',
+					DEFAULT: 'hsl(var(--warning))',
+					light: 'hsl(var(--warning) / 0.16)',
 				},
 				info: {
-					DEFAULT: '#3B82F6',
-					light: '#DBEAFE',
+					DEFAULT: 'hsl(var(--info))',
+					light: 'hsl(var(--info) / 0.16)',
 				},
 				trading: {
-					bg: '#121826',
-					card: '#1E293B',
-					border: '#2D3748',
+					bg: 'hsl(var(--trading-bg))',
+					card: 'hsl(var(--trading-card))',
+					border: 'hsl(var(--trading-border))',
 				}
 			},
 			borderRadius: {

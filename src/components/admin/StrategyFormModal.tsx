@@ -57,8 +57,14 @@ export function StrategyFormModal({
   useEffect(() => {
     if (open) {
       if (initialStrategy) {
-        setStrategy(initialStrategy);
-        setUseMultipleModels(initialStrategy.model_ids && initialStrategy.model_ids.length > 0);
+        setStrategy({
+          ...initialStrategy,
+          model_id: initialStrategy.model_id || initialStrategy.model_ids?.[0] || models[0]?.id || '',
+          model_ids: initialStrategy.model_ids || [],
+          indicators: initialStrategy.indicators || [],
+          ai_auto_select: initialStrategy.ai_auto_select ?? false,
+        });
+        setUseMultipleModels((initialStrategy.model_ids?.length || 0) > 1);
       } else {
         setStrategy({
           id: `strategy-${Date.now()}`,
@@ -110,6 +116,17 @@ export function StrategyFormModal({
     });
   };
 
+  const toggleAllModels = () => {
+    const nextSelection = (strategy.model_ids || []).length === models.length
+      ? []
+      : models.map(model => model.id);
+
+    setStrategy({
+      ...strategy,
+      model_ids: nextSelection,
+    });
+  };
+
   const addIndicator = (indicator?: string) => {
     const toAdd = indicator || indicatorInput.trim();
     if (!toAdd) return;
@@ -151,7 +168,18 @@ export function StrategyFormModal({
       return;
     }
     
-    onSave(strategy);
+    const normalizedStrategy: TradingStrategy = {
+      ...strategy,
+      model_ids: strategy.ai_auto_select
+        ? []
+        : useMultipleModels
+          ? strategy.model_ids || []
+          : strategy.model_id
+            ? [strategy.model_id]
+            : []
+    };
+
+    onSave(normalizedStrategy);
     onOpenChange(false);
   };
 
@@ -249,21 +277,33 @@ export function StrategyFormModal({
                       ⚠️ No models available. Train a model first in the ML Models tab.
                     </p>
                   ) : (
-                    <div className="flex flex-wrap gap-2 p-3 bg-muted rounded-md">
-                      {models.map(model => (
+                    <div className="space-y-2 rounded-md bg-muted p-3">
+                      <div className="flex flex-wrap gap-2">
                         <Badge
-                          key={model.id}
-                          variant={(strategy.model_ids || []).includes(model.id) ? "default" : "outline"}
+                          variant={(strategy.model_ids || []).length === models.length ? "default" : "outline"}
                           className="cursor-pointer"
-                          onClick={() => toggleModel(model.id)}
+                          onClick={toggleAllModels}
                         >
-                          <Brain className="h-3 w-3 mr-1" />
-                          {model.name}
-                          {(strategy.model_ids || []).includes(model.id) && (
-                            <X className="h-3 w-3 ml-1" />
-                          )}
+                          {(strategy.model_ids || []).length === models.length ? 'Clear All Models' : 'Select All Models'}
                         </Badge>
-                      ))}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {models.map(model => (
+                          <Badge
+                            key={model.id}
+                            variant={(strategy.model_ids || []).includes(model.id) ? "default" : "outline"}
+                            className="cursor-pointer"
+                            onClick={() => toggleModel(model.id)}
+                          >
+                            <Brain className="h-3 w-3 mr-1" />
+                            {model.name}
+                            {(strategy.model_ids || []).includes(model.id) && (
+                              <X className="h-3 w-3 ml-1" />
+                            )}
+                          </Badge>
+                        ))}
+                      </div>
                     </div>
                   )}
                   {(strategy.model_ids || []).length > 0 && (
