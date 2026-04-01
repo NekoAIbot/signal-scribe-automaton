@@ -1,13 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect } from "react";
-import { toast } from "sonner";
-import { useWebSocketMarketData, ALL_SYMBOLS, ASSET_CATEGORIES } from "./websocketService";
-import { 
-  generateTradingSignals, 
-  updateHistoricalPrices, 
-  TradeSignal, 
-  getHistoricalPrices 
-} from "./signalGenerationService";
+import { useEffect } from "react";
+import { useWebSocketMarketData, ASSET_CATEGORIES } from "./websocketService";
+import { updateHistoricalPrices, TradeSignal } from "./signalGenerationService";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface MarketData {
   symbol: string;
@@ -76,54 +71,43 @@ export const useMarketData = (category?: string) => {
 
 // Hook for trading signals
 export const useTradingSignals = () => {
-  const { marketData: wsMarketData, isConnected } = useWebSocketMarketData();
-  const queryClient = useQueryClient();
-  
-  const generateSignals = useCallback(() => {
-    const historicalPrices = getHistoricalPrices();
-    
-    if (isConnected && Object.keys(wsMarketData).length > 0 && Object.values(historicalPrices).some(prices => prices.length > 30)) {
-      const signals = generateTradingSignals(wsMarketData, historicalPrices);
-      
-      if (signals.length > 0) {
-        const existingSignals = queryClient.getQueryData<TradeSignal[]>(['tradingSignals']) || [];
-        const mergedSignals = [...existingSignals];
-        
-        signals.forEach(signal => {
-          const existingIndex = mergedSignals.findIndex(
-            s => s.symbol === signal.symbol && 
-                 s.strategy === signal.strategy && 
-                 s.status === 'new' && 
-                 new Date(s.time).getTime() > Date.now() - 3600000
-          );
-          
-          if (existingIndex === -1) {
-            mergedSignals.push(signal);
-          }
-        });
-        
-        const trimmedSignals = mergedSignals.sort((a, b) => 
-          new Date(b.time).getTime() - new Date(a.time).getTime()
-        ).slice(0, 20);
-        
-        queryClient.setQueryData(['tradingSignals'], trimmedSignals);
-      }
-    }
-  }, [wsMarketData, isConnected, queryClient]);
-  
-  useEffect(() => {
-    const interval = setInterval(generateSignals, 60000);
-    generateSignals();
-    return () => clearInterval(interval);
-  }, [generateSignals]);
-  
   return useQuery({
     queryKey: ['tradingSignals'],
     queryFn: async () => {
-      const historicalPrices = getHistoricalPrices();
-      return generateTradingSignals(wsMarketData, historicalPrices);
+      try {
+        const { data, error } = await supabase
+          .from('trading_signals')
+          .select('id, symbol, signal_type, entry_price, target_price, stop_loss, created_at, confidence, strategy_id, model_id, expires_at, is_active')
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (error) throw error;
+
+        return (data || [])
+          .filter(signal => signal.signal_type !== 'hold')
+          .filter(signal => !signal.expires_at || new Date(signal.expires_at).getTime() > Date.now())
+          .map((signal): TradeSignal => ({
+            id: signal.id,
+            symbol: signal.symbol,
+            type: signal.signal_type === 'sell' ? 'SELL' : 'BUY',
+            price: Number(signal.entry_price || 0),
+            time: signal.created_at || new Date().toISOString(),
+            status: 'new',
+            strategy: signal.strategy_id ? 'Selected Strategy' : 'AI Market Scan',
+            strategyId: signal.strategy_id,
+            modelId: signal.model_id,
+            confidence: Number(signal.confidence || 0),
+            stopLoss: signal.stop_loss ? Number(signal.stop_loss) : undefined,
+            takeProfit1: signal.target_price ? Number(signal.target_price) : undefined,
+            lotSize: 0.01,
+          }));
+      } catch (error) {
+        console.error('Error loading trading signals:', error);
+        return [];
+      }
     },
-    refetchInterval: 60000,
-    staleTime: 30000
+    refetchInterval: 15000,
+    staleTime: 10000
   });
 };

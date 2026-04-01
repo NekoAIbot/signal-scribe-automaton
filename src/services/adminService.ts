@@ -14,6 +14,9 @@ export interface TradingStrategy {
   risk_profile?: string;
   is_active?: boolean;
   indicators?: string[];
+  model_id?: string;
+  model_ids?: string[];
+  ai_auto_select?: boolean;
 }
 
 export interface SubscriptionPlan {
@@ -115,7 +118,10 @@ export const getStrategies = async (): Promise<TradingStrategy[]> => {
       winRate: Number(s.win_rate) || 0,
       risk_profile: s.risk_profile || 'medium',
       is_active: s.is_active,
-      indicators: s.indicators || []
+      indicators: s.indicators || [],
+      model_id: s.model_ids?.[0] || '',
+      model_ids: s.model_ids || [],
+      ai_auto_select: s.ai_auto_select ?? false,
     }));
   } catch (error) {
     console.error("Error fetching strategies:", error);
@@ -127,6 +133,14 @@ export const addStrategy = async (strategy: TradingStrategy): Promise<TradingStr
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Not authenticated");
+
+    const normalizedModelIds = strategy.ai_auto_select
+      ? []
+      : strategy.model_ids?.length
+        ? strategy.model_ids
+        : strategy.model_id
+          ? [strategy.model_id]
+          : [];
     
     const { data, error } = await supabase
       .from('trading_strategies')
@@ -141,7 +155,9 @@ export const addStrategy = async (strategy: TradingStrategy): Promise<TradingStr
         win_rate: strategy.winRate || 0,
         risk_profile: strategy.risk_profile || 'medium',
         is_active: strategy.is_active !== false,
-        indicators: strategy.indicators || []
+        indicators: strategy.indicators || [],
+        model_ids: normalizedModelIds,
+        ai_auto_select: strategy.ai_auto_select ?? false,
       })
       .select()
       .single();
@@ -159,6 +175,14 @@ export const addStrategy = async (strategy: TradingStrategy): Promise<TradingStr
 
 export const updateStrategy = async (strategy: TradingStrategy): Promise<TradingStrategy> => {
   try {
+    const normalizedModelIds = strategy.ai_auto_select
+      ? []
+      : strategy.model_ids?.length
+        ? strategy.model_ids
+        : strategy.model_id
+          ? [strategy.model_id]
+          : [];
+
     const { error } = await supabase
       .from('trading_strategies')
       .update({
@@ -171,7 +195,9 @@ export const updateStrategy = async (strategy: TradingStrategy): Promise<Trading
         win_rate: strategy.winRate || 0,
         risk_profile: strategy.risk_profile || 'medium',
         is_active: strategy.is_active,
-        indicators: strategy.indicators || []
+        indicators: strategy.indicators || [],
+        model_ids: normalizedModelIds,
+        ai_auto_select: strategy.ai_auto_select ?? false,
       })
       .eq('id', strategy.id);
     

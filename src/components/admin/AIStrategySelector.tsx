@@ -138,6 +138,19 @@ export function AIStrategySelector({ strategies, models, onApplyRecommendations 
     toast.success("AI recommendations applied successfully!");
   };
 
+  const activateAllSelections = () => {
+    if (strategies.length === 0 || models.length === 0) {
+      toast.error('Create strategies and train models first');
+      return;
+    }
+
+    onApplyRecommendations(
+      strategies.map(strategy => strategy.id),
+      models.map(model => model.id)
+    );
+    toast.success('All saved strategies and trained models are now active.');
+  };
+
   const getTrendIcon = (trend: string) => {
     switch (trend) {
       case 'bullish': return <TrendingUp className="h-4 w-4 text-green-500" />;
@@ -170,24 +183,42 @@ export function AIStrategySelector({ strategies, models, onApplyRecommendations 
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Button 
-          onClick={analyzeMarket} 
-          disabled={isAnalyzing || strategies.length === 0 || models.length === 0}
-          className="w-full"
-          size="lg"
-        >
-          {isAnalyzing ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Analyzing Live Market Data...
-            </>
-          ) : (
-            <>
-              <Brain className="mr-2 h-4 w-4" />
-              Run AI Analysis (Live Data)
-            </>
-          )}
-        </Button>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button 
+            onClick={analyzeMarket} 
+            disabled={isAnalyzing || strategies.length === 0 || models.length === 0}
+            className="w-full"
+            size="lg"
+          >
+            {isAnalyzing ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Analyzing Live Market Data...
+              </>
+            ) : (
+              <>
+                <Brain className="mr-2 h-4 w-4" />
+                Run AI Analysis (Live Data)
+              </>
+            )}
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={activateAllSelections}
+            disabled={strategies.length === 0 || models.length === 0 || isAnalyzing}
+            className="w-full"
+            size="lg"
+          >
+            <CheckCircle2 className="mr-2 h-4 w-4" />
+            Use All Saved Strategies & Models
+          </Button>
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          AI recommendations are additive, so you can combine AI-selected setups with your manual strategy and model choices.
+        </p>
 
         {(strategies.length === 0 || models.length === 0) && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted p-3 rounded-md">
@@ -274,7 +305,7 @@ export function AIStrategySelector({ strategies, models, onApplyRecommendations 
 
             <Button onClick={applyRecommendations} className="w-full">
               <CheckCircle2 className="mr-2 h-4 w-4" />
-              Apply AI Recommendations
+              Add AI Recommendations to Active Selection
             </Button>
           </div>
         )}

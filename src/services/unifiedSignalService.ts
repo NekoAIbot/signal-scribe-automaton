@@ -33,7 +33,9 @@ export interface UnifiedSignal {
   };
   calculations?: Record<string, any>;
   modelUsed?: string;
+  modelId?: string;
   assetClass?: string;
+  strategyId?: string;
 }
 
 // Global state
@@ -185,6 +187,32 @@ async function runSignalCycle() {
 
 async function generateAISignals(): Promise<UnifiedSignal[]> {
   try {
+    const { data: activeStrategies, error: strategyError } = await supabase
+      .from('trading_strategies')
+      .select('id, name, indicators, risk_profile, ai_auto_select, model_ids, assets, is_active')
+      .eq('is_active', true)
+      .order('updated_at', { ascending: false })
+      .limit(25);
+
+    if (strategyError) throw strategyError;
+    if (!activeStrategies?.length) return [];
+
+    const referencedModelIds = Array.from(
+      new Set(activeStrategies.flatMap((strategy) => strategy.model_ids || []))
+    );
+
+    const modelResult = referencedModelIds.length > 0
+      ? await supabase
+          .from('ml_models')
+          .select('id, name, type, accuracy, is_active')
+          .in('id', referencedModelIds)
+          .eq('is_active', true)
+      : { data: [], error: null };
+
+    if (modelResult.error) throw modelResult.error;
+
+    const modelMap = new Map((modelResult.data || []).map(model => [model.id, model]));
+
     // Fetch multi-asset market data
     const allSymbols = [
       'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'NZD/USD',
@@ -210,11 +238,28 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
       if (aiData?.predictions) aiSignals = aiData.predictions;
     } catch { /* fallback to technical analysis */ }
 
+    const matchesIndicator = (indicators: string[] | null | undefined, keyword: string) =>
+      indicators?.some(indicator => indicator.toLowerCase().includes(keyword)) ?? false;
+
     for (const [symbol, data] of Object.entries(quotes) as [string, any][]) {
       const bid = data.bid || data.price || 0;
       const ask = data.ask || data.price || 0;
       const mid = (bid + ask) / 2;
       if (mid === 0) continue;
+
+      const displaySymbol = symbol.includes('/') ? symbol : (symbol.length === 6 ? symbol.slice(0, 3) + '/' + symbol.slice(3) : symbol);
+
+      const matchingStrategies = activeStrategies.filter((strategy) => {
+        const assets = strategy.assets || [];
+        if (assets.length === 0) return true;
+
+        return assets.some((asset: string) => {
+          const normalizedAsset = asset.replace('/', '');
+          return asset === displaySymbol || normalizedAsset === symbol.replace('/', '');
+        });
+      });
+
+      if (matchingStrategies.length === 0) continue;
 
       // Fetch real OHLC candle data for technical indicators
       let candles: number[] = [];
@@ -227,15 +272,7 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
         }
       } catch {}
 
-      // If no candle data, build from known mid price with small synthetic history
-      if (candles.length < 20) {
-        candles = [];
-        for (let i = 50; i >= 0; i--) {
-          const drift = (Math.random() - 0.5) * mid * 0.001;
-          candles.push(mid + drift * (i / 10));
-        }
-        candles.push(mid);
-      }
+      if (candles.length < 30) continue;
 
       // Real RSI calculation
       const rsiPeriod = 14;
@@ -296,29 +333,57 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
       }, 0) / 3;
 
       // AI prediction or technical analysis decision
-      const aiPred = aiSignals.find((p: any) => p.symbol === symbol);
+      const aiPred = aiSignals.find((p: any) => p.symbol === symbol || p.symbol === displaySymbol);
+      const chosenStrategy = matchingStrategies.find((strategy) => strategy.ai_auto_select) || matchingStrategies[0];
+      const selectedIndicators = chosenStrategy.indicators?.length
+        ? chosenStrategy.indicators
+        : ['RSI', 'MACD', 'EMA', 'ADX', 'Stochastic'];
+      const normalizedRisk = String(chosenStrategy.risk_profile || 'medium').toLowerCase();
+
+      const bullishConditions = [
+        matchesIndicator(selectedIndicators, 'rsi') ? rsi < 40 : null,
+        matchesIndicator(selectedIndicators, 'macd') ? macdValue > macdSignal : null,
+        (matchesIndicator(selectedIndicators, 'ema') || matchesIndicator(selectedIndicators, 'sma')) ? emaShort > emaLong : null,
+        matchesIndicator(selectedIndicators, 'adx') ? adx > 20 : null,
+        matchesIndicator(selectedIndicators, 'stochastic') ? stochK < 25 && stochD < 30 : null,
+      ];
+      const bearishConditions = [
+        matchesIndicator(selectedIndicators, 'rsi') ? rsi > 60 : null,
+        matchesIndicator(selectedIndicators, 'macd') ? macdValue < macdSignal : null,
+        (matchesIndicator(selectedIndicators, 'ema') || matchesIndicator(selectedIndicators, 'sma')) ? emaShort < emaLong : null,
+        matchesIndicator(selectedIndicators, 'adx') ? adx > 20 : null,
+        matchesIndicator(selectedIndicators, 'stochastic') ? stochK > 75 && stochD > 70 : null,
+      ];
+
+      const enabledConditions = bullishConditions.filter(condition => condition !== null).length || 1;
+      const bullishVotes = bullishConditions.filter(Boolean).length;
+      const bearishVotes = bearishConditions.filter(Boolean).length;
+      const voteThreshold = normalizedRisk === 'low'
+        ? Math.min(enabledConditions, 3)
+        : normalizedRisk === 'high'
+          ? 1
+          : Math.min(enabledConditions, 2);
       
       let shouldSignal = false;
       let type: 'BUY' | 'SELL' = 'BUY';
       let confidence = 0.6;
 
-      if (aiPred) {
+      if (chosenStrategy.ai_auto_select && aiPred) {
         shouldSignal = aiPred.confidence > 0.65;
         type = aiPred.direction === 'up' ? 'BUY' : 'SELL';
         confidence = aiPred.confidence;
       } else {
-        // Technical analysis fallback
-        const bullish = rsi < 40 && emaShort > emaLong && macdValue > macdSignal && adx > 20;
-        const bearish = rsi > 60 && emaShort < emaLong && macdValue < macdSignal && adx > 20;
-        shouldSignal = bullish || bearish;
-        type = bullish ? 'BUY' : 'SELL';
-        confidence = 0.6 + (adx / 100) * 0.3;
+        const strongestVote = Math.max(bullishVotes, bearishVotes);
+        shouldSignal = strongestVote >= voteThreshold;
+        type = bullishVotes >= bearishVotes ? 'BUY' : 'SELL';
+        confidence = 0.55 + (strongestVote / enabledConditions) * 0.25 + Math.min(adx / 100, 0.15);
       }
 
       if (shouldSignal && confidence > 0.6) {
-        const displaySymbol = symbol.includes('/') ? symbol : (symbol.length === 6 ? symbol.slice(0, 3) + '/' + symbol.slice(3) : symbol);
         const slPips = atr * 1.5;
         const tpPips = atr * 2.5;
+        const selectedModelId = (chosenStrategy.model_ids || []).find((id: string) => modelMap.has(id)) || undefined;
+        const selectedModel = selectedModelId ? modelMap.get(selectedModelId) : null;
 
         // Determine asset class
         let assetClass = 'forex';
@@ -334,12 +399,14 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
           stopLoss: type === 'BUY' ? mid - slPips : mid + slPips,
           takeProfit1: type === 'BUY' ? mid + tpPips : mid - tpPips,
           takeProfit2: type === 'BUY' ? mid + tpPips * 1.5 : mid - tpPips * 1.5,
-          strategy: aiPred ? 'AI Multi-Model' : 'Technical Analysis',
+          strategy: chosenStrategy.name,
+          strategyId: chosenStrategy.id,
           confidence,
           time: now,
           status: 'new',
           assetClass,
-          modelUsed: aiPred ? 'ML Ensemble' : 'Technical Indicators',
+          modelId: selectedModelId,
+          modelUsed: selectedModel ? `${selectedModel.name} · ${selectedModel.type}` : (chosenStrategy.ai_auto_select ? 'AI Auto-Selection' : 'Technical Indicators'),
           indicators: {
             rsi,
             macd: { value: macdValue, signal: macdSignal, histogram: macdValue - macdSignal },
@@ -444,7 +511,8 @@ async function executeOnBroker(signal: UnifiedSignal) {
             stopLoss: signal.stopLoss,
             takeProfit: signal.takeProfit1,
             brokerAccountId: account.id,
-            strategyId: null,
+            strategyId: signal.strategyId || null,
+            modelId: signal.modelId || null,
             indicators: signal.indicators,
             calculations: signal.calculations,
             modelUsed: signal.modelUsed,
@@ -481,6 +549,8 @@ async function saveSignalsToDb(signals: UnifiedSignal[]) {
       stop_loss: s.stopLoss,
       target_price: s.takeProfit1,
       confidence: s.confidence,
+      strategy_id: s.strategyId || null,
+      model_id: s.modelId || null,
       timeframe: '1h',
       is_active: true,
     }));

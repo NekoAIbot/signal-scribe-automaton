@@ -6,11 +6,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Search, Download } from "lucide-react";
 import { toast } from "sonner";
-import { broadcastSignal } from '@/services/notificationService';
 import { useTradingSignals } from '@/services/marketDataService';
-import { executeMT5Trade, TradeSignal } from '@/services/signalGenerationService';
-import { CONFIG_FLAGS } from '@/config/apiConfig';
-import { MT5AccountDetails } from '@/services/types/broker';
+import { TradeSignal } from '@/services/signalGenerationService';
+import { useBrokerAccounts } from '@/hooks/useBrokerAccounts';
+import { supabase } from '@/integrations/supabase/client';
 
 const formatDate = (timeString: string) => {
   const date = new Date(timeString);
@@ -22,7 +21,8 @@ const SignalsPage = () => {
   const [signals, setSignals] = useState<TradeSignal[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('all');
-  const [executingSignals, setExecutingSignals] = useState<Record<number, boolean>>({});
+  const [executingSignals, setExecutingSignals] = useState<Record<string, boolean>>({});
+  const { activeAccounts, hasAccounts } = useBrokerAccounts();
   
   // Update local signals when data changes
   useEffect(() => {
@@ -45,12 +45,19 @@ const SignalsPage = () => {
   
   // Execute a signal
   const executeSignal = async (signal: TradeSignal) => {
+    const signalKey = String(signal.id);
+
     // Prevent duplicate execution
-    if (executingSignals[signal.id]) return;
+    if (executingSignals[signalKey]) return;
+
+    if (!hasAccounts || activeAccounts.length === 0) {
+      toast.error('No active broker accounts found. Add or activate one in Settings → Broker.');
+      return;
+    }
     
     try {
       // Mark as executing in UI
-      setExecutingSignals(prev => ({ ...prev, [signal.id]: true }));
+      setExecutingSignals(prev => ({ ...prev, [signalKey]: true }));
       
       // Display risk warning
       toast.warning(`Risk Warning: Trading involves risk of loss. Only trade with capital you can afford to lose.`, {
@@ -58,38 +65,44 @@ const SignalsPage = () => {
       });
 
       // Update the status to executing
-      setSignals(signals.map(s => 
+      setSignals(prev => prev.map(s => 
         s.id === signal.id ? { ...s, status: 'executing' as const } : s
       ));
 
-      // Execute on MT5 (using demo mode - actual credentials should be configured in settings)
-      const mt5Account: MT5AccountDetails = {
-        id: 'default-mt5',
-        name: 'Default MT5 Account',
-        login: '',
-        password: '',
-        server: 'demo-server',
-        type: 'demo',
-        connected: CONFIG_FLAGS.USE_MOCK_MT5
-      };
-      
-      const success = await executeMT5Trade(signal, mt5Account);
+      let successCount = 0;
+
+      for (const account of activeAccounts) {
+        const { data, error } = await supabase.functions.invoke('execute-trade', {
+          body: {
+            symbol: signal.symbol,
+            type: signal.type,
+            price: signal.price,
+            lotSize: signal.lotSize || 0.01,
+            stopLoss: signal.stopLoss,
+            takeProfit: signal.takeProfit1,
+            brokerAccountId: account.id,
+            strategyId: signal.strategyId || null,
+            modelId: signal.modelId || null,
+          }
+        });
+
+        if (!error && data?.success) {
+          successCount += 1;
+        } else {
+          console.error(`Execution failed for account ${account.account_name}:`, error || data);
+        }
+      }
+
+      const success = successCount > 0;
 
       // Update to executed or failed based on result
-      setSignals(signals.map(s => 
+      setSignals(prev => prev.map(s => 
         s.id === signal.id ? { ...s, status: success ? 'executed' as const : 'failed' as const } : s
       ));
 
-      // Send notification if successful
       if (success) {
-        await broadcastSignal({
-          symbol: signal.symbol,
-          type: signal.type,
-          price: signal.price,
-          strategy: signal.strategy
-        });
-        
-        toast.success(`Signal for ${signal.symbol} executed successfully`);
+        toast.success(`Signal for ${signal.symbol} executed on ${successCount} broker account(s)`);
+        refetch();
       } else {
         toast.error(`Failed to execute signal for ${signal.symbol}`);
       }
@@ -98,12 +111,12 @@ const SignalsPage = () => {
       toast.error(`Error: ${(error as Error).message}`);
       
       // Update status to failed
-      setSignals(signals.map(s => 
+      setSignals(prev => prev.map(s => 
         s.id === signal.id ? { ...s, status: 'failed' as const } : s
       ));
     } finally {
       // Clear executing state
-      setExecutingSignals(prev => ({ ...prev, [signal.id]: false }));
+      setExecutingSignals(prev => ({ ...prev, [signalKey]: false }));
     }
   };
   
@@ -261,11 +274,11 @@ const SignalsPage = () => {
                             <Button
                               variant="outline"
                               size="sm"
-                              disabled={signal.status !== 'new' || executingSignals[signal.id]}
+                                disabled={signal.status !== 'new' || executingSignals[String(signal.id)]}
                               onClick={() => executeSignal(signal)}
                             >
                               {signal.status === 'new' ? 
-                                (executingSignals[signal.id] ? 'Processing...' : 'Execute') : 
+                                  (executingSignals[String(signal.id)] ? 'Processing...' : 'Execute') : 
                                 signal.status === 'executing' ? 'Processing...' : 
                                 signal.status === 'executed' ? 'Done' : 'Failed'}
                             </Button>

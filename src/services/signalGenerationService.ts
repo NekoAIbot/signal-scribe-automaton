@@ -4,13 +4,16 @@ import { toast } from 'sonner';
 import { MT5AccountDetails } from './types/broker';
 
 export interface TradeSignal {
-  id: number;
+  id: string | number;
   symbol: string;
   type: 'BUY' | 'SELL';
   price: number;
   time: string;
   status: 'new' | 'executing' | 'executed' | 'failed';
   strategy: string;
+  strategyId?: string | null;
+  modelId?: string | null;
+  confidence?: number;
   stopLoss?: number;
   takeProfit1?: number;
   takeProfit2?: number;

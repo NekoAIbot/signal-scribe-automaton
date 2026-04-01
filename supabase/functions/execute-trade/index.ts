@@ -12,18 +12,49 @@ serve(async (req) => {
   }
   
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-    );
-    
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    if (userError || !user) {
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
       return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
+
+    const authClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    let userId = '';
+    const { data: { user }, error: userError } = await authClient.auth.getUser();
+    if (user?.id) {
+      userId = user.id;
+    } else {
+      if (userError) {
+        console.error('Primary auth check failed:', userError.message);
+      }
+
+      const serviceAuthClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      );
+      const token = authHeader.replace('Bearer ', '');
+      const { data: { user: verifiedUser }, error: verifiedUserError } = await serviceAuthClient.auth.getUser(token);
+
+      if (verifiedUserError || !verifiedUser) {
+        return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
+          status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      userId = verifiedUser.id;
+    }
+
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    );
+    const authenticatedUser = { id: userId };
     
     const requestData = await req.json();
     console.log('Executing trade:', JSON.stringify(requestData));
@@ -34,7 +65,7 @@ serve(async (req) => {
     
     // Prop-firm risk check before execution
     if (requestData.brokerAccountId) {
-      const riskCheck = await checkPropFirmRisk(supabaseClient, user.id, requestData);
+      const riskCheck = await checkPropFirmRisk(supabaseClient, authenticatedUser.id, requestData);
       if (!riskCheck.allowed) {
         return new Response(JSON.stringify({ 
           success: false, 
@@ -54,6 +85,7 @@ serve(async (req) => {
         .from('broker_credentials')
         .select('*')
         .eq('id', requestData.brokerAccountId)
+        .eq('user_id', authenticatedUser.id)
         .single();
       
       if (!creds) throw new Error('Broker account not found');
@@ -72,7 +104,7 @@ serve(async (req) => {
     
     // Record trade
     const tradeRecord = {
-      user_id: user.id,
+      user_id: authenticatedUser.id,
       symbol: requestData.symbol,
       trade_type: requestData.type,
       entry_price: requestData.price,
@@ -122,7 +154,17 @@ serve(async (req) => {
   }
 });
 
+function decodeStoredPassword(password: string) {
+  try {
+    return atob(password);
+  } catch {
+    return password;
+  }
+}
+
 async function executeViaMetaApi(token: string, creds: any, data: any) {
+  const decodedPassword = decodeStoredPassword(creds.encrypted_password);
+
   // Step 1: List existing MetaApi provisioned accounts to find a matching one
   const listRes = await fetch('https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai/users/current/accounts', {
     headers: { 'auth-token': token }
@@ -147,7 +189,7 @@ async function executeViaMetaApi(token: string, creds: any, data: any) {
         name: creds.account_name || `Account ${creds.login}`,
         type: 'cloud',
         login: creds.login,
-        password: creds.encrypted_password,
+        password: decodedPassword,
         server: creds.server,
         platform: 'mt5',
         application: 'MetaApi',

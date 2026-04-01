@@ -227,18 +227,33 @@ const AdminPage = () => {
   // Apply AI recommendations
   const handleApplyAIRecommendations = async (strategyIds: string[], modelIds: string[]) => {
     try {
-      for (const strategyId of strategyIds) {
-        const strategy = strategies.find(s => s.id === strategyId);
-        if (strategy && !strategy.is_active) {
-          await updateStrategy({ ...strategy, is_active: true });
-        }
+      const uniqueStrategyIds = Array.from(new Set(strategyIds));
+      const uniqueModelIds = Array.from(new Set(modelIds));
+
+      if (uniqueStrategyIds.length === 0 && uniqueModelIds.length === 0) {
+        toast.error('No strategies or models were returned by the AI analysis');
+        return;
       }
-      for (const strategy of strategies) {
-        if (!strategyIds.includes(strategy.id) && strategy.is_active) {
-          await updateStrategy({ ...strategy, is_active: false });
-        }
-      }
+
+      await Promise.all(
+        strategies
+          .filter(strategy => uniqueStrategyIds.includes(strategy.id))
+          .map(strategy =>
+            updateStrategy({
+              ...strategy,
+              is_active: true,
+              model_ids: uniqueModelIds.length > 0
+                ? Array.from(new Set([
+                    ...(strategy.model_ids || (strategy.model_id ? [strategy.model_id] : [])),
+                    ...uniqueModelIds,
+                  ]))
+                : strategy.model_ids || [],
+            })
+          )
+      );
+
       await loadAllData();
+      toast.success('AI selections applied and your existing manual choices were preserved.');
     } catch (error) {
       console.error('Error applying AI recommendations:', error);
       toast.error('Failed to apply recommendations');
