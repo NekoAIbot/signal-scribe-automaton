@@ -75,7 +75,6 @@ export function Layout() {
             <NavLink to="/" className="flex items-center gap-4 font-semibold">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
                 <Activity className="h-6 w-6" />
-                </NavLink>
               </div>
               <div className="flex flex-col">
                 <span className="text-[0.68rem] uppercase tracking-[0.28em] text-muted-foreground">Classical AI Desk</span>
