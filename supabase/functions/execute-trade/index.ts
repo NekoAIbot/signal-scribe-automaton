@@ -13,12 +13,8 @@ function resolveCorsHeaders(req: Request) {
 
   const requestOrigin = req.headers.get('origin') || '';
   const allowOrigin = configuredOrigins.length === 0
-    ? (requestOrigin || '*')
-    : (
-      !requestOrigin || configuredOrigins.includes(requestOrigin)
-        ? (requestOrigin || configuredOrigins[0])
-        : requestOrigin
-    );
+    ? '*'
+    : (configuredOrigins.includes(requestOrigin) ? requestOrigin : configuredOrigins[0]);
 
   return {
     ...corsBaseHeaders,
@@ -234,7 +230,6 @@ async function executeViaMetaApi(token: string, creds: any, data: any) {
         platform,
         application: 'MetaApi',
         magic: 234000,
-        ...(provisioningProfileId ? { provisioningProfileId } : {}),
       })
     });
     
