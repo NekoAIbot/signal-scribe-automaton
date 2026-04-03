@@ -25,6 +25,7 @@ export function TradingSignals() {
     
     try {
       let successCount = 0;
+      let lastFailureReason = '';
 
       for (const account of activeAccounts) {
         const { data, error } = await supabase.functions.invoke('execute-trade', {
@@ -44,12 +45,15 @@ export function TradingSignals() {
         if (!error && data?.success) {
           successCount += 1;
         } else {
-          console.error(`Failed to execute on ${account.account_name}:`, error || data);
+          const reason = data?.error || error?.message || 'Unknown execution error';
+          lastFailureReason = reason;
+          console.error(`Failed to execute on ${account.account_name}:`, reason);
+          toast.error(`Failed on ${account.account_name}: ${reason}`);
         }
       }
 
       if (successCount === 0) {
-        throw new Error('Execution failed on all connected accounts');
+        throw new Error(lastFailureReason || 'Execution failed on all connected accounts');
       }
 
       // Mark signal as inactive after execution
