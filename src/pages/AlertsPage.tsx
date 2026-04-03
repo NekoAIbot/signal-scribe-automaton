@@ -143,7 +143,7 @@ const AlertsPage = () => {
                   <TabsTrigger value="news">News & Events</TabsTrigger>
                 </TabsList>
                 
-                <TabsContent value="price" className="py-4">
+                <TabsContent value="price" className="py-4 overflow-x-auto">
                   {loading ? (
                     <div className="flex justify-center py-8">
                       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
