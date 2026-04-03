@@ -120,16 +120,16 @@ const AlertsPage = () => {
   };
 
   return (
-    <div className="p-4 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Market Alerts</h1>
-        <Button variant="outline" onClick={() => testAlertSystem()}>
+    <div className="p-2 sm:p-4 space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+        <h1 className="text-xl sm:text-2xl font-bold">Market Alerts</h1>
+        <Button variant="outline" size="sm" onClick={() => testAlertSystem()}>
           Test Alert System
         </Button>
       </div>
       
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+        <div className="lg:col-span-2 order-2 lg:order-1">
           <Card>
             <CardHeader>
               <CardTitle>Active Alerts</CardTitle>
