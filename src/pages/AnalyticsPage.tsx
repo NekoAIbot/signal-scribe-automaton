@@ -207,7 +207,7 @@ const AnalyticsPage = () => {
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-base">Performance by Day of Week</CardTitle></CardHeader>
             <CardContent>
-              <div className="h-64">
+              <div className="h-48 sm:h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={dayStats}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
