@@ -1,10 +1,26 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+const corsBaseHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+function resolveCorsHeaders(req: Request) {
+  const configuredOrigins = (Deno.env.get("ALLOWED_ORIGINS") || "")
+    .split(",")
+    .map(origin => origin.trim())
+    .filter(Boolean);
+
+  const requestOrigin = req.headers.get("origin") || "";
+  const allowOrigin = configuredOrigins.length === 0
+    ? "*"
+    : (configuredOrigins.includes(requestOrigin) ? requestOrigin : configuredOrigins[0]);
+
+  return {
+    ...corsBaseHeaders,
+    "Access-Control-Allow-Origin": allowOrigin,
+  };
+}
 
 interface TelegramMessage {
   type: 'telegram';
@@ -21,6 +37,7 @@ interface TradeAlertMessage {
   confidence?: number;
   stopLoss?: number;
   takeProfit?: number;
+  extraMessage?: string;
 }
 
 interface SignalAlertMessage {
@@ -62,6 +79,10 @@ ${emoji} <b>${data.action}</b> ${data.symbol}
   if (data.takeProfit) {
     message += `\n✅ Take Profit: <code>${data.takeProfit.toFixed(5)}</code>`;
   }
+
+  if (data.extraMessage) {
+    message += `\n${data.extraMessage}`;
+  }
   
   message += `\n⏰ Time: ${new Date().toLocaleString()}`;
   
@@ -100,6 +121,8 @@ ${emoji} <b>${data.signalType}</b> ${data.symbol}
 };
 
 serve(async (req) => {
+  const corsHeaders = resolveCorsHeaders(req);
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
