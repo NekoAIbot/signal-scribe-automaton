@@ -83,7 +83,10 @@ serve(async (req) => {
     const MT5_BRIDGE_API_KEY = Deno.env.get('MT5_BRIDGE_API_KEY');
 
     if (METAAPI_TOKEN) {
-      console.log(`MetaApi token present, length: ${METAAPI_TOKEN.length}, prefix: ${METAAPI_TOKEN.substring(0, 8)}...`);
+      console.log(`MetaApi token present, length: ${METAAPI_TOKEN.length}`);
+      if (METAAPI_TOKEN.split('.').length < 3) {
+        console.warn('METAAPI_TOKEN format appears invalid (expected JWT-like token).');
+      }
     }
     
     // Prop-firm risk check before execution
