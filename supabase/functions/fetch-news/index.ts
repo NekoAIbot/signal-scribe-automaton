@@ -5,33 +5,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const mockNews = [
-  {
-    title: "Dollar rises after strong retail sales data",
-    description: "The dollar rose on Wednesday after data showed U.S. retail sales increased more than expected in May.",
-    url: "#",
-    urlToImage: "https://via.placeholder.com/300x200",
-    publishedAt: new Date().toISOString(),
-    source: { name: "Financial Times" }
-  },
-  {
-    title: "Euro falls as ECB signals rate cut",
-    description: "The euro fell against major currencies after the European Central Bank signaled it could cut interest rates.",
-    url: "#",
-    urlToImage: "https://via.placeholder.com/300x200",
-    publishedAt: new Date(Date.now() - 3600000).toISOString(),
-    source: { name: "Reuters" }
-  },
-  {
-    title: "Forex market volatility at 3-month high",
-    description: "Foreign exchange market volatility has reached a three-month high amid geopolitical tensions.",
-    url: "#",
-    urlToImage: "https://via.placeholder.com/300x200",
-    publishedAt: new Date(Date.now() - 7200000).toISOString(),
-    source: { name: "Bloomberg" }
-  }
-];
-
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -41,22 +14,25 @@ serve(async (req) => {
   try {
     const apiKey = Deno.env.get('NEWSAPI_KEY');
     
-    // If no API key, return mock data
+    // If no API key, fail explicitly (no mock fallback)
     if (!apiKey) {
-      console.log("No NEWSAPI_KEY configured, returning mock data");
-      return new Response(JSON.stringify({ articles: mockNews, source: 'mock' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      return new Response(JSON.stringify({ error: 'NEWSAPI_KEY is not configured' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    const url = `https://newsapi.org/v2/everything?q=forex+trading+finance&apiKey=${apiKey}&pageSize=10&language=en`;
+    const from = new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString();
+    const url = `https://newsapi.org/v2/everything?q=forex OR currency OR central bank&from=${encodeURIComponent(from)}&sortBy=publishedAt&apiKey=${apiKey}&pageSize=20&language=en`;
     
     console.log("Fetching news from NewsAPI...");
     const response = await fetch(url);
     
     if (!response.ok) {
-      console.error(`NewsAPI error: ${response.status}`);
-      return new Response(JSON.stringify({ articles: mockNews, source: 'mock', error: 'API error' }), {
+      const errorBody = await response.text();
+      console.error(`NewsAPI error: ${response.status}`, errorBody);
+      return new Response(JSON.stringify({ error: `News API error ${response.status}` }), {
+        status: 502,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -64,8 +40,7 @@ serve(async (req) => {
     const data = await response.json();
     
     if (!data.articles || data.articles.length === 0) {
-      console.warn("No articles from NewsAPI, returning mock data");
-      return new Response(JSON.stringify({ articles: mockNews, source: 'mock' }), {
+      return new Response(JSON.stringify({ articles: [], source: 'newsapi' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -76,8 +51,9 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("Error fetching news:", error);
-    return new Response(JSON.stringify({ articles: mockNews, source: 'mock', error: error.message }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
 });
