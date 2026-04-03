@@ -3,7 +3,6 @@ import { CONFIG_FLAGS } from '@/config/apiConfig';
 import { toast } from 'sonner';
 import { MT5AccountDetails } from './types/broker';
 import { supabase } from '@/integrations/supabase/client';
-import { invokeEdgeFunction } from './edgeFunctionService';
 
 export interface TradeSignal {
   id: string | number;
@@ -324,24 +323,27 @@ export const executeMT5Trade = async (
       duration: 5000
     });
     
-    const result = await invokeEdgeFunction('execute-trade', {
-      symbol: normalizedSymbol,
-      type: signal.type,
-      price: signal.price,
-      lotSize,
-      stopLoss: signal.stopLoss,
-      takeProfit: signal.takeProfit1,
-      brokerAccountId,
-      strategyId: signal.strategyId || null,
-      modelId: signal.modelId || null,
+    const { data, error } = await supabase.functions.invoke('execute-trade', {
+      body: {
+        symbol: normalizedSymbol,
+        type: signal.type,
+        price: signal.price,
+        lotSize,
+        stopLoss: signal.stopLoss,
+        takeProfit: signal.takeProfit1,
+        brokerAccountId,
+        strategyId: signal.strategyId || null,
+        modelId: signal.modelId || null,
+      }
     });
 
-    if (!result.ok) {
-      throw new Error(result.error || 'Unknown broker execution error');
+    if (error || !data?.success) {
+      const errMsg = data?.error || error?.message || 'Unknown broker execution error';
+      throw new Error(errMsg);
     }
 
     toast.success(
-      `${platform} trade executed: ${signal.type} ${signal.symbol} @ ${signal.price.toFixed(5)} (ticket: ${result.data?.ticketNumber || 'N/A'})`
+      `${platform} trade executed: ${signal.type} ${signal.symbol} @ ${signal.price.toFixed(5)} (ticket: ${data.ticketNumber || 'N/A'})`
     );
     return true;
   } catch (error) {
