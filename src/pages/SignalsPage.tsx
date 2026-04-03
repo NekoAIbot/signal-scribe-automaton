@@ -45,6 +45,30 @@ const SignalsPage = () => {
   
   // Execute a signal
   const executeSignal = async (signal: TradeSignal) => {
+    const extractReason = async (error: any, data: any): Promise<string> => {
+      if (data?.error) return data.error;
+      if (!error) return 'Unknown execution error';
+
+      const context = error?.context;
+      if (context?.json) {
+        try {
+          const payload = await context.json();
+          if (payload?.error) return payload.error;
+        } catch {
+          // ignore parse error
+        }
+      } else if (typeof context === 'string') {
+        try {
+          const payload = JSON.parse(context);
+          if (payload?.error) return payload.error;
+        } catch {
+          // ignore parse error
+        }
+      }
+
+      return error?.message || 'Unknown execution error';
+    };
+
     const signalKey = String(signal.id);
 
     // Prevent duplicate execution
