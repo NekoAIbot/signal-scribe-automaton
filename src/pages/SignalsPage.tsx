@@ -45,6 +45,30 @@ const SignalsPage = () => {
   
   // Execute a signal
   const executeSignal = async (signal: TradeSignal) => {
+    const extractReason = async (error: any, data: any): Promise<string> => {
+      if (data?.error) return data.error;
+      if (!error) return 'Unknown execution error';
+
+      const context = error?.context;
+      if (context?.json) {
+        try {
+          const payload = await context.json();
+          if (payload?.error) return payload.error;
+        } catch {
+          // ignore parse error
+        }
+      } else if (typeof context === 'string') {
+        try {
+          const payload = JSON.parse(context);
+          if (payload?.error) return payload.error;
+        } catch {
+          // ignore parse error
+        }
+      }
+
+      return error?.message || 'Unknown execution error';
+    };
+
     const signalKey = String(signal.id);
 
     // Prevent duplicate execution
@@ -70,6 +94,7 @@ const SignalsPage = () => {
       ));
 
       let successCount = 0;
+      let lastFailureReason = '';
 
       for (const account of activeAccounts) {
         const { data, error } = await supabase.functions.invoke('execute-trade', {
@@ -89,7 +114,10 @@ const SignalsPage = () => {
         if (!error && data?.success) {
           successCount += 1;
         } else {
-          console.error(`Execution failed for account ${account.account_name}:`, error || data);
+          const reason = await extractReason(error, data);
+          lastFailureReason = reason;
+          console.error(`Execution failed for account ${account.account_name}:`, reason);
+          toast.error(`Failed on ${account.account_name}: ${reason}`);
         }
       }
 
@@ -104,7 +132,7 @@ const SignalsPage = () => {
         toast.success(`Signal for ${signal.symbol} executed on ${successCount} broker account(s)`);
         refetch();
       } else {
-        toast.error(`Failed to execute signal for ${signal.symbol}`);
+        toast.error(`Failed to execute signal for ${signal.symbol}: ${lastFailureReason || 'execution failed on all connected accounts'}`);
       }
     } catch (error) {
       console.error("Error executing signal:", error);

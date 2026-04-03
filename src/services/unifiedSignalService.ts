@@ -155,26 +155,23 @@ async function runSignalCycle() {
     notifyListeners();
 
     for (const signal of signals) {
-      // 1. Send 30-second risk warning to Telegram BEFORE signal
-      if (telegramEnabled) {
-        await sendTelegramRiskWarning(signal);
-        signal.status = 'warning_sent';
-        notifyListeners();
-        
-        // Wait 30 seconds before sending actual signal
-        await new Promise(r => setTimeout(r, 30000));
-        
-        await sendTelegramSignal(signal);
-        signal.status = 'sent_telegram';
-        notifyListeners();
-      }
-
-      // 2. Execute on user's broker accounts
+      // 1. Execute on user's broker accounts immediately after signal generation
       if (botEnabled) {
         signal.status = 'executing';
         notifyListeners();
         const execSuccess = await executeOnBroker(signal);
         signal.status = execSuccess ? 'executed' : 'failed';
+        notifyListeners();
+      }
+
+      // 2. Send Telegram warning/signal asynchronously without delaying execution
+      if (telegramEnabled) {
+        await sendTelegramRiskWarning(signal);
+        signal.status = 'warning_sent';
+        notifyListeners();
+
+        await sendTelegramSignal(signal);
+        signal.status = 'sent_telegram';
         notifyListeners();
       }
     }
