@@ -78,8 +78,7 @@ serve(async (req) => {
     console.log('Executing trade:', JSON.stringify(requestData));
     
     // Sanitize METAAPI_TOKEN - trim whitespace/newlines
-    const rawToken = Deno.env.get('METAAPI_TOKEN') || '';
-    const METAAPI_TOKEN = rawToken.trim().replace(/[\r\n]/g, '');
+    const METAAPI_TOKEN = normalizeMetaApiToken(Deno.env.get('METAAPI_TOKEN') || '');
     const MT5_BRIDGE_URL = Deno.env.get('MT5_BRIDGE_URL');
     const MT5_BRIDGE_API_KEY = Deno.env.get('MT5_BRIDGE_API_KEY');
 
@@ -112,8 +111,20 @@ serve(async (req) => {
         .single();
       
       if (!creds) throw new Error('Broker account not found');
-      
-      executionResult = await executeViaMetaApi(METAAPI_TOKEN, creds, requestData);
+
+      try {
+        executionResult = await executeViaMetaApi(METAAPI_TOKEN, creds, requestData);
+      } catch (metaApiError) {
+        const message = metaApiError instanceof Error ? metaApiError.message : String(metaApiError);
+        console.error('MetaApi execution failed:', message);
+
+        if ((message.includes('401') || message.toLowerCase().includes('auth')) && MT5_BRIDGE_URL) {
+          console.warn('MetaApi auth failed. Falling back to MT5 bridge execution.');
+          executionResult = await executeViaBridge(MT5_BRIDGE_URL, MT5_BRIDGE_API_KEY || '', requestData);
+        } else {
+          throw metaApiError;
+        }
+      }
     } else if (MT5_BRIDGE_URL) {
       executionResult = await executeViaBridge(MT5_BRIDGE_URL, MT5_BRIDGE_API_KEY || '', requestData);
     } else {
@@ -185,6 +196,14 @@ function decodeStoredPassword(password: string) {
   }
 }
 
+function normalizeMetaApiToken(rawToken: string) {
+  return rawToken
+    .trim()
+    .replace(/[\r\n]/g, '')
+    .replace(/^Bearer\s+/i, '')
+    .replace(/^"|"$/g, '');
+}
+
 const METAAPI_PROVISIONING_URL = 'https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai';
 const METAAPI_REGIONS = ['new-york', 'london', 'singapore', ''];
 
@@ -201,6 +220,9 @@ async function executeViaMetaApi(token: string, creds: any, data: any) {
   if (!listRes.ok) {
     const errBody = await listRes.text();
     console.error(`MetaApi list accounts failed [${listRes.status}]: ${errBody}`);
+    if (listRes.status === 401) {
+      throw new Error('MetaApi authentication failed (401). Check METAAPI_TOKEN in Supabase secrets (no Bearer prefix, no quotes/newlines).');
+    }
     throw new Error(`MetaApi list accounts failed: ${listRes.status}`);
   }
   
