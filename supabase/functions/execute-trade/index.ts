@@ -59,9 +59,15 @@ serve(async (req) => {
     const requestData = await req.json();
     console.log('Executing trade:', JSON.stringify(requestData));
     
-    const METAAPI_TOKEN = Deno.env.get('METAAPI_TOKEN');
+    // Sanitize METAAPI_TOKEN - trim whitespace/newlines
+    const rawToken = Deno.env.get('METAAPI_TOKEN') || '';
+    const METAAPI_TOKEN = rawToken.trim().replace(/[\r\n]/g, '');
     const MT5_BRIDGE_URL = Deno.env.get('MT5_BRIDGE_URL');
     const MT5_BRIDGE_API_KEY = Deno.env.get('MT5_BRIDGE_API_KEY');
+
+    if (METAAPI_TOKEN) {
+      console.log(`MetaApi token present, length: ${METAAPI_TOKEN.length}, prefix: ${METAAPI_TOKEN.substring(0, 8)}...`);
+    }
     
     // Prop-firm risk check before execution
     if (requestData.brokerAccountId) {
@@ -80,7 +86,6 @@ serve(async (req) => {
     let executionResult: any;
     
     if (METAAPI_TOKEN && requestData.brokerAccountId) {
-      // MetaApi execution - provision or retrieve account
       const { data: creds } = await supabaseClient
         .from('broker_credentials')
         .select('*')
@@ -162,60 +167,74 @@ function decodeStoredPassword(password: string) {
   }
 }
 
+const METAAPI_PROVISIONING_URL = 'https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai';
+const METAAPI_REGIONS = ['new-york', 'london', 'singapore', ''];
+
 async function executeViaMetaApi(token: string, creds: any, data: any) {
   const decodedPassword = decodeStoredPassword(creds.encrypted_password);
 
-  // Step 1: List existing MetaApi provisioned accounts to find a matching one
-  const listRes = await fetch('https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai/users/current/accounts', {
+  // Step 1: List existing MetaApi provisioned accounts
+  const listRes = await fetch(`${METAAPI_PROVISIONING_URL}/users/current/accounts`, {
     headers: { 'auth-token': token }
   });
   
   if (!listRes.ok) {
-    throw new Error(`MetaApi list accounts failed: ${listRes.status} ${await listRes.text()}`);
+    const errBody = await listRes.text();
+    console.error(`MetaApi list accounts failed [${listRes.status}]: ${errBody}`);
+    throw new Error(`MetaApi list accounts failed: ${listRes.status}`);
   }
   
   const accounts = await listRes.json();
+  // Handle both id and _id field names from MetaApi
   let metaApiAccount = accounts.find((a: any) => 
-    a.login === creds.login && a.server === creds.server
+    String(a.login) === String(creds.login) && a.server === creds.server
   );
   
-  // Step 2: If no account found, provision one
+  // Step 2: If no account found, provision one with cloud-g2
   if (!metaApiAccount) {
     console.log('Provisioning new MetaApi account for login:', creds.login);
-    const provisionRes = await fetch('https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai/users/current/accounts', {
+    const provisionRes = await fetch(`${METAAPI_PROVISIONING_URL}/users/current/accounts`, {
       method: 'POST',
       headers: { 'auth-token': token, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: creds.account_name || `Account ${creds.login}`,
-        type: 'cloud',
-        login: creds.login,
+        type: 'cloud-g2',
+        login: String(creds.login),
         password: decodedPassword,
         server: creds.server,
         platform: 'mt5',
         application: 'MetaApi',
         magic: 0,
+        provisioningProfileId: 'cloud-g2',
       })
     });
     
     if (!provisionRes.ok) {
       const errText = await provisionRes.text();
+      console.error(`MetaApi provision failed [${provisionRes.status}]: ${errText}`);
       throw new Error(`MetaApi provision failed: ${provisionRes.status} ${errText}`);
     }
     
     metaApiAccount = await provisionRes.json();
-    console.log('MetaApi account provisioned:', metaApiAccount.id);
+    console.log('MetaApi account provisioned:', metaApiAccount.id || metaApiAccount._id);
+  }
+
+  // Normalize account ID (MetaApi uses both id and _id)
+  const accountId = metaApiAccount.id || metaApiAccount._id;
+  if (!accountId) {
+    throw new Error('MetaApi account missing ID field');
   }
   
   // Step 3: Ensure account is deployed
   if (metaApiAccount.state !== 'DEPLOYED') {
-    await fetch(`https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai/users/current/accounts/${metaApiAccount.id}/deploy`, {
+    await fetch(`${METAAPI_PROVISIONING_URL}/users/current/accounts/${accountId}/deploy`, {
       method: 'POST',
       headers: { 'auth-token': token }
     });
-    // Wait for deployment
+    // Wait for deployment (max 60s)
     for (let i = 0; i < 30; i++) {
       await new Promise(r => setTimeout(r, 2000));
-      const checkRes = await fetch(`https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai/users/current/accounts/${metaApiAccount.id}`, {
+      const checkRes = await fetch(`${METAAPI_PROVISIONING_URL}/users/current/accounts/${accountId}`, {
         headers: { 'auth-token': token }
       });
       const acc = await checkRes.json();
@@ -223,7 +242,7 @@ async function executeViaMetaApi(token: string, creds: any, data: any) {
     }
   }
   
-  // Step 4: Execute trade
+  // Step 4: Execute trade - try region-specific URLs with fallback
   const symbol = data.symbol?.replace('/', '') || data.symbol;
   const tradePayload: any = {
     actionType: data.type === 'BUY' ? 'ORDER_TYPE_BUY' : 'ORDER_TYPE_SELL',
@@ -232,26 +251,47 @@ async function executeViaMetaApi(token: string, creds: any, data: any) {
   };
   if (data.stopLoss) tradePayload.stopLoss = data.stopLoss;
   if (data.takeProfit) tradePayload.takeProfit = data.takeProfit;
-  
-  const tradeRes = await fetch(
-    `https://mt-client-api-v1.agiliumtrade.agiliumtrade.ai/users/current/accounts/${metaApiAccount.id}/trade`,
-    {
-      method: 'POST',
-      headers: { 'auth-token': token, 'Content-Type': 'application/json' },
-      body: JSON.stringify(tradePayload)
+
+  let lastError = '';
+  for (const region of METAAPI_REGIONS) {
+    const host = region 
+      ? `mt-client-api-v1.${region}.agiliumtrade.ai`
+      : 'mt-client-api-v1.agiliumtrade.agiliumtrade.ai';
+    const tradeUrl = `https://${host}/users/current/accounts/${accountId}/trade`;
+    
+    console.log(`Trying trade on region: ${region || 'default'} -> ${tradeUrl}`);
+    
+    try {
+      const tradeRes = await fetch(tradeUrl, {
+        method: 'POST',
+        headers: { 'auth-token': token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(tradePayload)
+      });
+      
+      if (tradeRes.ok) {
+        const result = await tradeRes.json();
+        console.log('Trade executed successfully:', JSON.stringify(result));
+        return {
+          ticketNumber: result.orderId || result.positionId || String(Date.now()),
+          volume: data.lotSize || 0.01,
+        };
+      }
+      
+      lastError = await tradeRes.text();
+      console.warn(`Trade failed on ${region || 'default'} [${tradeRes.status}]: ${lastError}`);
+      
+      // Don't retry on auth errors
+      if (tradeRes.status === 401 || tradeRes.status === 403) {
+        throw new Error(`MetaApi auth error: ${tradeRes.status} ${lastError}`);
+      }
+    } catch (e: any) {
+      if (e.message.includes('MetaApi auth error')) throw e;
+      lastError = e.message;
+      console.warn(`Region ${region || 'default'} connection error:`, e.message);
     }
-  );
-  
-  if (!tradeRes.ok) {
-    const errText = await tradeRes.text();
-    throw new Error(`MetaApi trade error: ${tradeRes.status} ${errText}`);
   }
   
-  const result = await tradeRes.json();
-  return {
-    ticketNumber: result.orderId || result.positionId || String(Date.now()),
-    volume: data.lotSize || 0.01,
-  };
+  throw new Error(`MetaApi trade failed on all regions. Last error: ${lastError}`);
 }
 
 async function executeViaBridge(bridgeUrl: string, apiKey: string, data: any) {
@@ -291,7 +331,6 @@ async function checkPropFirmRisk(supabaseClient: any, userId: string, tradeData:
       return { allowed: true };
     }
 
-    // Get today's trades for this account
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
@@ -305,8 +344,7 @@ async function checkPropFirmRisk(supabaseClient: any, userId: string, tradeData:
     const dailyPnL = (todayTrades || []).reduce((sum: number, t: any) => sum + (t.profit || 0), 0);
     const openPositions = (todayTrades || []).filter((t: any) => !t.profit).length;
 
-    // Prop firm limits
-    const MAX_DAILY_LOSS = -500; // $500 max daily loss
+    const MAX_DAILY_LOSS = -500;
     const MAX_OPEN_POSITIONS = 5;
     const MAX_LOT_SIZE = 0.5;
 
@@ -323,7 +361,7 @@ async function checkPropFirmRisk(supabaseClient: any, userId: string, tradeData:
     return { allowed: true, dailyPnL, openPositions };
   } catch (e) {
     console.error('Risk check error:', e);
-    return { allowed: true }; // Allow if risk check fails
+    return { allowed: true };
   }
 }
 

@@ -488,8 +488,16 @@ async function sendTelegramSignal(signal: UnifiedSignal) {
   }
 }
 
-async function executeOnBroker(signal: UnifiedSignal) {
+async function executeOnBroker(signal: UnifiedSignal): Promise<boolean> {
   try {
+    // Verify user is authenticated before attempting broker queries
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      console.error('User not authenticated, cannot execute on broker');
+      toast.error('Authentication required for trade execution');
+      return false;
+    }
+
     const { data: accounts, error } = await supabase
       .from('broker_credentials')
       .select('id, account_name, login, server, is_active, account_type')
@@ -497,8 +505,10 @@ async function executeOnBroker(signal: UnifiedSignal) {
 
     if (error || !accounts?.length) {
       console.log('No active broker accounts to execute on');
-      return;
+      return false;
     }
+
+    let successCount = 0;
 
     for (const account of accounts) {
       try {
@@ -520,10 +530,11 @@ async function executeOnBroker(signal: UnifiedSignal) {
           }
         });
         
-        if (execError) {
-          console.error(`Failed on ${account.account_name}:`, execError);
-          toast.error(`Failed on ${account.account_name}`);
+        if (execError || !result?.success) {
+          console.error(`Failed on ${account.account_name}:`, execError || result?.error);
+          toast.error(`Failed on ${account.account_name}: ${result?.error || execError?.message || 'Unknown error'}`);
         } else {
+          successCount++;
           toast.success(`Trade executed on ${account.account_name}: ${signal.type} ${signal.symbol}`);
           dailyTrades.push({ symbol: signal.symbol, type: signal.type, status: 'executed' });
         }
@@ -531,8 +542,11 @@ async function executeOnBroker(signal: UnifiedSignal) {
         console.error(`Failed on ${account.account_name}:`, execError);
       }
     }
+
+    return successCount > 0;
   } catch (error) {
     console.error('Broker execution error:', error);
+    return false;
   }
 }
 
