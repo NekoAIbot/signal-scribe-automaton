@@ -102,8 +102,8 @@ const AnalyticsPage = () => {
   const totalPnL = trades.reduce((s, t) => s + (t.profit || 0), 0);
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Trading Analytics</h1>
+    <div className="space-y-4 sm:space-y-6">
+      <h1 className="text-xl sm:text-2xl font-bold">Trading Analytics</h1>
       
       <div className="flex flex-col md:flex-row items-center justify-between space-y-2 md:space-y-0">
         <div className="text-sm text-muted-foreground">
