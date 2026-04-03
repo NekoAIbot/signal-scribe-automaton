@@ -430,12 +430,12 @@ const AdminPage = () => {
                     models.map((model) => (
                       <Card key={model.id} className="mb-4">
                         <CardHeader className="pb-2">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <CardTitle className="text-base">{model.name}</CardTitle>
                               <Badge variant="outline">{model.type}</Badge>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1 flex-wrap">
                               <Button 
                                 variant="secondary" 
                                 size="sm" 

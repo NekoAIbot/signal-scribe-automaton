@@ -230,7 +230,7 @@ const AnalyticsPage = () => {
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-base">ML Model Performance</CardTitle></CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                   {models.map(m => (
                     <div key={m.id} className="bg-muted p-4 rounded-md">
                       <h3 className="text-sm font-medium mb-1">{m.name}</h3>

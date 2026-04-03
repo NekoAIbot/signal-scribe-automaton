@@ -25,13 +25,13 @@ const MonitoringPage = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="flex flex-col gap-3">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Radio className="h-6 w-6 text-green-400 animate-pulse" />
+          <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
+            <Radio className="h-5 w-5 sm:h-6 sm:w-6 text-green-400 animate-pulse" />
             Live Trade Monitoring
           </h1>
-          <p className="text-muted-foreground">Real-time tracking of your trading positions</p>
+          <p className="text-sm text-muted-foreground">Real-time tracking of your trading positions</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">

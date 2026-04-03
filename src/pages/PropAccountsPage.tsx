@@ -276,7 +276,7 @@ const PropAccountsPage = () => {
                 <Input type="password" value={newAccount.password} onChange={e => setNewAccount({ ...newAccount, password: e.target.value })} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label>Server</Label>
                 <Input value={newAccount.server} onChange={e => setNewAccount({ ...newAccount, server: e.target.value })} />

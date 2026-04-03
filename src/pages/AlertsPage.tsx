@@ -212,7 +212,7 @@ const AlertsPage = () => {
           </Card>
         </div>
         
-        <div>
+        <div className="order-1 lg:order-2">
           <Card>
             <CardHeader>
               <CardTitle>Create Price Alert</CardTitle>

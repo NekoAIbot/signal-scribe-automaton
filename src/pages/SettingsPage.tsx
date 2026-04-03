@@ -18,11 +18,11 @@ const SettingsPage = () => {
   const { preferences, updatePreference, setThemePreference } = usePreferences();
 
   return (
-    <div className="container mx-auto p-6 max-w-5xl">
-      <h1 className="text-2xl font-bold mb-6">Settings</h1>
+    <div className="container mx-auto p-4 sm:p-6 max-w-5xl">
+      <h1 className="text-xl sm:text-2xl font-bold mb-6">Settings</h1>
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
           <TabsTrigger value="subscription">Subscription</TabsTrigger>
           <TabsTrigger value="account">Account</TabsTrigger>
           <TabsTrigger value="broker">Broker</TabsTrigger>

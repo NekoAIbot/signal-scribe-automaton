@@ -187,8 +187,8 @@ const SignalsPage = () => {
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   type="search"
-                  placeholder="Search signals..."
-                  className="pl-8 bg-trading-bg border-trading-border w-[180px] md:w-[220px]"
+                  placeholder="Search..."
+                  className="pl-8 bg-trading-bg border-trading-border w-full sm:w-[180px] md:w-[220px]"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
