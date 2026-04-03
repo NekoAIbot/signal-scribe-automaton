@@ -162,7 +162,7 @@ const AnalyticsPage = () => {
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-base">Equity Curve</CardTitle></CardHeader>
               <CardContent>
-                <div className="h-72">
+                <div className="h-56 sm:h-72">
                   {equityData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={equityData} margin={{ top: 10, right: 10, left: 10, bottom: 10 }}>
