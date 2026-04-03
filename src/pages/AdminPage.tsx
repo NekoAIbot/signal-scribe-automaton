@@ -346,8 +346,8 @@ const AdminPage = () => {
                     strategies.map((strategy) => (
                       <Card key={strategy.id} className="mb-4">
                         <CardHeader className="pb-2">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <CardTitle className="text-base">{strategy.name}</CardTitle>
                               {strategy.ai_auto_select && (
                                 <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
@@ -356,7 +356,7 @@ const AdminPage = () => {
                                 </Badge>
                               )}
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1 flex-wrap">
                               <Button 
                                 variant="ghost" 
                                 size="sm" 
