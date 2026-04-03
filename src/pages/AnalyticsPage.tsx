@@ -102,8 +102,8 @@ const AnalyticsPage = () => {
   const totalPnL = trades.reduce((s, t) => s + (t.profit || 0), 0);
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Trading Analytics</h1>
+    <div className="space-y-4 sm:space-y-6">
+      <h1 className="text-xl sm:text-2xl font-bold">Trading Analytics</h1>
       
       <div className="flex flex-col md:flex-row items-center justify-between space-y-2 md:space-y-0">
         <div className="text-sm text-muted-foreground">
@@ -157,12 +157,12 @@ const AnalyticsPage = () => {
             </CardContent></Card>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
             {/* Equity Curve */}
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-base">Equity Curve</CardTitle></CardHeader>
               <CardContent>
-                <div className="h-72">
+                <div className="h-56 sm:h-72">
                   {equityData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={equityData} margin={{ top: 10, right: 10, left: 10, bottom: 10 }}>
@@ -184,7 +184,7 @@ const AnalyticsPage = () => {
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-base">Trade Distribution</CardTitle></CardHeader>
               <CardContent>
-                <div className="h-72">
+                <div className="h-56 sm:h-72">
                   {pieData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
@@ -207,7 +207,7 @@ const AnalyticsPage = () => {
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-base">Performance by Day of Week</CardTitle></CardHeader>
             <CardContent>
-              <div className="h-64">
+              <div className="h-48 sm:h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={dayStats}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
@@ -230,7 +230,7 @@ const AnalyticsPage = () => {
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-base">ML Model Performance</CardTitle></CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                   {models.map(m => (
                     <div key={m.id} className="bg-muted p-4 rounded-md">
                       <h3 className="text-sm font-medium mb-1">{m.name}</h3>

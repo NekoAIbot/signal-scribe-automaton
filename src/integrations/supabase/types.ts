@@ -326,6 +326,7 @@ export type Database = {
           is_active: boolean | null
           model_id: string | null
           signal_type: Database["public"]["Enums"]["signal_type"]
+          status: string | null
           stop_loss: number | null
           strategy_id: string | null
           symbol: string
@@ -342,6 +343,7 @@ export type Database = {
           is_active?: boolean | null
           model_id?: string | null
           signal_type: Database["public"]["Enums"]["signal_type"]
+          status?: string | null
           stop_loss?: number | null
           strategy_id?: string | null
           symbol: string
@@ -358,6 +360,7 @@ export type Database = {
           is_active?: boolean | null
           model_id?: string | null
           signal_type?: Database["public"]["Enums"]["signal_type"]
+          status?: string | null
           stop_loss?: number | null
           strategy_id?: string | null
           symbol?: string

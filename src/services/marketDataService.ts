@@ -93,7 +93,7 @@ export const useTradingSignals = () => {
             type: signal.signal_type === 'sell' ? 'SELL' : 'BUY',
             price: Number(signal.entry_price || 0),
             time: signal.created_at || new Date().toISOString(),
-            status: 'new',
+            status: (signal as any).status || 'new',
             strategy: signal.strategy_id ? 'Selected Strategy' : 'AI Market Scan',
             strategyId: signal.strategy_id,
             modelId: signal.model_id,

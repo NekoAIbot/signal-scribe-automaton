@@ -52,6 +52,8 @@ export function TradingSignals() {
         throw new Error('Execution failed on all connected accounts');
       }
 
+      // Mark signal as inactive after execution
+      await supabase.from('trading_signals').update({ is_active: false, status: 'executed' }).eq('id', signal.id);
       toast.success(`Signal executed on ${successCount} broker account(s)`);
       refetch();
     } catch (error) {
