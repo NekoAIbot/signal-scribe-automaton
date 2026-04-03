@@ -137,7 +137,7 @@ const AlertsPage = () => {
             </CardHeader>
             <CardContent>
               <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className="grid w-full grid-cols-3 text-xs sm:text-sm">
                   <TabsTrigger value="price">Price Alerts</TabsTrigger>
                   <TabsTrigger value="technical">Technical</TabsTrigger>
                   <TabsTrigger value="news">News & Events</TabsTrigger>
