@@ -184,7 +184,7 @@ const AnalyticsPage = () => {
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-base">Trade Distribution</CardTitle></CardHeader>
               <CardContent>
-                <div className="h-72">
+                <div className="h-56 sm:h-72">
                   {pieData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
