@@ -57,20 +57,14 @@ serve(async (req) => {
         }
       }
     } else {
-      // Return mock data if no API keys configured
-      console.log("No API keys configured, returning mock data");
-      marketData = symbols.map((symbol: string) => ({
-        symbol,
-        price: 1.0850 + Math.random() * 0.01,
-        change: (Math.random() - 0.5) * 0.02,
-        change_percent: ((Math.random() - 0.5) * 2).toFixed(2) + "%",
-        volume: Math.floor(Math.random() * 1000000),
-        timestamp: new Date().toISOString(),
-      }));
+      return new Response(
+        JSON.stringify({ error: "No real-time market data provider configured (set TWELVEDATA_API_KEY or ALPHAVANTAGE_API_KEY)." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     return new Response(
-      JSON.stringify({ data: marketData, provider: provider || "mock" }),
+      JSON.stringify({ data: marketData, provider: provider || "live" }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {

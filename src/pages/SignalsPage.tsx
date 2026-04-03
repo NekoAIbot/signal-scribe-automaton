@@ -10,6 +10,7 @@ import { useTradingSignals } from '@/services/marketDataService';
 import { TradeSignal } from '@/services/signalGenerationService';
 import { useBrokerAccounts } from '@/hooks/useBrokerAccounts';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/services/edgeFunctionService';
 
 const formatDate = (timeString: string) => {
   const date = new Date(timeString);
@@ -70,26 +71,28 @@ const SignalsPage = () => {
       ));
 
       let successCount = 0;
+      let lastFailureReason = '';
 
       for (const account of activeAccounts) {
-        const { data, error } = await supabase.functions.invoke('execute-trade', {
-          body: {
-            symbol: signal.symbol,
-            type: signal.type,
-            price: signal.price,
-            lotSize: signal.lotSize || 0.01,
-            stopLoss: signal.stopLoss,
-            takeProfit: signal.takeProfit1,
-            brokerAccountId: account.id,
-            strategyId: signal.strategyId || null,
-            modelId: signal.modelId || null,
-          }
+        const result = await invokeEdgeFunction('execute-trade', {
+          symbol: signal.symbol,
+          type: signal.type,
+          price: signal.price,
+          lotSize: signal.lotSize || 0.01,
+          stopLoss: signal.stopLoss,
+          takeProfit: signal.takeProfit1,
+          brokerAccountId: account.id,
+          strategyId: signal.strategyId || null,
+          modelId: signal.modelId || null,
         });
 
-        if (!error && data?.success) {
+        if (result.ok) {
           successCount += 1;
         } else {
-          console.error(`Execution failed for account ${account.account_name}:`, error || data);
+          const reason = result.error || 'Unknown execution error';
+          lastFailureReason = reason;
+          console.error(`Execution failed for account ${account.account_name}:`, reason);
+          toast.error(`Failed on ${account.account_name}: ${reason}`);
         }
       }
 
@@ -104,7 +107,7 @@ const SignalsPage = () => {
         toast.success(`Signal for ${signal.symbol} executed on ${successCount} broker account(s)`);
         refetch();
       } else {
-        toast.error(`Failed to execute signal for ${signal.symbol}`);
+        toast.error(`Failed to execute signal for ${signal.symbol}: ${lastFailureReason || 'execution failed on all connected accounts'}`);
       }
     } catch (error) {
       console.error("Error executing signal:", error);

@@ -1,12 +1,34 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+const corsBaseHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+function resolveCorsHeaders(req: Request) {
+  const configuredOrigins = (Deno.env.get('ALLOWED_ORIGINS') || '')
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean);
+
+  const requestOrigin = req.headers.get('origin') || '';
+  const allowOrigin = configuredOrigins.length === 0
+    ? (requestOrigin || '*')
+    : (
+      !requestOrigin || configuredOrigins.includes(requestOrigin)
+        ? (requestOrigin || configuredOrigins[0])
+        : requestOrigin
+    );
+
+  return {
+    ...corsBaseHeaders,
+    'Access-Control-Allow-Origin': allowOrigin,
+  };
+}
+
 serve(async (req) => {
+  const corsHeaders = resolveCorsHeaders(req);
+
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -15,7 +37,7 @@ serve(async (req) => {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
       return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
@@ -43,7 +65,7 @@ serve(async (req) => {
 
       if (verifiedUserError || !verifiedUser) {
         return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
-          status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
 
@@ -60,13 +82,15 @@ serve(async (req) => {
     console.log('Executing trade:', JSON.stringify(requestData));
     
     // Sanitize METAAPI_TOKEN - trim whitespace/newlines
-    const rawToken = Deno.env.get('METAAPI_TOKEN') || '';
-    const METAAPI_TOKEN = rawToken.trim().replace(/[\r\n]/g, '');
+    const METAAPI_TOKEN = normalizeMetaApiToken(Deno.env.get('METAAPI_TOKEN') || '');
     const MT5_BRIDGE_URL = Deno.env.get('MT5_BRIDGE_URL');
     const MT5_BRIDGE_API_KEY = Deno.env.get('MT5_BRIDGE_API_KEY');
 
     if (METAAPI_TOKEN) {
-      console.log(`MetaApi token present, length: ${METAAPI_TOKEN.length}, prefix: ${METAAPI_TOKEN.substring(0, 8)}...`);
+      console.log(`MetaApi token present, length: ${METAAPI_TOKEN.length}`);
+      if (METAAPI_TOKEN.split('.').length < 3) {
+        console.warn('METAAPI_TOKEN format appears invalid (expected JWT-like token).');
+      }
     }
     
     // Prop-firm risk check before execution
@@ -78,7 +102,7 @@ serve(async (req) => {
           error: `Trade blocked by risk engine: ${riskCheck.reason}`,
           riskCheck 
         }), {
-          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
     }
@@ -94,8 +118,20 @@ serve(async (req) => {
         .single();
       
       if (!creds) throw new Error('Broker account not found');
-      
-      executionResult = await executeViaMetaApi(METAAPI_TOKEN, creds, requestData);
+
+      try {
+        executionResult = await executeViaMetaApi(METAAPI_TOKEN, creds, requestData);
+      } catch (metaApiError) {
+        const message = metaApiError instanceof Error ? metaApiError.message : String(metaApiError);
+        console.error('MetaApi execution failed:', message);
+
+        if ((message.includes('401') || message.toLowerCase().includes('auth')) && MT5_BRIDGE_URL) {
+          console.warn('MetaApi auth failed. Falling back to MT5 bridge execution.');
+          executionResult = await executeViaBridge(MT5_BRIDGE_URL, MT5_BRIDGE_API_KEY || '', requestData);
+        } else {
+          throw metaApiError;
+        }
+      }
     } else if (MT5_BRIDGE_URL) {
       executionResult = await executeViaBridge(MT5_BRIDGE_URL, MT5_BRIDGE_API_KEY || '', requestData);
     } else {
@@ -103,7 +139,7 @@ serve(async (req) => {
         success: false, 
         error: 'No trading bridge configured. Please add METAAPI_TOKEN or MT5_BRIDGE_URL secret.' 
       }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
     
@@ -154,7 +190,7 @@ serve(async (req) => {
     console.error('Error executing trade:', error);
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
@@ -167,11 +203,21 @@ function decodeStoredPassword(password: string) {
   }
 }
 
+function normalizeMetaApiToken(rawToken: string) {
+  return rawToken
+    .trim()
+    .replace(/[\r\n]/g, '')
+    .replace(/^Bearer\s+/i, '')
+    .replace(/^"|"$/g, '');
+}
+
 const METAAPI_PROVISIONING_URL = 'https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai';
 const METAAPI_REGIONS = ['new-york', 'london', 'singapore', ''];
 
 async function executeViaMetaApi(token: string, creds: any, data: any) {
   const decodedPassword = decodeStoredPassword(creds.encrypted_password);
+  const platform = String(creds.broker_type || 'mt5').toLowerCase() === 'mt4' ? 'mt4' : 'mt5';
+  const provisioningProfileId = Deno.env.get('METAAPI_PROVISIONING_PROFILE_ID');
 
   // Step 1: List existing MetaApi provisioned accounts
   const listRes = await fetch(`${METAAPI_PROVISIONING_URL}/users/current/accounts`, {
@@ -181,13 +227,21 @@ async function executeViaMetaApi(token: string, creds: any, data: any) {
   if (!listRes.ok) {
     const errBody = await listRes.text();
     console.error(`MetaApi list accounts failed [${listRes.status}]: ${errBody}`);
+    if (listRes.status === 401) {
+      throw new Error('MetaApi authentication failed (401). Check METAAPI_TOKEN in Supabase secrets (no Bearer prefix, no quotes/newlines).');
+    }
     throw new Error(`MetaApi list accounts failed: ${listRes.status}`);
   }
   
   const accounts = await listRes.json();
+  if (!Array.isArray(accounts)) {
+    throw new Error('MetaApi returned unexpected account list format');
+  }
   // Handle both id and _id field names from MetaApi
   let metaApiAccount = accounts.find((a: any) => 
-    String(a.login) === String(creds.login) && a.server === creds.server
+    String(a.login) === String(creds.login) &&
+    String(a.server || '').toLowerCase() === String(creds.server || '').toLowerCase() &&
+    String(a.platform || '').toLowerCase() === platform
   );
   
   // Step 2: If no account found, provision one with cloud-g2
@@ -202,16 +256,21 @@ async function executeViaMetaApi(token: string, creds: any, data: any) {
         login: String(creds.login),
         password: decodedPassword,
         server: creds.server,
-        platform: 'mt5',
+        platform,
         application: 'MetaApi',
-        magic: 0,
-        provisioningProfileId: 'cloud-g2',
+        magic: 234000,
+        ...(provisioningProfileId ? { provisioningProfileId } : {}),
       })
     });
     
     if (!provisionRes.ok) {
       const errText = await provisionRes.text();
       console.error(`MetaApi provision failed [${provisionRes.status}]: ${errText}`);
+      if (errText.toLowerCase().includes('provisioning profile') && !provisioningProfileId) {
+        throw new Error(
+          'MetaApi provisioning requires a profile for this broker server. Set METAAPI_PROVISIONING_PROFILE_ID in Supabase secrets and retry.'
+        );
+      }
       throw new Error(`MetaApi provision failed: ${provisionRes.status} ${errText}`);
     }
     
@@ -336,13 +395,13 @@ async function checkPropFirmRisk(supabaseClient: any, userId: string, tradeData:
 
     const { data: todayTrades } = await supabaseClient
       .from('trades')
-      .select('profit, lot_size')
+      .select('profit, lot_size, status')
       .eq('user_id', userId)
       .eq('broker_account_id', tradeData.brokerAccountId)
       .gte('created_at', todayStart.toISOString());
 
     const dailyPnL = (todayTrades || []).reduce((sum: number, t: any) => sum + (t.profit || 0), 0);
-    const openPositions = (todayTrades || []).filter((t: any) => !t.profit).length;
+    const openPositions = (todayTrades || []).filter((t: any) => t.status === 'open').length;
 
     const MAX_DAILY_LOSS = -500;
     const MAX_OPEN_POSITIONS = 5;
