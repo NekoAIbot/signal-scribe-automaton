@@ -247,7 +247,7 @@ const PropAccountsPage = () => {
 
       {/* Add Account Modal */}
       <Dialog open={addModalOpen} onOpenChange={setAddModalOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-[95vw] sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Add Prop Firm Account</DialogTitle>
             <DialogDescription>Connect your prop firm trading account for AI-managed trading</DialogDescription>
