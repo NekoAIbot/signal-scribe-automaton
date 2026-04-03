@@ -173,8 +173,8 @@ async function runSignalCycle() {
       if (botEnabled) {
         signal.status = 'executing';
         notifyListeners();
-        await executeOnBroker(signal);
-        signal.status = 'executed';
+        const execSuccess = await executeOnBroker(signal);
+        signal.status = execSuccess ? 'executed' : 'failed';
         notifyListeners();
       }
     }
