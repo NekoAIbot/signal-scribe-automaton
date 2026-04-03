@@ -13,33 +13,6 @@ export interface NewsItem {
   };
 }
 
-const mockNews: NewsItem[] = [
-  {
-    title: "Dollar rises after strong retail sales data",
-    description: "The dollar rose on Wednesday after data showed U.S. retail sales increased more than expected in May, suggesting the economy remained on solid footing despite higher interest rates.",
-    url: "#",
-    urlToImage: "https://via.placeholder.com/300x200",
-    publishedAt: new Date().toISOString(),
-    source: { name: "Financial Times" }
-  },
-  {
-    title: "Euro falls as ECB signals rate cut",
-    description: "The euro fell against major currencies after the European Central Bank signaled it could cut interest rates in the coming months.",
-    url: "#",
-    urlToImage: "https://via.placeholder.com/300x200",
-    publishedAt: new Date(Date.now() - 3600000).toISOString(),
-    source: { name: "Reuters" }
-  },
-  {
-    title: "Forex market volatility at 3-month high",
-    description: "Foreign exchange market volatility has reached a three-month high amid geopolitical tensions and diverging monetary policy paths.",
-    url: "#",
-    urlToImage: "https://via.placeholder.com/300x200",
-    publishedAt: new Date(Date.now() - 7200000).toISOString(),
-    source: { name: "Bloomberg" }
-  }
-];
-
 const fetchNews = async (): Promise<NewsItem[]> => {
   try {
     console.log("Fetching news via edge function...");
@@ -47,8 +20,7 @@ const fetchNews = async (): Promise<NewsItem[]> => {
     const { data, error } = await supabase.functions.invoke('fetch-news');
     
     if (error) {
-      console.error("Edge function error:", error);
-      return mockNews;
+      throw new Error(error.message || 'Failed to fetch news');
     }
     
     if (data?.articles && Array.isArray(data.articles) && data.articles.length > 0) {
@@ -56,12 +28,11 @@ const fetchNews = async (): Promise<NewsItem[]> => {
       return data.articles;
     }
     
-    console.warn("No articles found, using mock data");
-    return mockNews;
+    return [];
   } catch (error) {
     console.error("Error fetching news:", error);
-    toast.error("Failed to fetch news. Using fallback data.");
-    return mockNews;
+    toast.error(`Failed to fetch news: ${(error as Error).message}`);
+    return [];
   }
 };
 
