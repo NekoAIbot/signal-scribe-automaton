@@ -266,7 +266,7 @@ const PropAccountsPage = () => {
               <Label>Account Name</Label>
               <Input value={newAccount.account_name} onChange={e => setNewAccount({ ...newAccount, account_name: e.target.value })} placeholder="e.g. FTMO Challenge Phase 1" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label>Login ID</Label>
                 <Input value={newAccount.login} onChange={e => setNewAccount({ ...newAccount, login: e.target.value })} />
