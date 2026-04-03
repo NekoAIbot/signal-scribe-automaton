@@ -10,6 +10,7 @@ import { useTradingSignals } from '@/services/marketDataService';
 import { TradeSignal } from '@/services/signalGenerationService';
 import { useBrokerAccounts } from '@/hooks/useBrokerAccounts';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/services/edgeFunctionService';
 
 const formatDate = (timeString: string) => {
   const date = new Date(timeString);
@@ -97,21 +98,19 @@ const SignalsPage = () => {
       let lastFailureReason = '';
 
       for (const account of activeAccounts) {
-        const { data, error } = await supabase.functions.invoke('execute-trade', {
-          body: {
-            symbol: signal.symbol,
-            type: signal.type,
-            price: signal.price,
-            lotSize: signal.lotSize || 0.01,
-            stopLoss: signal.stopLoss,
-            takeProfit: signal.takeProfit1,
-            brokerAccountId: account.id,
-            strategyId: signal.strategyId || null,
-            modelId: signal.modelId || null,
-          }
+        const result = await invokeEdgeFunction('execute-trade', {
+          symbol: signal.symbol,
+          type: signal.type,
+          price: signal.price,
+          lotSize: signal.lotSize || 0.01,
+          stopLoss: signal.stopLoss,
+          takeProfit: signal.takeProfit1,
+          brokerAccountId: account.id,
+          strategyId: signal.strategyId || null,
+          modelId: signal.modelId || null,
         });
 
-        if (!error && data?.success) {
+        if (result.ok) {
           successCount += 1;
         } else {
           const reason = data?.error || error?.message || 'Unknown execution error';
