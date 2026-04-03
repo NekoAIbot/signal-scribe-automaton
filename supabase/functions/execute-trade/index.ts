@@ -13,12 +13,8 @@ function resolveCorsHeaders(req: Request) {
 
   const requestOrigin = req.headers.get('origin') || '';
   const allowOrigin = configuredOrigins.length === 0
-    ? (requestOrigin || '*')
-    : (
-      !requestOrigin || configuredOrigins.includes(requestOrigin)
-        ? (requestOrigin || configuredOrigins[0])
-        : requestOrigin
-    );
+    ? '*'
+    : (configuredOrigins.includes(requestOrigin) ? requestOrigin : configuredOrigins[0]);
 
   return {
     ...corsBaseHeaders,
@@ -195,7 +191,6 @@ const METAAPI_REGIONS = ['new-york', 'london', 'singapore', ''];
 async function executeViaMetaApi(token: string, creds: any, data: any) {
   const decodedPassword = decodeStoredPassword(creds.encrypted_password);
   const platform = String(creds.broker_type || 'mt5').toLowerCase() === 'mt4' ? 'mt4' : 'mt5';
-  const provisioningProfileId = Deno.env.get('METAAPI_PROVISIONING_PROFILE_ID');
 
   // Step 1: List existing MetaApi provisioned accounts
   const listRes = await fetch(`${METAAPI_PROVISIONING_URL}/users/current/accounts`, {
@@ -234,7 +229,6 @@ async function executeViaMetaApi(token: string, creds: any, data: any) {
         platform,
         application: 'MetaApi',
         magic: 234000,
-        ...(provisioningProfileId ? { provisioningProfileId } : {}),
       })
     });
     
