@@ -174,8 +174,8 @@ const SignalsPage = () => {
   }
   
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Trading Signals</h1>
+    <div className="space-y-4 sm:space-y-6">
+      <h1 className="text-xl sm:text-2xl font-bold">Trading Signals</h1>
       
       <Card className="bg-trading-card border-trading-border">
         <CardHeader className="pb-2">
