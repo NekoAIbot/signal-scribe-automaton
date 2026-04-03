@@ -320,7 +320,7 @@ const AdminPage = () => {
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3">
               <TabsTrigger value="strategies">Trading Strategies</TabsTrigger>
               <TabsTrigger value="models">ML Models</TabsTrigger>
               <TabsTrigger value="users">User Management</TabsTrigger>
