@@ -2,6 +2,7 @@ import { MarketData } from './marketDataService';
 import { CONFIG_FLAGS } from '@/config/apiConfig';
 import { toast } from 'sonner';
 import { MT5AccountDetails } from './types/broker';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface TradeSignal {
   id: string | number;
@@ -281,6 +282,28 @@ export const executeMT5Trade = async (
   }
   
   try {
+    const normalizedSymbol = signal.symbol.replace('/', '');
+
+    let brokerAccountId = accountDetails.id;
+    if (!brokerAccountId && accountDetails.login && accountDetails.server) {
+      const { data: foundAccount, error: accountLookupError } = await supabase
+        .from('broker_credentials')
+        .select('id')
+        .eq('login', accountDetails.login)
+        .eq('server', accountDetails.server)
+        .maybeSingle();
+
+      if (accountLookupError) {
+        throw new Error(`Broker account lookup failed: ${accountLookupError.message}`);
+      }
+
+      brokerAccountId = foundAccount?.id;
+    }
+
+    if (!brokerAccountId) {
+      throw new Error('Broker account is not connected. Save/connect account before executing trades.');
+    }
+
     // Prepare the trading parameters
     const platform = accountDetails.platform || 'MT5';
     const accountType = accountDetails.accountType || 'demo';
@@ -300,17 +323,28 @@ export const executeMT5Trade = async (
       duration: 5000
     });
     
-    // In a real implementation, we would connect to the broker's API
-    // This would typically involve:
-    // 1. Authenticating with the broker's API
-    // 2. Sending the order details to the broker
-    // 3. Handling the response from the broker
-    
-    // For demonstration, we're simulating a successful trade execution
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Simulate successful execution
-    toast.success(`${platform} Trade executed: ${signal.type} ${signal.symbol} @ ${signal.price.toFixed(5)}`);
+    const { data, error } = await supabase.functions.invoke('execute-trade', {
+      body: {
+        symbol: normalizedSymbol,
+        type: signal.type,
+        price: signal.price,
+        lotSize,
+        stopLoss: signal.stopLoss,
+        takeProfit: signal.takeProfit1,
+        brokerAccountId,
+        strategyId: signal.strategyId || null,
+        modelId: signal.modelId || null,
+      }
+    });
+
+    if (error || !data?.success) {
+      const errMsg = data?.error || error?.message || 'Unknown broker execution error';
+      throw new Error(errMsg);
+    }
+
+    toast.success(
+      `${platform} trade executed: ${signal.type} ${signal.symbol} @ ${signal.price.toFixed(5)} (ticket: ${data.ticketNumber || 'N/A'})`
+    );
     return true;
   } catch (error) {
     console.error(`Error executing ${accountDetails.platform || 'MT5'} trade:`, error);

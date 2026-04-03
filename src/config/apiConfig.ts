@@ -7,7 +7,7 @@ export const API_LIMITS = {
 };
 
 export const CONFIG_FLAGS = {
-  USE_MOCK_MT5: true, // Set to false when MT5 integration is configured
+  USE_MOCK_MT5: false, // Keep false in production to ensure real broker execution path is used
   EXHAUSTIVE_SEARCH: true
 };
 
