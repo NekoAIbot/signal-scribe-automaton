@@ -69,7 +69,7 @@ export function TradingSignals() {
         if (!error && data?.success) {
           successCount += 1;
         } else {
-          const reason = await extractReason(error, data);
+          const reason = data?.error || error?.message || 'Unknown execution error';
           lastFailureReason = reason;
           console.error(`Failed to execute on ${account.account_name}:`, reason);
           toast.error(`Failed on ${account.account_name}: ${reason}`);

@@ -114,7 +114,7 @@ const SignalsPage = () => {
         if (!error && data?.success) {
           successCount += 1;
         } else {
-          const reason = await extractReason(error, data);
+          const reason = data?.error || error?.message || 'Unknown execution error';
           lastFailureReason = reason;
           console.error(`Execution failed for account ${account.account_name}:`, reason);
           toast.error(`Failed on ${account.account_name}: ${reason}`);
