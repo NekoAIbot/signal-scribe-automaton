@@ -153,23 +153,23 @@ const PropAccountsPage = () => {
   };
 
   return (
-    <div className="p-4 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-2 sm:p-4 space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-3">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Building2 className="h-6 w-6" />
+          <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
+            <Building2 className="h-5 w-5 sm:h-6 sm:w-6" />
             Prop Firm Accounts
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             Manage prop-firm trading accounts with specialized AI models
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={startPropTrading} variant="default">
-            <PlayCircle className="h-4 w-4 mr-2" /> Start Prop Trading
+        <div className="flex gap-2 flex-wrap">
+          <Button onClick={startPropTrading} variant="default" size="sm">
+            <PlayCircle className="h-4 w-4 mr-1" /> Start Prop Trading
           </Button>
-          <Button onClick={() => setAddModalOpen(true)} variant="outline">
-            <Plus className="h-4 w-4 mr-2" /> Add Account
+          <Button onClick={() => setAddModalOpen(true)} variant="outline" size="sm">
+            <Plus className="h-4 w-4 mr-1" /> Add Account
           </Button>
         </div>
       </div>
