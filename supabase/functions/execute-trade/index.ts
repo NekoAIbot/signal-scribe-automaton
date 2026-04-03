@@ -172,6 +172,7 @@ const METAAPI_REGIONS = ['new-york', 'london', 'singapore', ''];
 
 async function executeViaMetaApi(token: string, creds: any, data: any) {
   const decodedPassword = decodeStoredPassword(creds.encrypted_password);
+  const platform = String(creds.broker_type || 'mt5').toLowerCase() === 'mt4' ? 'mt4' : 'mt5';
 
   // Step 1: List existing MetaApi provisioned accounts
   const listRes = await fetch(`${METAAPI_PROVISIONING_URL}/users/current/accounts`, {
@@ -187,7 +188,9 @@ async function executeViaMetaApi(token: string, creds: any, data: any) {
   const accounts = await listRes.json();
   // Handle both id and _id field names from MetaApi
   let metaApiAccount = accounts.find((a: any) => 
-    String(a.login) === String(creds.login) && a.server === creds.server
+    String(a.login) === String(creds.login) &&
+    String(a.server || '').toLowerCase() === String(creds.server || '').toLowerCase() &&
+    String(a.platform || '').toLowerCase() === platform
   );
   
   // Step 2: If no account found, provision one with cloud-g2
@@ -202,10 +205,9 @@ async function executeViaMetaApi(token: string, creds: any, data: any) {
         login: String(creds.login),
         password: decodedPassword,
         server: creds.server,
-        platform: 'mt5',
+        platform,
         application: 'MetaApi',
-        magic: 0,
-        provisioningProfileId: 'cloud-g2',
+        magic: 234000,
       })
     });
     
@@ -336,13 +338,13 @@ async function checkPropFirmRisk(supabaseClient: any, userId: string, tradeData:
 
     const { data: todayTrades } = await supabaseClient
       .from('trades')
-      .select('profit, lot_size')
+      .select('profit, lot_size, status')
       .eq('user_id', userId)
       .eq('broker_account_id', tradeData.brokerAccountId)
       .gte('created_at', todayStart.toISOString());
 
     const dailyPnL = (todayTrades || []).reduce((sum: number, t: any) => sum + (t.profit || 0), 0);
-    const openPositions = (todayTrades || []).filter((t: any) => !t.profit).length;
+    const openPositions = (todayTrades || []).filter((t: any) => t.status === 'open').length;
 
     const MAX_DAILY_LOSS = -500;
     const MAX_OPEN_POSITIONS = 5;
