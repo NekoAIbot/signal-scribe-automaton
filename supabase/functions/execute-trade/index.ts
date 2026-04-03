@@ -33,7 +33,7 @@ serve(async (req) => {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
       return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
@@ -61,7 +61,7 @@ serve(async (req) => {
 
       if (verifiedUserError || !verifiedUser) {
         return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
-          status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
 
@@ -96,7 +96,7 @@ serve(async (req) => {
           error: `Trade blocked by risk engine: ${riskCheck.reason}`,
           riskCheck 
         }), {
-          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
     }
@@ -121,7 +121,7 @@ serve(async (req) => {
         success: false, 
         error: 'No trading bridge configured. Please add METAAPI_TOKEN or MT5_BRIDGE_URL secret.' 
       }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
     
@@ -172,7 +172,7 @@ serve(async (req) => {
     console.error('Error executing trade:', error);
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
