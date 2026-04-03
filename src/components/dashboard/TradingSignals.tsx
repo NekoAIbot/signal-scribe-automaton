@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/button";
 import { TrendingUp, TrendingDown, AlertTriangle, Settings } from "lucide-react";
 import { toast } from "sonner";
 import { useTradingSignals } from "@/services/marketDataService";
-import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { useBrokerAccounts } from "@/hooks/useBrokerAccounts";
+import { invokeEdgeFunction } from "@/services/edgeFunctionService";
 
 export function TradingSignals() {
   const { data: signals = [], refetch } = useTradingSignals();
@@ -25,31 +25,33 @@ export function TradingSignals() {
     
     try {
       let successCount = 0;
+      let lastFailureReason = '';
 
       for (const account of activeAccounts) {
-        const { data, error } = await supabase.functions.invoke('execute-trade', {
-          body: {
-            symbol: signal.symbol,
-            type: signal.type,
-            price: signal.price,
-            lotSize: 0.01,
-            stopLoss: signal.stopLoss,
-            takeProfit: signal.takeProfit1,
-            brokerAccountId: account.id,
-            strategyId: signal.strategyId || null,
-            modelId: signal.modelId || null,
-          }
+        const result = await invokeEdgeFunction('execute-trade', {
+          symbol: signal.symbol,
+          type: signal.type,
+          price: signal.price,
+          lotSize: 0.01,
+          stopLoss: signal.stopLoss,
+          takeProfit: signal.takeProfit1,
+          brokerAccountId: account.id,
+          strategyId: signal.strategyId || null,
+          modelId: signal.modelId || null,
         });
 
-        if (!error && data?.success) {
+        if (result.ok) {
           successCount += 1;
         } else {
-          console.error(`Failed to execute on ${account.account_name}:`, error || data);
+          const reason = result.error || 'Unknown execution error';
+          lastFailureReason = reason;
+          console.error(`Failed to execute on ${account.account_name}:`, reason);
+          toast.error(`Failed on ${account.account_name}: ${reason}`);
         }
       }
 
       if (successCount === 0) {
-        throw new Error('Execution failed on all connected accounts');
+        throw new Error(lastFailureReason || 'Execution failed on all connected accounts');
       }
 
       // Mark signal as inactive after execution
