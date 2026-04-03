@@ -282,9 +282,9 @@ const AdminPage = () => {
   };
   
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Admin Panel</h1>
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+        <h1 className="text-xl sm:text-2xl font-bold">Admin Panel</h1>
         <Button 
           variant="outline" 
           onClick={handleLogout}
@@ -294,20 +294,21 @@ const AdminPage = () => {
         </Button>
       </div>
       
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
         <div>
-          <h2 className="text-lg text-muted-foreground">System Controls</h2>
+          <h2 className="text-base sm:text-lg text-muted-foreground">System Controls</h2>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button 
             variant={telegramBotActive ? "destructive" : "default"}
             onClick={handleToggleTelegramBot}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 text-sm"
+            size="sm"
           >
             {telegramBotActive ? (
-              <><StopCircle className="h-4 w-4" /> Stop Telegram Signals</>
+              <><StopCircle className="h-4 w-4" /> Stop Telegram</>
             ) : (
-              <><PlayCircle className="h-4 w-4" /> Start Telegram Signals</>
+              <><PlayCircle className="h-4 w-4" /> Start Telegram</>
             )}
           </Button>
         </div>
