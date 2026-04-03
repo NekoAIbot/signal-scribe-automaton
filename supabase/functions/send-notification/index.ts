@@ -21,6 +21,7 @@ interface TradeAlertMessage {
   confidence?: number;
   stopLoss?: number;
   takeProfit?: number;
+  extraMessage?: string;
 }
 
 interface SignalAlertMessage {
@@ -61,6 +62,10 @@ ${emoji} <b>${data.action}</b> ${data.symbol}
   
   if (data.takeProfit) {
     message += `\n✅ Take Profit: <code>${data.takeProfit.toFixed(5)}</code>`;
+  }
+
+  if (data.extraMessage) {
+    message += `\n${data.extraMessage}`;
   }
   
   message += `\n⏰ Time: ${new Date().toLocaleString()}`;
