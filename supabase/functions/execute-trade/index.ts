@@ -204,6 +204,9 @@ async function executeViaMetaApi(token: string, creds: any, data: any) {
   }
   
   const accounts = await listRes.json();
+  if (!Array.isArray(accounts)) {
+    throw new Error('MetaApi returned unexpected account list format');
+  }
   // Handle both id and _id field names from MetaApi
   let metaApiAccount = accounts.find((a: any) => 
     String(a.login) === String(creds.login) &&
@@ -232,6 +235,11 @@ async function executeViaMetaApi(token: string, creds: any, data: any) {
     if (!provisionRes.ok) {
       const errText = await provisionRes.text();
       console.error(`MetaApi provision failed [${provisionRes.status}]: ${errText}`);
+      if (errText.toLowerCase().includes('provisioning profile') && !provisioningProfileId) {
+        throw new Error(
+          'MetaApi provisioning requires a profile for this broker server. Set METAAPI_PROVISIONING_PROFILE_ID in Supabase secrets and retry.'
+        );
+      }
       throw new Error(`MetaApi provision failed: ${provisionRes.status} ${errText}`);
     }
     
