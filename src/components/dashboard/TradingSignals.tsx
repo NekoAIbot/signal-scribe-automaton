@@ -79,6 +79,7 @@ export function TradingSignals() {
       }
 
       // Mark signal as inactive after execution
+      const { supabase } = await import('@/integrations/supabase/client');
       await supabase.from('trading_signals').update({ is_active: false, status: 'executed' }).eq('id', signal.id);
       toast.success(`Signal executed on ${successCount} broker account(s)`);
       refetch();

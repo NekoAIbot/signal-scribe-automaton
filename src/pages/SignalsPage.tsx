@@ -113,7 +113,7 @@ const SignalsPage = () => {
         if (result.ok) {
           successCount += 1;
         } else {
-          const reason = data?.error || error?.message || 'Unknown execution error';
+          const reason = (result as any)?.error || 'Unknown execution error';
           lastFailureReason = reason;
           console.error(`Execution failed for account ${account.account_name}:`, reason);
           toast.error(`Failed on ${account.account_name}: ${reason}`);
