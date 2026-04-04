@@ -461,8 +461,8 @@ const AdminPage = () => {
                           </div>
                         </CardHeader>
                         <CardContent className="pb-4">
-                          <div className="flex items-center justify-between text-sm">
-                            <div className="flex items-center gap-4">
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-sm">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span>
                                 Accuracy: <strong className="text-green-500">{typeof model.accuracy === 'number' ? (model.accuracy * 100).toFixed(1) : model.accuracy}%</strong>
                               </span>
@@ -470,7 +470,7 @@ const AdminPage = () => {
                                 {model.is_active ? 'Active' : 'Inactive'}
                               </Badge>
                             </div>
-                            <div className="text-muted-foreground">
+                            <div className="text-muted-foreground text-xs">
                               Last Trained: {model.lastTrained || 'Never'}
                             </div>
                           </div>

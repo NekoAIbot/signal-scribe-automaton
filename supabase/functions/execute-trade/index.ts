@@ -310,7 +310,7 @@ async function executeViaMetaApi(token: string, creds: any, data: any) {
   for (const region of METAAPI_REGIONS) {
     const host = region 
       ? `mt-client-api-v1.${region}.agiliumtrade.ai`
-      : 'mt-client-api-v1.agiliumtrade.agiliumtrade.ai';
+      : 'mt-client-api-v1.agiliumtrade.ai';
     const tradeUrl = `https://${host}/users/current/accounts/${accountId}/trade`;
     
     console.log(`Trying trade on region: ${region || 'default'} -> ${tradeUrl}`);
