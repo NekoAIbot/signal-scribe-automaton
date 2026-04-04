@@ -207,7 +207,7 @@ function normalizeMetaApiToken(rawToken: string) {
     .replace(/^"|"$/g, '');
 }
 
-const METAAPI_PROVISIONING_URL = 'https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai';
+const METAAPI_PROVISIONING_URL = 'https://mt-provisioning-api-v1.agiliumtrade.ai';
 const METAAPI_REGIONS = ['new-york', 'london', 'singapore', ''];
 
 async function executeViaMetaApi(token: string, creds: any, data: any) {
@@ -310,7 +310,7 @@ async function executeViaMetaApi(token: string, creds: any, data: any) {
   for (const region of METAAPI_REGIONS) {
     const host = region 
       ? `mt-client-api-v1.${region}.agiliumtrade.ai`
-      : 'mt-client-api-v1.agiliumtrade.agiliumtrade.ai';
+      : 'mt-client-api-v1.agiliumtrade.ai';
     const tradeUrl = `https://${host}/users/current/accounts/${accountId}/trade`;
     
     console.log(`Trying trade on region: ${region || 'default'} -> ${tradeUrl}`);
