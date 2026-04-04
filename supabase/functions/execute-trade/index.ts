@@ -207,7 +207,7 @@ function normalizeMetaApiToken(rawToken: string) {
     .replace(/^"|"$/g, '');
 }
 
-const METAAPI_PROVISIONING_URL = 'https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai';
+const METAAPI_PROVISIONING_URL = 'https://mt-provisioning-api-v1.agiliumtrade.ai';
 const METAAPI_REGIONS = ['new-york', 'london', 'singapore', ''];
 
 async function executeViaMetaApi(token: string, creds: any, data: any) {
