@@ -67,7 +67,7 @@ export function TradingSignals() {
         if (result.ok) {
           successCount += 1;
         } else {
-          const reason = data?.error || error?.message || 'Unknown execution error';
+          const reason = (result as any)?.error || 'Unknown execution error';
           lastFailureReason = reason;
           console.error(`Failed to execute on ${account.account_name}:`, reason);
           toast.error(`Failed on ${account.account_name}: ${reason}`);
@@ -79,6 +79,7 @@ export function TradingSignals() {
       }
 
       // Mark signal as inactive after execution
+      const { supabase } = await import('@/integrations/supabase/client');
       await supabase.from('trading_signals').update({ is_active: false, status: 'executed' }).eq('id', signal.id);
       toast.success(`Signal executed on ${successCount} broker account(s)`);
       refetch();
