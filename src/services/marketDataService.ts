@@ -77,7 +77,7 @@ export const useTradingSignals = () => {
       try {
         const { data, error } = await supabase
           .from('trading_signals')
-          .select('id, symbol, signal_type, entry_price, target_price, stop_loss, created_at, confidence, strategy_id, model_id, expires_at, is_active')
+          .select('id, symbol, signal_type, entry_price, target_price, stop_loss, created_at, confidence, strategy_id, model_id, expires_at, is_active, status')
           .eq('is_active', true)
           .order('created_at', { ascending: false })
           .limit(20);
