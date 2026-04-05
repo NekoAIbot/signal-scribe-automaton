@@ -195,46 +195,10 @@ export const testAlertSystem = async (): Promise<boolean> => {
 
 // Set up or update trade signal service
 export const setupRealTimeSignals = (isActive: boolean): void => {
-  // In a real app, this would connect to a WebSocket or similar for real-time signals
   if (isActive) {
-    toast.success("Real-time signal service activated");
-    
-    // Start a periodic check for new signals (simulated)
-    const intervalId = setInterval(() => {
-      // Check if service is still active
-      const isStillActive = localStorage.getItem('telegramSignalServiceActive') === 'true';
-      if (!isStillActive) {
-        clearInterval(intervalId);
-        return;
-      }
-      
-      // 15% chance to generate a signal every minute
-      if (Math.random() < 0.15) {
-        const symbols = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD'];
-        const types = ['BUY', 'SELL'];
-        const strategies = ['RSI Divergence', 'MA Crossover', 'Breakout', 'Support/Resistance', 'AI Model'];
-        
-        const randomSignal: SignalNotification = {
-          symbol: symbols[Math.floor(Math.random() * symbols.length)],
-          type: types[Math.floor(Math.random() * types.length)],
-          price: 1 + Math.random(), // Simple random price
-          strategy: strategies[Math.floor(Math.random() * strategies.length)],
-          time: new Date().toISOString()
-        };
-        
-        broadcastSignal(randomSignal);
-      }
-    }, 60000); // Check every minute
-    
-    // Store interval ID and state
-    localStorage.setItem('telegramSignalIntervalId', intervalId.toString());
+    toast.success("Real-time signal service activated — listening for new trading signals from the database");
     localStorage.setItem('telegramSignalServiceActive', 'true');
   } else {
-    // Stop the service
-    const intervalId = localStorage.getItem('telegramSignalIntervalId');
-    if (intervalId) {
-      clearInterval(parseInt(intervalId));
-    }
     localStorage.setItem('telegramSignalServiceActive', 'false');
     toast.info("Real-time signal service deactivated");
   }
