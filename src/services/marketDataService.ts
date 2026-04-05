@@ -25,17 +25,26 @@ const getCategory = (symbol: string): string => {
 };
 
 // Convert WebSocket data to MarketData format
+// Store previous prices for computing real change
+const previousPrices: Record<string, number> = {};
+
 const convertToMarketData = (wsMarketData: Record<string, { bid: number; ask: number; timestamp?: number }>): MarketData[] => {
   return Object.entries(wsMarketData).map(([key, data]) => {
-    // Add slash to forex pair symbol if needed
     let symbol = key;
     if (key.length === 6 && !key.includes('/') && !['USOIL'].includes(key)) {
       symbol = key.slice(0, 3) + '/' + key.slice(3);
     }
     
     const price = (data.bid + data.ask) / 2;
-    const change = (Math.random() * 2 - 1) * 0.8;
-    const volume = Math.floor(5000 + Math.random() * 15000);
+    
+    // Compute real change from previous price
+    const prevPrice = previousPrices[key];
+    const change = prevPrice && prevPrice > 0 ? ((price - prevPrice) / prevPrice) * 100 : 0;
+    previousPrices[key] = price;
+    
+    // Derive volume from spread width (no fake random volume)
+    const spread = data.ask - data.bid;
+    const volume = spread > 0 ? Math.round((price / spread) * 10) : 0;
     
     return {
       symbol,
