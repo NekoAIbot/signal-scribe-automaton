@@ -16,13 +16,13 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.backtest-strategy]
-verify_jwt = true
+verify_jwt = false
 
 [functions.execute-trade]
 verify_jwt = false
 
 [functions.ml-predictions]
-verify_jwt = true
+verify_jwt = false
 
 [functions.fetch-news]
 verify_jwt = false
