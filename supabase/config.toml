@@ -22,7 +22,7 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.ml-predictions]
-verify_jwt = true
+verify_jwt = false
 
 [functions.fetch-news]
 verify_jwt = false

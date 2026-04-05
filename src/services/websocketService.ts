@@ -26,13 +26,17 @@ export const useWebSocketMarketData = () => {
   const [usingMockData, setUsingMockData] = useState(true);
   const pollIntervalRef = useRef<number | null>(null);
   const connectionNotifiedRef = useRef(false);
+  const isMountedRef = useRef(true);
 
   const fetchMarketData = useCallback(async () => {
+    if (!isMountedRef.current) return;
     try {
       const symbols = ALL_SYMBOLS.join(',');
       const { data, error } = await supabase.functions.invoke('fetch-market-quotes', {
         body: { symbols }
       });
+
+      if (!isMountedRef.current) return;
 
       if (error) {
         console.error('Error fetching market data:', error);
@@ -47,16 +51,37 @@ export const useWebSocketMarketData = () => {
     } catch (error) {
       console.error('Error fetching market data:', error);
     }
-  }, []);
+  }, []); // No deps - stable reference
 
-  const connect = useCallback(() => {
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    // Initial fetch
     fetchMarketData();
-    
+
+    // Poll every 10 seconds (reduced from 5s to avoid hammering)
+    pollIntervalRef.current = window.setInterval(fetchMarketData, 10000);
+
+    if (!connectionNotifiedRef.current) {
+      connectionNotifiedRef.current = true;
+    }
+
+    return () => {
+      isMountedRef.current = false;
+      if (pollIntervalRef.current) {
+        window.clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [fetchMarketData]);
+
+  const reconnect = useCallback(() => {
     if (pollIntervalRef.current) {
       window.clearInterval(pollIntervalRef.current);
     }
-    // Poll every 5 seconds for near real-time updates
-    pollIntervalRef.current = window.setInterval(fetchMarketData, 5000);
+    fetchMarketData();
+    pollIntervalRef.current = window.setInterval(fetchMarketData, 10000);
+    setIsConnected(true);
   }, [fetchMarketData]);
 
   const disconnect = useCallback(() => {
@@ -67,31 +92,10 @@ export const useWebSocketMarketData = () => {
     setIsConnected(false);
   }, []);
 
-  const reconnect = useCallback(() => {
-    disconnect();
-    setTimeout(connect, 1000);
-  }, [connect, disconnect]);
-
-  useEffect(() => {
-    if (isConnected && !connectionNotifiedRef.current) {
-      console.log(usingMockData ? 'Using mock market data' : 'Connected to live market data');
-      connectionNotifiedRef.current = true;
-    }
-  }, [isConnected, usingMockData]);
-
-  useEffect(() => {
-    connect();
-    return () => {
-      if (pollIntervalRef.current) {
-        window.clearInterval(pollIntervalRef.current);
-      }
-    };
-  }, [connect]);
-
   return {
     isConnected,
     marketData,
-    connect,
+    connect: reconnect,
     disconnect,
     reconnect,
     usingMockData
