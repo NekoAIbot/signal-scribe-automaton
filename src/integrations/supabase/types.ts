@@ -250,7 +250,9 @@ export type Database = {
           created_at: string
           current_price: number | null
           entry_price: number
+          execution_timeline: Json
           id: string
+          last_execution_status: string | null
           lot_size: number
           model_id: string | null
           open_time: string
@@ -274,7 +276,9 @@ export type Database = {
           created_at?: string
           current_price?: number | null
           entry_price: number
+          execution_timeline?: Json
           id?: string
+          last_execution_status?: string | null
           lot_size?: number
           model_id?: string | null
           open_time?: string
@@ -298,7 +302,9 @@ export type Database = {
           created_at?: string
           current_price?: number | null
           entry_price?: number
+          execution_timeline?: Json
           id?: string
+          last_execution_status?: string | null
           lot_size?: number
           model_id?: string | null
           open_time?: string

@@ -42,6 +42,7 @@ import {
   deleteUser
 } from '@/services/adminService';
 import { UserFormModal } from "@/components/admin/UserFormModal";
+import TrainingHistoryPanel from "@/components/admin/TrainingHistoryPanel";
 
 const AdminPage = () => {
   const [activeTab, setActiveTab] = useState('strategies');
@@ -62,6 +63,7 @@ const AdminPage = () => {
   const [selectedStrategy, setSelectedStrategy] = useState<any | null>(null);
   const [selectedModel, setSelectedModel] = useState<any | null>(null);
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
+  const [trainingRefreshKey, setTrainingRefreshKey] = useState(0);
 
   const navigate = useNavigate();
   const { logout } = useAuth();
@@ -152,6 +154,7 @@ const AdminPage = () => {
   
   const handleTrainingComplete = (newModel: any) => {
     setModels([newModel, ...models]);
+    setTrainingRefreshKey(k => k + 1);
     loadAllData();
   };
   
@@ -422,6 +425,10 @@ const AdminPage = () => {
                 <Button onClick={handleTrainNewModel}>
                   <BarChart2 className="mr-2 h-4 w-4" /> Train New Model
                 </Button>
+              </div>
+
+              <div className="mb-4">
+                <TrainingHistoryPanel refreshKey={trainingRefreshKey} />
               </div>
               
               <ScrollArea className="h-[50vh] rounded-md border">
