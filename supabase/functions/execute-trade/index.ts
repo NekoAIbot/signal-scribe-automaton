@@ -272,7 +272,7 @@ async function executeViaMetaApi(token: string, creds: any, data: any) {
   // Step 2: If no account found, provision one with cloud-g2
   if (!metaApiAccount) {
     console.log('Provisioning new MetaApi account for login:', creds.login);
-    const provisionRes = await fetch(`${METAAPI_PROVISIONING_URL}/users/current/accounts`, {
+    const provisionRes = await metaApiFetch(`/users/current/accounts`, {
       method: 'POST',
       headers: { 'auth-token': token, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -310,14 +310,14 @@ async function executeViaMetaApi(token: string, creds: any, data: any) {
   
   // Step 3: Ensure account is deployed
   if (metaApiAccount.state !== 'DEPLOYED') {
-    await fetch(`${METAAPI_PROVISIONING_URL}/users/current/accounts/${accountId}/deploy`, {
+    await metaApiFetch(`/users/current/accounts/${accountId}/deploy`, {
       method: 'POST',
       headers: { 'auth-token': token }
     });
     // Wait for deployment (max 60s)
     for (let i = 0; i < 30; i++) {
       await new Promise(r => setTimeout(r, 2000));
-      const checkRes = await fetch(`${METAAPI_PROVISIONING_URL}/users/current/accounts/${accountId}`, {
+      const checkRes = await metaApiFetch(`/users/current/accounts/${accountId}`, {
         headers: { 'auth-token': token }
       });
       const acc = await checkRes.json();
