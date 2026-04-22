@@ -1,49 +1,34 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowUp, ArrowDown, TrendingUp, TrendingDown } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ArrowUp, ArrowDown, TrendingUp, TrendingDown, ChevronDown, ChevronUp, History } from "lucide-react";
 import { cn } from "@/lib/utils";
+import TradeTimeline from "./TradeTimeline";
+import type { Trade } from "@/hooks/useLiveTrades";
 
-interface Trade {
-  id: string;
-  symbol: string;
-  trade_type: 'BUY' | 'SELL';
-  status: 'open' | 'closed' | 'partially_closed' | 'pending' | 'cancelled';
-  entry_price: number;
-  current_price: number | null;
-  close_price: number | null;
-  lot_size: number;
-  profit: number;
-  stop_loss: number | null;
-  take_profit: number | null;
-  open_time: string;
-  close_time: string | null;
-  strategy_id: string | null;
-  model_id: string | null;
-  broker_account_id?: string | null;
-}
-
-interface LiveTradeCardProps {
-  trade: Trade;
-}
+interface LiveTradeCardProps { trade: Trade }
 
 const LiveTradeCard: React.FC<LiveTradeCardProps> = ({ trade }) => {
+  const [open, setOpen] = useState(false);
   const isPositive = trade.profit >= 0;
-  const priceDiff = trade.current_price 
+  const priceDiff = trade.current_price
     ? ((trade.current_price - trade.entry_price) / trade.entry_price * 100)
     : 0;
-  
+  const lastStage = trade.execution_timeline?.[trade.execution_timeline.length - 1];
+
   return (
-    <Card className="bg-card border-border hover:border-primary/50 transition-all">
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-lg">{trade.symbol}</span>
-            <Badge 
+    <Card className="bg-card border-border hover:border-primary/50 transition-all" data-testid={`trade-card-${trade.id}`}>
+      <CardContent className="p-3 sm:p-4">
+        <div className="flex items-center justify-between mb-3 gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-bold text-base sm:text-lg truncate">{trade.symbol}</span>
+            <Badge
               variant={trade.trade_type === 'BUY' ? 'default' : 'destructive'}
               className={cn(
-                trade.trade_type === 'BUY' 
-                  ? 'bg-green-500/20 text-green-400 border-green-500/50' 
+                'shrink-0',
+                trade.trade_type === 'BUY'
+                  ? 'bg-green-500/20 text-green-400 border-green-500/50'
                   : 'bg-red-500/20 text-red-400 border-red-500/50'
               )}
             >
@@ -52,68 +37,82 @@ const LiveTradeCard: React.FC<LiveTradeCardProps> = ({ trade }) => {
             </Badge>
           </div>
           <Badge variant="outline" className={cn(
+            'shrink-0 text-[10px] sm:text-xs',
             trade.status === 'open' ? 'border-blue-500 text-blue-400' :
             trade.status === 'closed' ? 'border-gray-500 text-gray-400' :
+            trade.status === 'cancelled' ? 'border-red-500 text-red-400' :
             'border-yellow-500 text-yellow-400'
           )}>
             {trade.status}
           </Badge>
         </div>
-        
-        <div className="grid grid-cols-2 gap-4 mb-3">
+
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-3">
           <div>
-            <p className="text-xs text-muted-foreground">Entry Price</p>
-            <p className="font-mono font-medium">{trade.entry_price.toFixed(5)}</p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Entry</p>
+            <p className="font-mono text-sm font-medium">{trade.entry_price.toFixed(5)}</p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Current Price</p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Current</p>
             <div className="flex items-center gap-1">
-              <p className="font-mono font-medium">
-                {trade.current_price?.toFixed(5) || 'N/A'}
-              </p>
-              {trade.current_price && (
-                priceDiff >= 0 
-                  ? <TrendingUp className="w-3 h-3 text-green-400" />
-                  : <TrendingDown className="w-3 h-3 text-red-400" />
-              )}
+              <p className="font-mono text-sm font-medium">{trade.current_price?.toFixed(5) || 'N/A'}</p>
+              {trade.current_price && (priceDiff >= 0
+                ? <TrendingUp className="w-3 h-3 text-green-400" />
+                : <TrendingDown className="w-3 h-3 text-red-400" />)}
             </div>
           </div>
         </div>
-        
-        <div className="grid grid-cols-3 gap-2 text-sm mb-3">
+
+        <div className="grid grid-cols-3 gap-2 text-xs sm:text-sm mb-3">
           <div>
-            <p className="text-xs text-muted-foreground">Lot Size</p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Lot</p>
             <p className="font-medium">{trade.lot_size}</p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Stop Loss</p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">SL</p>
             <p className="font-mono text-red-400">{trade.stop_loss?.toFixed(5) || '-'}</p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Take Profit</p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">TP</p>
             <p className="font-mono text-green-400">{trade.take_profit?.toFixed(5) || '-'}</p>
           </div>
         </div>
 
-        {/* Strategy/Model info */}
-        {(trade.strategy_id || trade.model_id) && (
-          <div className="text-xs text-muted-foreground pt-2 border-t border-border">
-            {trade.strategy_id && <span>Strategy: {trade.strategy_id.slice(0, 8)}...</span>}
-            {trade.model_id && <span className="ml-2">Model: {trade.model_id.slice(0, 8)}...</span>}
-          </div>
-        )}
-        
-        <div className="flex items-center justify-between pt-3 border-t border-border">
-          <span className="text-xs text-muted-foreground">
+        <div className="flex items-center justify-between pt-2 border-t border-border gap-2">
+          <span className="text-[10px] sm:text-xs text-muted-foreground truncate">
             {new Date(trade.open_time).toLocaleString()}
           </span>
           <div className={cn(
-            "font-bold text-lg",
+            "font-bold text-sm sm:text-lg shrink-0",
             isPositive ? "text-green-400" : "text-red-400"
           )}>
             {isPositive ? '+' : ''}{trade.profit.toFixed(2)} USD
           </div>
         </div>
+
+        <Collapsible open={open} onOpenChange={setOpen}>
+          <CollapsibleTrigger
+            className="mt-2 inline-flex items-center gap-1 text-[10px] sm:text-xs text-muted-foreground hover:text-foreground"
+            data-testid={`timeline-toggle-${trade.id}`}
+          >
+            <History className="h-3 w-3" />
+            Execution timeline ({trade.execution_timeline?.length || 0})
+            {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            {lastStage && (
+              <span className={cn(
+                'ml-1 rounded px-1 py-0.5 text-[10px]',
+                lastStage.status === 'success' && 'bg-green-500/20 text-green-400',
+                lastStage.status === 'failed' && 'bg-red-500/20 text-red-400',
+                lastStage.status === 'started' && 'bg-blue-500/20 text-blue-400',
+              )}>
+                {lastStage.stage}
+              </span>
+            )}
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-2 rounded-md border border-border bg-muted/30 p-2 sm:p-3">
+            <TradeTimeline events={trade.execution_timeline} />
+          </CollapsibleContent>
+        </Collapsible>
       </CardContent>
     </Card>
   );
