@@ -22,19 +22,44 @@ function resolveCorsHeaders(req: Request) {
   };
 }
 
+// ---------- Timeline helpers ----------
+type StageStatus = 'started' | 'success' | 'failed';
+interface TimelineEvent {
+  stage: string;       // requested | auth | risk_check | provisioning | deploying | order | filled | failed
+  status: StageStatus;
+  at: string;          // ISO timestamp
+  message?: string;
+  meta?: Record<string, unknown>;
+}
+
+class Timeline {
+  events: TimelineEvent[] = [];
+  push(stage: string, status: StageStatus, message?: string, meta?: Record<string, unknown>) {
+    this.events.push({ stage, status, at: new Date().toISOString(), message, meta });
+  }
+  last(): TimelineEvent | undefined { return this.events[this.events.length - 1]; }
+}
+
 serve(async (req) => {
   const corsHeaders = resolveCorsHeaders(req);
+  const timeline = new Timeline();
+  timeline.push('requested', 'started', 'Trade request received');
 
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
-  
+
+  // Service-role client used for DB writes regardless of caller auth
+  const serviceClient = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+  );
+
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
-      return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      timeline.push('auth', 'failed', 'Missing Authorization header');
+      return jsonResponse({ success: false, error: 'Unauthorized', timeline: timeline.events }, corsHeaders);
     }
 
     const authClient = createClient(
@@ -48,100 +73,105 @@ serve(async (req) => {
     if (user?.id) {
       userId = user.id;
     } else {
-      if (userError) {
-        console.error('Primary auth check failed:', userError.message);
-      }
-
-      const serviceAuthClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-      );
+      if (userError) console.error('Primary auth check failed:', userError.message);
       const token = authHeader.replace('Bearer ', '');
-      const { data: { user: verifiedUser }, error: verifiedUserError } = await serviceAuthClient.auth.getUser(token);
-
+      const { data: { user: verifiedUser }, error: verifiedUserError } =
+        await serviceClient.auth.getUser(token);
       if (verifiedUserError || !verifiedUser) {
-        return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
+        timeline.push('auth', 'failed', verifiedUserError?.message || 'Auth failed');
+        return jsonResponse({ success: false, error: 'Unauthorized', timeline: timeline.events }, corsHeaders);
       }
-
       userId = verifiedUser.id;
     }
+    timeline.push('auth', 'success', `Authenticated user ${userId.slice(0, 8)}…`);
 
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    );
-    const authenticatedUser = { id: userId };
-    
     const requestData = await req.json();
     console.log('Executing trade:', JSON.stringify(requestData));
-    
-    // Sanitize METAAPI_TOKEN - trim whitespace/newlines
+
     const METAAPI_TOKEN = normalizeMetaApiToken(Deno.env.get('METAAPI_TOKEN') || '');
+    const PAPER_MODE = (Deno.env.get('TRADING_PAPER_MODE') || '').toLowerCase() === 'true';
     const MT5_BRIDGE_URL = Deno.env.get('MT5_BRIDGE_URL');
     const MT5_BRIDGE_API_KEY = Deno.env.get('MT5_BRIDGE_API_KEY');
 
     if (METAAPI_TOKEN) {
       console.log(`MetaApi token present, length: ${METAAPI_TOKEN.length}`);
-      if (METAAPI_TOKEN.split('.').length < 3) {
-        console.warn('METAAPI_TOKEN format appears invalid (expected JWT-like token).');
-      }
     }
-    
-    // Prop-firm risk check before execution
+
+    // Prop-firm risk check
     if (requestData.brokerAccountId) {
-      const riskCheck = await checkPropFirmRisk(supabaseClient, authenticatedUser.id, requestData);
+      timeline.push('risk_check', 'started');
+      const riskCheck = await checkPropFirmRisk(serviceClient, userId, requestData);
       if (!riskCheck.allowed) {
-        return new Response(JSON.stringify({ 
-          success: false, 
-          error: `Trade blocked by risk engine: ${riskCheck.reason}`,
-          riskCheck 
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
+        timeline.push('risk_check', 'failed', riskCheck.reason);
+        await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'risk_blocked');
+        return jsonResponse(
+          { success: false, error: `Trade blocked by risk engine: ${riskCheck.reason}`, riskCheck, timeline: timeline.events },
+          corsHeaders
+        );
       }
+      timeline.push('risk_check', 'success');
     }
-    
-    let executionResult: any;
-    
-    if (METAAPI_TOKEN && requestData.brokerAccountId) {
-      const { data: creds } = await supabaseClient
+
+    let executionResult: { ticketNumber: string; volume: number; mode: string };
+
+    if (PAPER_MODE) {
+      timeline.push('order', 'started', 'Paper-mode (no broker call)');
+      executionResult = {
+        ticketNumber: `PAPER-${Date.now()}`,
+        volume: requestData.lotSize || 0.01,
+        mode: 'paper',
+      };
+      timeline.push('order', 'success', `Paper ticket ${executionResult.ticketNumber}`);
+      timeline.push('filled', 'success');
+    } else if (METAAPI_TOKEN && requestData.brokerAccountId) {
+      const { data: creds } = await serviceClient
         .from('broker_credentials')
         .select('*')
         .eq('id', requestData.brokerAccountId)
-        .eq('user_id', authenticatedUser.id)
+        .eq('user_id', userId)
         .single();
-      
-      if (!creds) throw new Error('Broker account not found');
+
+      if (!creds) {
+        timeline.push('order', 'failed', 'Broker account not found');
+        throw new Error('Broker account not found');
+      }
 
       try {
-        executionResult = await executeViaMetaApi(METAAPI_TOKEN, creds, requestData);
+        executionResult = await executeViaMetaApi(METAAPI_TOKEN, creds, requestData, timeline);
       } catch (metaApiError) {
         const message = metaApiError instanceof Error ? metaApiError.message : String(metaApiError);
         console.error('MetaApi execution failed:', message);
+        timeline.push('order', 'failed', message);
 
         if ((message.includes('401') || message.toLowerCase().includes('auth')) && MT5_BRIDGE_URL) {
           console.warn('MetaApi auth failed. Falling back to MT5 bridge execution.');
+          timeline.push('order', 'started', 'Falling back to MT5 bridge');
           executionResult = await executeViaBridge(MT5_BRIDGE_URL, MT5_BRIDGE_API_KEY || '', requestData);
+          timeline.push('order', 'success', `Bridge ticket ${executionResult.ticketNumber}`);
+          timeline.push('filled', 'success');
         } else {
+          await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'metaapi_failed');
           throw metaApiError;
         }
       }
     } else if (MT5_BRIDGE_URL) {
+      timeline.push('order', 'started', 'Sending to MT5 bridge');
       executionResult = await executeViaBridge(MT5_BRIDGE_URL, MT5_BRIDGE_API_KEY || '', requestData);
+      timeline.push('order', 'success', `Bridge ticket ${executionResult.ticketNumber}`);
+      timeline.push('filled', 'success');
     } else {
-      return new Response(JSON.stringify({ 
-        success: false, 
-        error: 'No trading bridge configured. Please add METAAPI_TOKEN or MT5_BRIDGE_URL secret.' 
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      timeline.push('order', 'failed', 'No bridge configured');
+      await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'no_bridge');
+      return jsonResponse({
+        success: false,
+        error: 'No trading bridge configured. Please add METAAPI_TOKEN or MT5_BRIDGE_URL secret.',
+        timeline: timeline.events,
+      }, corsHeaders);
     }
-    
-    // Record trade
+
+    // Record trade with full timeline
     const tradeRecord = {
-      user_id: authenticatedUser.id,
+      user_id: userId,
       symbol: requestData.symbol,
       trade_type: requestData.type,
       entry_price: requestData.price,
@@ -154,63 +184,87 @@ serve(async (req) => {
       strategy_id: requestData.strategyId || null,
       model_id: requestData.modelId || null,
       broker_account_id: requestData.brokerAccountId || null,
+      execution_timeline: timeline.events,
+      last_execution_status: 'filled',
     };
 
-    const { data: savedTrade, error: tradeError } = await supabaseClient
+    const { data: savedTrade, error: tradeError } = await serviceClient
       .from('trades')
       .insert(tradeRecord)
       .select()
       .single();
-    
+
     if (tradeError) console.error('Error recording trade:', tradeError);
-    
-    // Telegram notification
+
     await sendTelegramNotification({
       symbol: requestData.symbol,
       type: requestData.type,
       price: requestData.price,
       ticketNumber: executionResult.ticketNumber,
     });
-    
-    return new Response(
-      JSON.stringify({
-        success: true,
-        ticketNumber: executionResult.ticketNumber,
-        volume: executionResult.volume,
-        tradeId: savedTrade?.id,
-        message: 'Trade executed successfully via ' + (METAAPI_TOKEN ? 'MetaApi' : 'MT5 Bridge')
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+
+    return jsonResponse({
+      success: true,
+      ticketNumber: executionResult.ticketNumber,
+      volume: executionResult.volume,
+      tradeId: savedTrade?.id,
+      message: `Trade executed via ${executionResult.mode}`,
+      timeline: timeline.events,
+    }, corsHeaders);
   } catch (error) {
     console.error('Error executing trade:', error);
-    return new Response(
-      JSON.stringify({ success: false, error: (error as Error).message }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    timeline.push('failed', 'failed', (error as Error).message);
+    return jsonResponse({ success: false, error: (error as Error).message, timeline: timeline.events }, corsHeaders);
   }
 });
 
-function decodeStoredPassword(password: string) {
+function jsonResponse(payload: unknown, corsHeaders: Record<string, string>, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+async function persistFailedTimeline(
+  client: ReturnType<typeof createClient>,
+  userId: string,
+  requestData: any,
+  events: TimelineEvent[],
+  reason: string,
+) {
   try {
-    return atob(password);
-  } catch {
-    return password;
+    await client.from('trades').insert({
+      user_id: userId,
+      symbol: requestData.symbol,
+      trade_type: requestData.type,
+      entry_price: requestData.price,
+      current_price: requestData.price,
+      lot_size: requestData.lotSize || 0.01,
+      stop_loss: requestData.stopLoss || null,
+      take_profit: requestData.takeProfit || null,
+      status: 'cancelled',
+      strategy_id: requestData.strategyId || null,
+      model_id: requestData.modelId || null,
+      broker_account_id: requestData.brokerAccountId || null,
+      execution_timeline: events,
+      last_execution_status: reason,
+    });
+  } catch (e) {
+    console.error('Failed to persist failed-trade timeline:', e);
   }
 }
 
-function normalizeMetaApiToken(rawToken: string) {
-  return rawToken
-    .trim()
-    .replace(/[\r\n]/g, '')
-    .replace(/^Bearer\s+/i, '')
-    .replace(/^"|"$/g, '');
+function decodeStoredPassword(password: string) {
+  try { return atob(password); } catch { return password; }
 }
 
-// MetaApi provisioning hosts. The bare "mt-provisioning-api-v1.agiliumtrade.ai" does NOT resolve via DNS;
-// only region-specific subdomains (and the legacy duplicated-domain host) work.
+function normalizeMetaApiToken(rawToken: string) {
+  return rawToken.trim().replace(/[\r\n]/g, '').replace(/^Bearer\s+/i, '').replace(/^"|"$/g, '');
+}
+
+// MetaApi provisioning hosts. Bare "mt-provisioning-api-v1.agiliumtrade.ai" does NOT resolve via DNS.
 const METAAPI_PROVISIONING_HOSTS = [
-  'mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai', // legacy primary, currently resolves
+  'mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai',
   'mt-provisioning-api-v1.new-york.agiliumtrade.ai',
   'mt-provisioning-api-v1.london.agiliumtrade.ai',
   'mt-provisioning-api-v1.singapore.agiliumtrade.ai',
@@ -222,56 +276,45 @@ async function metaApiFetch(path: string, init: RequestInit): Promise<Response> 
   for (const host of METAAPI_PROVISIONING_HOSTS) {
     const url = `https://${host}${path}`;
     try {
-      const res = await fetch(url, init);
-      // If we got any HTTP response (even 4xx/5xx), use it - DNS resolved fine.
-      return res;
+      return await fetch(url, init);
     } catch (err) {
       lastError = err;
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('dns error') || msg.includes('Name or service not known') || msg.includes('failed to lookup')) {
-        console.warn(`MetaApi host DNS failed (${host}), trying next…`);
-        continue;
-      }
-      // Non-DNS error (e.g. TLS / network) — also try next host
-      console.warn(`MetaApi host network error (${host}): ${msg}`);
+      console.warn(`MetaApi host ${host} failed: ${msg}`);
     }
   }
   throw lastError ?? new Error('All MetaApi provisioning hosts unreachable');
 }
 
-async function executeViaMetaApi(token: string, creds: any, data: any) {
+async function executeViaMetaApi(token: string, creds: any, data: any, timeline: Timeline) {
   const decodedPassword = decodeStoredPassword(creds.encrypted_password);
   const platform = String(creds.broker_type || 'mt5').toLowerCase() === 'mt4' ? 'mt4' : 'mt5';
   const provisioningProfileId = Deno.env.get('METAAPI_PROVISIONING_PROFILE_ID');
 
-  // Step 1: List existing MetaApi provisioned accounts
-  const listRes = await metaApiFetch(`/users/current/accounts`, {
-    headers: { 'auth-token': token }
-  });
-  
+  timeline.push('provisioning', 'started', 'Listing MetaApi accounts');
+  const listRes = await metaApiFetch(`/users/current/accounts`, { headers: { 'auth-token': token } });
+
   if (!listRes.ok) {
     const errBody = await listRes.text();
     console.error(`MetaApi list accounts failed [${listRes.status}]: ${errBody}`);
+    timeline.push('provisioning', 'failed', `${listRes.status}: ${errBody.slice(0, 200)}`);
     if (listRes.status === 401) {
       throw new Error('MetaApi authentication failed (401). Check METAAPI_TOKEN in Supabase secrets (no Bearer prefix, no quotes/newlines).');
     }
     throw new Error(`MetaApi list accounts failed: ${listRes.status}`);
   }
-  
+
   const accounts = await listRes.json();
-  if (!Array.isArray(accounts)) {
-    throw new Error('MetaApi returned unexpected account list format');
-  }
-  // Handle both id and _id field names from MetaApi
-  let metaApiAccount = accounts.find((a: any) => 
+  if (!Array.isArray(accounts)) throw new Error('MetaApi returned unexpected account list format');
+
+  let metaApiAccount = accounts.find((a: any) =>
     String(a.login) === String(creds.login) &&
     String(a.server || '').toLowerCase() === String(creds.server || '').toLowerCase() &&
     String(a.platform || '').toLowerCase() === platform
   );
-  
-  // Step 2: If no account found, provision one with cloud-g2
+
   if (!metaApiAccount) {
-    console.log('Provisioning new MetaApi account for login:', creds.login);
+    timeline.push('provisioning', 'started', `Provisioning new account (login ${creds.login})`);
     const provisionRes = await metaApiFetch(`/users/current/accounts`, {
       method: 'POST',
       headers: { 'auth-token': token, 'Content-Type': 'application/json' },
@@ -286,46 +329,41 @@ async function executeViaMetaApi(token: string, creds: any, data: any) {
         magic: 234000,
       })
     });
-    
+
     if (!provisionRes.ok) {
       const errText = await provisionRes.text();
       console.error(`MetaApi provision failed [${provisionRes.status}]: ${errText}`);
+      timeline.push('provisioning', 'failed', `${provisionRes.status}: ${errText.slice(0, 200)}`);
       if (errText.toLowerCase().includes('provisioning profile') && !provisioningProfileId) {
-        throw new Error(
-          'MetaApi provisioning requires a profile for this broker server. Set METAAPI_PROVISIONING_PROFILE_ID in Supabase secrets and retry.'
-        );
+        throw new Error('MetaApi provisioning requires a profile for this broker server. Set METAAPI_PROVISIONING_PROFILE_ID in Supabase secrets.');
       }
       throw new Error(`MetaApi provision failed: ${provisionRes.status} ${errText}`);
     }
-    
+
     metaApiAccount = await provisionRes.json();
-    console.log('MetaApi account provisioned:', metaApiAccount.id || metaApiAccount._id);
   }
 
-  // Normalize account ID (MetaApi uses both id and _id)
   const accountId = metaApiAccount.id || metaApiAccount._id;
-  if (!accountId) {
-    throw new Error('MetaApi account missing ID field');
-  }
-  
-  // Step 3: Ensure account is deployed
+  if (!accountId) throw new Error('MetaApi account missing ID field');
+  timeline.push('provisioning', 'success', `Account ${accountId}`);
+
   if (metaApiAccount.state !== 'DEPLOYED') {
+    timeline.push('deploying', 'started');
     await metaApiFetch(`/users/current/accounts/${accountId}/deploy`, {
-      method: 'POST',
-      headers: { 'auth-token': token }
+      method: 'POST', headers: { 'auth-token': token }
     });
-    // Wait for deployment (max 60s)
+    let deployedOk = false;
     for (let i = 0; i < 30; i++) {
       await new Promise(r => setTimeout(r, 2000));
-      const checkRes = await metaApiFetch(`/users/current/accounts/${accountId}`, {
-        headers: { 'auth-token': token }
-      });
+      const checkRes = await metaApiFetch(`/users/current/accounts/${accountId}`, { headers: { 'auth-token': token } });
       const acc = await checkRes.json();
-      if (acc.state === 'DEPLOYED' && acc.connectionStatus === 'CONNECTED') break;
+      if (acc.state === 'DEPLOYED' && acc.connectionStatus === 'CONNECTED') { deployedOk = true; break; }
     }
+    timeline.push('deploying', deployedOk ? 'success' : 'failed', deployedOk ? 'Account deployed & connected' : 'Deployment timeout (60s)');
+  } else {
+    timeline.push('deploying', 'success', 'Already deployed');
   }
-  
-  // Step 4: Execute trade - try region-specific URLs with fallback
+
   const symbol = data.symbol?.replace('/', '') || data.symbol;
   const tradePayload: any = {
     actionType: data.type === 'BUY' ? 'ORDER_TYPE_BUY' : 'ORDER_TYPE_SELL',
@@ -335,45 +373,38 @@ async function executeViaMetaApi(token: string, creds: any, data: any) {
   if (data.stopLoss) tradePayload.stopLoss = data.stopLoss;
   if (data.takeProfit) tradePayload.takeProfit = data.takeProfit;
 
+  timeline.push('order', 'started', `Placing ${data.type} ${symbol}`);
   let lastError = '';
   for (const region of METAAPI_REGIONS) {
-    const host = region 
-      ? `mt-client-api-v1.${region}.agiliumtrade.ai`
-      : 'mt-client-api-v1.agiliumtrade.ai';
+    const host = region ? `mt-client-api-v1.${region}.agiliumtrade.ai` : 'mt-client-api-v1.agiliumtrade.ai';
     const tradeUrl = `https://${host}/users/current/accounts/${accountId}/trade`;
-    
-    console.log(`Trying trade on region: ${region || 'default'} -> ${tradeUrl}`);
-    
+
     try {
       const tradeRes = await fetch(tradeUrl, {
         method: 'POST',
         headers: { 'auth-token': token, 'Content-Type': 'application/json' },
         body: JSON.stringify(tradePayload)
       });
-      
+
       if (tradeRes.ok) {
         const result = await tradeRes.json();
-        console.log('Trade executed successfully:', JSON.stringify(result));
-        return {
-          ticketNumber: result.orderId || result.positionId || String(Date.now()),
-          volume: data.lotSize || 0.01,
-        };
+        const ticket = result.orderId || result.positionId || String(Date.now());
+        timeline.push('order', 'success', `Order placed via ${region || 'default'} (ticket ${ticket})`);
+        timeline.push('filled', 'success');
+        return { ticketNumber: ticket, volume: data.lotSize || 0.01, mode: 'metaapi' };
       }
-      
+
       lastError = await tradeRes.text();
       console.warn(`Trade failed on ${region || 'default'} [${tradeRes.status}]: ${lastError}`);
-      
-      // Don't retry on auth errors
       if (tradeRes.status === 401 || tradeRes.status === 403) {
         throw new Error(`MetaApi auth error: ${tradeRes.status} ${lastError}`);
       }
     } catch (e: any) {
-      if (e.message.includes('MetaApi auth error')) throw e;
+      if (e.message?.includes('MetaApi auth error')) throw e;
       lastError = e.message;
-      console.warn(`Region ${region || 'default'} connection error:`, e.message);
     }
   }
-  
+
   throw new Error(`MetaApi trade failed on all regions. Last error: ${lastError}`);
 }
 
@@ -390,56 +421,37 @@ async function executeViaBridge(bridgeUrl: string, apiKey: string, data: any) {
       tp: data.takeProfit
     })
   });
-  
-  if (!response.ok) {
-    throw new Error(`Bridge error: ${response.status} ${await response.text()}`);
-  }
-  
+
+  if (!response.ok) throw new Error(`Bridge error: ${response.status} ${await response.text()}`);
+
   const result = await response.json();
   return {
     ticketNumber: result.ticket || result.order_id || String(Date.now()),
     volume: data.lotSize || 0.01,
+    mode: 'bridge',
   };
 }
 
 async function checkPropFirmRisk(supabaseClient: any, userId: string, tradeData: any) {
   try {
     const { data: creds } = await supabaseClient
-      .from('broker_credentials')
-      .select('account_type')
-      .eq('id', tradeData.brokerAccountId)
-      .single();
-    
-    if (!creds || creds.account_type !== 'prop') {
-      return { allowed: true };
-    }
+      .from('broker_credentials').select('account_type')
+      .eq('id', tradeData.brokerAccountId).single();
 
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    if (!creds || creds.account_type !== 'prop') return { allowed: true };
 
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
     const { data: todayTrades } = await supabaseClient
-      .from('trades')
-      .select('profit, lot_size, status')
-      .eq('user_id', userId)
-      .eq('broker_account_id', tradeData.brokerAccountId)
+      .from('trades').select('profit, lot_size, status')
+      .eq('user_id', userId).eq('broker_account_id', tradeData.brokerAccountId)
       .gte('created_at', todayStart.toISOString());
 
-    const dailyPnL = (todayTrades || []).reduce((sum: number, t: any) => sum + (t.profit || 0), 0);
+    const dailyPnL = (todayTrades || []).reduce((s: number, t: any) => s + (t.profit || 0), 0);
     const openPositions = (todayTrades || []).filter((t: any) => t.status === 'open').length;
 
-    const MAX_DAILY_LOSS = -500;
-    const MAX_OPEN_POSITIONS = 5;
-    const MAX_LOT_SIZE = 0.5;
-
-    if (dailyPnL <= MAX_DAILY_LOSS) {
-      return { allowed: false, reason: `Daily loss limit reached: $${dailyPnL.toFixed(2)}. Max: $${MAX_DAILY_LOSS}` };
-    }
-    if (openPositions >= MAX_OPEN_POSITIONS) {
-      return { allowed: false, reason: `Max open positions reached: ${openPositions}/${MAX_OPEN_POSITIONS}` };
-    }
-    if ((tradeData.lotSize || 0.01) > MAX_LOT_SIZE) {
-      return { allowed: false, reason: `Lot size ${tradeData.lotSize} exceeds max ${MAX_LOT_SIZE}` };
-    }
+    if (dailyPnL <= -500) return { allowed: false, reason: `Daily loss limit reached: $${dailyPnL.toFixed(2)}` };
+    if (openPositions >= 5) return { allowed: false, reason: `Max open positions reached: ${openPositions}/5` };
+    if ((tradeData.lotSize || 0.01) > 0.5) return { allowed: false, reason: `Lot size ${tradeData.lotSize} exceeds max 0.5` };
 
     return { allowed: true, dailyPnL, openPositions };
   } catch (e) {
@@ -453,18 +465,11 @@ async function sendTelegramNotification(tradeInfo: any) {
     const TELEGRAM_BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN');
     const TELEGRAM_CHAT_ID = Deno.env.get('TELEGRAM_CHAT_ID');
     if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
-    
-    const message = `
-📊 TRADE EXECUTED ✅
-${tradeInfo.type}: ${tradeInfo.symbol}
-💰 Price: ${Number(tradeInfo.price).toFixed(5)}
-🔢 Ticket: ${tradeInfo.ticketNumber}
-🕒 Time: ${new Date().toISOString()}
-    `.trim();
-    
+
+    const message = `📊 TRADE EXECUTED ✅\n${tradeInfo.type}: ${tradeInfo.symbol}\n💰 Price: ${Number(tradeInfo.price).toFixed(5)}\n🔢 Ticket: ${tradeInfo.ticketNumber}\n🕒 Time: ${new Date().toISOString()}`;
+
     await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: message })
     });
   } catch (error) {
