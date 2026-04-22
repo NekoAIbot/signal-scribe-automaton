@@ -207,8 +207,37 @@ function normalizeMetaApiToken(rawToken: string) {
     .replace(/^"|"$/g, '');
 }
 
-const METAAPI_PROVISIONING_URL = 'https://mt-provisioning-api-v1.agiliumtrade.ai';
+// MetaApi provisioning hosts. The bare "mt-provisioning-api-v1.agiliumtrade.ai" does NOT resolve via DNS;
+// only region-specific subdomains (and the legacy duplicated-domain host) work.
+const METAAPI_PROVISIONING_HOSTS = [
+  'mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai', // legacy primary, currently resolves
+  'mt-provisioning-api-v1.new-york.agiliumtrade.ai',
+  'mt-provisioning-api-v1.london.agiliumtrade.ai',
+  'mt-provisioning-api-v1.singapore.agiliumtrade.ai',
+];
 const METAAPI_REGIONS = ['new-york', 'london', 'singapore', ''];
+
+async function metaApiFetch(path: string, init: RequestInit): Promise<Response> {
+  let lastError: any = null;
+  for (const host of METAAPI_PROVISIONING_HOSTS) {
+    const url = `https://${host}${path}`;
+    try {
+      const res = await fetch(url, init);
+      // If we got any HTTP response (even 4xx/5xx), use it - DNS resolved fine.
+      return res;
+    } catch (err) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('dns error') || msg.includes('Name or service not known') || msg.includes('failed to lookup')) {
+        console.warn(`MetaApi host DNS failed (${host}), trying next…`);
+        continue;
+      }
+      // Non-DNS error (e.g. TLS / network) — also try next host
+      console.warn(`MetaApi host network error (${host}): ${msg}`);
+    }
+  }
+  throw lastError ?? new Error('All MetaApi provisioning hosts unreachable');
+}
 
 async function executeViaMetaApi(token: string, creds: any, data: any) {
   const decodedPassword = decodeStoredPassword(creds.encrypted_password);
@@ -216,7 +245,7 @@ async function executeViaMetaApi(token: string, creds: any, data: any) {
   const provisioningProfileId = Deno.env.get('METAAPI_PROVISIONING_PROFILE_ID');
 
   // Step 1: List existing MetaApi provisioned accounts
-  const listRes = await fetch(`${METAAPI_PROVISIONING_URL}/users/current/accounts`, {
+  const listRes = await metaApiFetch(`/users/current/accounts`, {
     headers: { 'auth-token': token }
   });
   
