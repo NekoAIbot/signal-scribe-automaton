@@ -261,6 +261,46 @@ function normalizeMetaApiToken(rawToken: string) {
   return rawToken.trim().replace(/[\r\n]/g, '').replace(/^Bearer\s+/i, '').replace(/^"|"$/g, '');
 }
 
+async function resolveMainBrokerAccount(client: ReturnType<typeof createClient>, userId: string, requestedAccountId?: string | null) {
+  const selectColumns = 'id, user_id, account_name, login, encrypted_password, server, broker_type, account_type, is_active, created_at';
+
+  if (requestedAccountId) {
+    const { data: requestedAccount } = await client
+      .from('broker_credentials')
+      .select(selectColumns)
+      .eq('id', requestedAccountId)
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (requestedAccount) return requestedAccount;
+  }
+
+  const { data: activeAccounts, error } = await client
+    .from('broker_credentials')
+    .select(selectColumns)
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Failed to resolve main broker account:', error.message);
+    return null;
+  }
+
+  const priority = (account: any) => {
+    const type = String(account.account_type || '').toLowerCase();
+    if (type === 'live') return 0;
+    if (type === 'prop') return 1;
+    return 2;
+  };
+
+  return (activeAccounts || [])
+    .map((account: any, index: number) => ({ account, index }))
+    .sort((a: any, b: any) => priority(a.account) - priority(b.account) || a.index - b.index)[0]
+    ?.account || null;
+}
+
 // MetaApi provisioning hosts. Bare "mt-provisioning-api-v1.agiliumtrade.ai" does NOT resolve via DNS.
 const METAAPI_PROVISIONING_HOSTS = [
   'mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai',
