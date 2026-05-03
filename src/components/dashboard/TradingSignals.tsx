@@ -8,11 +8,12 @@ import { useTradingSignals } from "@/services/marketDataService";
 import { cn } from "@/lib/utils";
 import { useBrokerAccounts } from "@/hooks/useBrokerAccounts";
 import { invokeEdgeFunction } from "@/services/edgeFunctionService";
+import { formatBrokerAccountName } from "@/services/brokerAccountSelection";
 
 export function TradingSignals() {
   const { data: signals = [], refetch } = useTradingSignals();
   const [isExecuting, setIsExecuting] = useState<string | null>(null);
-  const { activeAccounts, hasAccounts } = useBrokerAccounts();
+  const { mainAccount, hasAccounts } = useBrokerAccounts();
   
   const handleExecute = async (signal: any) => {
     const extractReason = async (error: any, data: any): Promise<string> => {
@@ -39,49 +40,43 @@ export function TradingSignals() {
       return error?.message || 'Unknown execution error';
     };
 
-    if (!hasAccounts || activeAccounts.length === 0) {
-      toast.error("No active broker accounts. Add accounts in Settings → Broker Accounts.");
+    if (!hasAccounts || !mainAccount) {
+      toast.error("No active main broker account. Add or activate one in Settings → Broker Accounts.");
       return;
     }
     
     setIsExecuting(signal.id.toString());
-    toast.info(`Executing ${signal.type} signal for ${signal.symbol} on ${activeAccounts.length} account(s)...`);
+    toast.info(`Executing ${signal.type} signal for ${signal.symbol} on ${formatBrokerAccountName(mainAccount)}...`);
     
     try {
-      let successCount = 0;
       let lastFailureReason = '';
 
-      for (const account of activeAccounts) {
-        const result = await invokeEdgeFunction('execute-trade', {
-          symbol: signal.symbol,
-          type: signal.type,
-          price: signal.price,
-          lotSize: 0.01,
-          stopLoss: signal.stopLoss,
-          takeProfit: signal.takeProfit1,
-          brokerAccountId: account.id,
-          strategyId: signal.strategyId || null,
-          modelId: signal.modelId || null,
-        });
+      const result = await invokeEdgeFunction('execute-trade', {
+        symbol: signal.symbol,
+        type: signal.type,
+        price: signal.price,
+        lotSize: 0.01,
+        stopLoss: signal.stopLoss,
+        takeProfit: signal.takeProfit1,
+        brokerAccountId: mainAccount.id,
+        strategyId: signal.strategyId || null,
+        modelId: signal.modelId || null,
+      });
 
-        if (result.ok) {
-          successCount += 1;
-        } else {
-          const reason = (result as any)?.error || 'Unknown execution error';
-          lastFailureReason = reason;
-          console.error(`Failed to execute on ${account.account_name}:`, reason);
-          toast.error(`Failed on ${account.account_name}: ${reason}`);
-        }
+      if (!result.ok) {
+        lastFailureReason = (result as any)?.error || 'Unknown execution error';
+        console.error(`Failed to execute on ${mainAccount.account_name}:`, lastFailureReason);
+        toast.error(`Failed on ${formatBrokerAccountName(mainAccount)}: ${lastFailureReason}`);
       }
 
-      if (successCount === 0) {
+      if (!result.ok) {
         throw new Error(lastFailureReason || 'Execution failed on all connected accounts');
       }
 
       // Mark signal as inactive after execution
       const { supabase } = await import('@/integrations/supabase/client');
       await supabase.from('trading_signals').update({ is_active: false, status: 'executed' }).eq('id', signal.id);
-      toast.success(`Signal executed on ${successCount} broker account(s)`);
+      toast.success(`Signal executed on ${formatBrokerAccountName(mainAccount)}`);
       refetch();
     } catch (error) {
       toast.error(`Failed to execute signal: ${(error as Error).message}`);
@@ -161,7 +156,7 @@ export function TradingSignals() {
           </div>
         )}
 
-        {hasAccounts && activeAccounts.length === 0 && signals.length > 0 && (
+        {hasAccounts && !mainAccount && signals.length > 0 && (
           <div className="mt-4 p-3 bg-muted/50 border border-border rounded-md">
             <p className="text-sm text-muted-foreground">
               ⚠️ You have broker accounts but none are active. Activate accounts in Settings.

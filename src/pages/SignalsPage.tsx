@@ -11,6 +11,7 @@ import { TradeSignal } from '@/services/signalGenerationService';
 import { useBrokerAccounts } from '@/hooks/useBrokerAccounts';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/services/edgeFunctionService';
+import { formatBrokerAccountName } from '@/services/brokerAccountSelection';
 
 const formatDate = (timeString: string) => {
   const date = new Date(timeString);
@@ -23,7 +24,7 @@ const SignalsPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('all');
   const [executingSignals, setExecutingSignals] = useState<Record<string, boolean>>({});
-  const { activeAccounts, hasAccounts } = useBrokerAccounts();
+  const { mainAccount, hasAccounts } = useBrokerAccounts();
   
   // Update local signals when data changes
   useEffect(() => {
@@ -75,8 +76,8 @@ const SignalsPage = () => {
     // Prevent duplicate execution
     if (executingSignals[signalKey]) return;
 
-    if (!hasAccounts || activeAccounts.length === 0) {
-      toast.error('No active broker accounts found. Add or activate one in Settings → Broker.');
+    if (!hasAccounts || !mainAccount) {
+      toast.error('No active main broker account found. Add or activate one in Settings → Broker.');
       return;
     }
     
@@ -94,33 +95,27 @@ const SignalsPage = () => {
         s.id === signal.id ? { ...s, status: 'executing' as const } : s
       ));
 
-      let successCount = 0;
       let lastFailureReason = '';
 
-      for (const account of activeAccounts) {
-        const result = await invokeEdgeFunction('execute-trade', {
-          symbol: signal.symbol,
-          type: signal.type,
-          price: signal.price,
-          lotSize: signal.lotSize || 0.01,
-          stopLoss: signal.stopLoss,
-          takeProfit: signal.takeProfit1,
-          brokerAccountId: account.id,
-          strategyId: signal.strategyId || null,
-          modelId: signal.modelId || null,
-        });
+      const result = await invokeEdgeFunction('execute-trade', {
+        symbol: signal.symbol,
+        type: signal.type,
+        price: signal.price,
+        lotSize: signal.lotSize || 0.01,
+        stopLoss: signal.stopLoss,
+        takeProfit: signal.takeProfit1,
+        brokerAccountId: mainAccount.id,
+        strategyId: signal.strategyId || null,
+        modelId: signal.modelId || null,
+      });
 
-        if (result.ok) {
-          successCount += 1;
-        } else {
-          const reason = (result as any)?.error || 'Unknown execution error';
-          lastFailureReason = reason;
-          console.error(`Execution failed for account ${account.account_name}:`, reason);
-          toast.error(`Failed on ${account.account_name}: ${reason}`);
-        }
+      if (!result.ok) {
+        lastFailureReason = (result as any)?.error || 'Unknown execution error';
+        console.error(`Execution failed for account ${mainAccount.account_name}:`, lastFailureReason);
+        toast.error(`Failed on ${formatBrokerAccountName(mainAccount)}: ${lastFailureReason}`);
       }
 
-      const success = successCount > 0;
+      const success = result.ok;
 
       // Update to executed or failed based on result
       setSignals(prev => prev.map(s => 
@@ -128,7 +123,7 @@ const SignalsPage = () => {
       ));
 
       if (success) {
-        toast.success(`Signal for ${signal.symbol} executed on ${successCount} broker account(s)`);
+        toast.success(`Signal for ${signal.symbol} executed on ${formatBrokerAccountName(mainAccount)}`);
         refetch();
       } else {
         toast.error(`Failed to execute signal for ${signal.symbol}: ${lastFailureReason || 'execution failed on all connected accounts'}`);
