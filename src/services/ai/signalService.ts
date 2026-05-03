@@ -2,6 +2,7 @@
 import { EnhancedSignal, MonitoredTrade } from "./types";
 import { toast } from "sonner";
 import { supabase } from '@/integrations/supabase/client';
+import { fetchMainBrokerAccount, formatBrokerAccountName } from '@/services/brokerAccountSelection';
 
 // Function to get enhanced trading signals from database
 export const getEnhancedSignals = async (limit: number = 10): Promise<EnhancedSignal[]> => {
@@ -89,32 +90,25 @@ export const executeSignal = async (signal: EnhancedSignal, brokerAccountId: str
   }
 };
 
-// Execute signal across all active broker accounts
+// Execute signal on the user's main active broker account
 export const executeSignalAcrossAccounts = async (signal: EnhancedSignal): Promise<string[]> => {
   try {
-    const { data: accounts, error } = await supabase
-      .from('broker_credentials')
-      .select('id, account_name, is_active')
-      .eq('is_active', true);
+    const account = await fetchMainBrokerAccount();
 
-    if (error) throw error;
-    if (!accounts || accounts.length === 0) {
-      toast.warning('No active broker accounts found. Add accounts in Settings.');
+    if (!account) {
+      toast.warning('No active main broker account found. Add or activate an account in Settings.');
       return [];
     }
 
-    const executedAccounts: string[] = [];
-    for (const account of accounts) {
-      const success = await executeSignal(signal, account.id);
-      if (success) {
-        executedAccounts.push(account.id);
-        toast.success(`Executed on ${account.account_name}`);
-      }
+    const success = await executeSignal(signal, account.id);
+    if (success) {
+      toast.success(`Executed on ${formatBrokerAccountName(account)}`);
+      return [account.id];
     }
 
-    return executedAccounts;
+    return [];
   } catch (error) {
-    console.error('Error executing across accounts:', error);
+    console.error('Error executing on main account:', error);
     return [];
   }
 };
