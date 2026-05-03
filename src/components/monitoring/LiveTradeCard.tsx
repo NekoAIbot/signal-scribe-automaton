@@ -1,16 +1,54 @@
 import React, { useState } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowUp, ArrowDown, TrendingUp, TrendingDown, ChevronDown, ChevronUp, History } from "lucide-react";
+import { ArrowUp, ArrowDown, TrendingUp, TrendingDown, ChevronDown, ChevronUp, History, RotateCw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import TradeTimeline from "./TradeTimeline";
 import type { Trade } from "@/hooks/useLiveTrades";
 
 interface LiveTradeCardProps { trade: Trade }
 
+const isFailed = (t: Trade) =>
+  t.status === 'cancelled' ||
+  (t.last_execution_status?.includes('failed') ?? false) ||
+  (t.execution_timeline?.some(e => e.status === 'failed') ?? false);
+
 const LiveTradeCard: React.FC<LiveTradeCardProps> = ({ trade }) => {
   const [open, setOpen] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+
+  const handleRetry = async () => {
+    setRetrying(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('execute-trade', {
+        body: {
+          symbol: trade.symbol,
+          type: trade.trade_type,
+          price: trade.entry_price,
+          lotSize: trade.lot_size,
+          stopLoss: trade.stop_loss,
+          takeProfit: trade.take_profit,
+          brokerAccountId: trade.broker_account_id,
+          strategyId: trade.strategy_id,
+          modelId: trade.model_id,
+          retryOf: trade.id,
+        },
+      });
+      if (error || !data?.success) {
+        toast.error(`Retry failed: ${data?.error || error?.message || 'unknown error'}`);
+      } else {
+        toast.success(`Retry submitted for ${trade.symbol}`);
+      }
+    } catch (e: any) {
+      toast.error(`Retry failed: ${e?.message || e}`);
+    } finally {
+      setRetrying(false);
+    }
+  };
   const isPositive = trade.profit >= 0;
   const priceDiff = trade.current_price
     ? ((trade.current_price - trade.entry_price) / trade.entry_price * 100)
