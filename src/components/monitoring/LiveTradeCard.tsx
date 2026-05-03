@@ -149,6 +149,19 @@ const LiveTradeCard: React.FC<LiveTradeCardProps> = ({ trade }) => {
           </CollapsibleTrigger>
           <CollapsibleContent className="mt-2 rounded-md border border-border bg-muted/30 p-2 sm:p-3">
             <TradeTimeline events={trade.execution_timeline} />
+            {isFailed(trade) && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-2 h-7 text-[10px] sm:text-xs"
+                onClick={handleRetry}
+                disabled={retrying}
+                data-testid={`retry-${trade.id}`}
+              >
+                <RotateCw className={cn('h-3 w-3 mr-1', retrying && 'animate-spin')} />
+                {retrying ? 'Retrying…' : 'Retry failed execution'}
+              </Button>
+            )}
           </CollapsibleContent>
         </Collapsible>
       </CardContent>
