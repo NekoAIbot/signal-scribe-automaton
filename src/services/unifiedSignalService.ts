@@ -157,11 +157,13 @@ async function runSignalCycle() {
 
     for (const signal of signals) {
       // 1. Execute on user's broker accounts immediately after signal generation
+      let executionStatus: UnifiedSignal['status'] | null = null;
       if (botEnabled) {
         signal.status = 'executing';
         notifyListeners();
         const execSuccess = await executeOnBroker(signal);
-        signal.status = execSuccess ? 'executed' : 'failed';
+        executionStatus = execSuccess ? 'executed' : 'failed';
+        signal.status = executionStatus;
         notifyListeners();
       }
 
@@ -174,6 +176,11 @@ async function runSignalCycle() {
         await sendTelegramSignal(signal);
         signal.status = 'sent_telegram';
         notifyListeners();
+
+        if (executionStatus) {
+          signal.status = executionStatus;
+          notifyListeners();
+        }
       }
     }
 
@@ -557,7 +564,8 @@ async function saveSignalsToDb(signals: UnifiedSignal[]) {
       strategy_id: s.strategyId || null,
       model_id: s.modelId || null,
       timeframe: '1h',
-      is_active: true,
+      is_active: s.status !== 'executed',
+      status: s.status,
     }));
 
     await supabase.from('trading_signals').insert(inserts);
