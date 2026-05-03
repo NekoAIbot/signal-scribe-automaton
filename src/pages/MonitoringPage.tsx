@@ -22,7 +22,13 @@ const EmptyState: React.FC<{ message: string }> = ({ message }) => (
 const MonitoringPage = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [searchTerm, setSearchTerm] = useState('');
-  const { openTrades, closedTrades, isLoading, stats, refresh, realtimeStatus } = useLiveTrades();
+  const { openTrades, closedTrades, isLoading, stats, refresh, realtimeStatus, trades } = useLiveTrades();
+
+  const handleExport = () => {
+    if (!trades.length) { toast.info('No trades to export yet'); return; }
+    downloadTradesCsv(trades);
+    toast.success(`Exported ${trades.length} trades to CSV`);
+  };
 
   const filteredOpenTrades = openTrades.filter(t => t.symbol.toLowerCase().includes(searchTerm.toLowerCase()));
   const filteredClosedTrades = closedTrades.filter(t => t.symbol.toLowerCase().includes(searchTerm.toLowerCase()));
