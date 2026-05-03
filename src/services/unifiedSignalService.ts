@@ -7,6 +7,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { fetchMainBrokerAccount, formatBrokerAccountName } from './brokerAccountSelection';
 
 export interface UnifiedSignal {
   id: string;
@@ -495,52 +496,45 @@ async function executeOnBroker(signal: UnifiedSignal): Promise<boolean> {
       return false;
     }
 
-    const { data: accounts, error } = await supabase
-      .from('broker_credentials')
-      .select('id, account_name, login, server, is_active, account_type')
-      .eq('is_active', true);
+    const account = await fetchMainBrokerAccount();
 
-    if (error || !accounts?.length) {
-      console.log('No active broker accounts to execute on');
+    if (!account) {
+      console.log('No active main broker account to execute on');
       return false;
     }
 
-    let successCount = 0;
-
-    for (const account of accounts) {
-      try {
-        const { data: result, error: execError } = await supabase.functions.invoke('execute-trade', {
-          body: {
-            symbol: signal.symbol,
-            type: signal.type,
-            price: signal.price,
-            lotSize: 0.01,
-            stopLoss: signal.stopLoss,
-            takeProfit: signal.takeProfit1,
-            brokerAccountId: account.id,
-            strategyId: signal.strategyId || null,
-            modelId: signal.modelId || null,
-            indicators: signal.indicators,
-            calculations: signal.calculations,
-            modelUsed: signal.modelUsed,
-            assetClass: signal.assetClass,
-          }
-        });
-        
-        if (execError || !result?.success) {
-          console.error(`Failed on ${account.account_name}:`, execError || result?.error);
-          toast.error(`Failed on ${account.account_name}: ${result?.error || execError?.message || 'Unknown error'}`);
-        } else {
-          successCount++;
-          toast.success(`Trade executed on ${account.account_name}: ${signal.type} ${signal.symbol}`);
-          dailyTrades.push({ symbol: signal.symbol, type: signal.type, status: 'executed' });
+    try {
+      const { data: result, error: execError } = await supabase.functions.invoke('execute-trade', {
+        body: {
+          symbol: signal.symbol,
+          type: signal.type,
+          price: signal.price,
+          lotSize: 0.01,
+          stopLoss: signal.stopLoss,
+          takeProfit: signal.takeProfit1,
+          brokerAccountId: account.id,
+          strategyId: signal.strategyId || null,
+          modelId: signal.modelId || null,
+          indicators: signal.indicators,
+          calculations: signal.calculations,
+          modelUsed: signal.modelUsed,
+          assetClass: signal.assetClass,
         }
-      } catch (execError) {
-        console.error(`Failed on ${account.account_name}:`, execError);
+      });
+      
+      if (execError || !result?.success) {
+        console.error(`Failed on ${account.account_name}:`, execError || result?.error);
+        toast.error(`Failed on ${formatBrokerAccountName(account)}: ${result?.error || execError?.message || 'Unknown error'}`);
+        return false;
       }
-    }
 
-    return successCount > 0;
+      toast.success(`Trade executed on ${formatBrokerAccountName(account)}: ${signal.type} ${signal.symbol}`);
+      dailyTrades.push({ symbol: signal.symbol, type: signal.type, status: 'executed' });
+      return true;
+    } catch (execError) {
+      console.error(`Failed on ${account.account_name}:`, execError);
+      return false;
+    }
   } catch (error) {
     console.error('Broker execution error:', error);
     return false;
