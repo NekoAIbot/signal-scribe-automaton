@@ -156,7 +156,7 @@ export function TradingSignals() {
           </div>
         )}
 
-        {hasAccounts && activeAccounts.length === 0 && signals.length > 0 && (
+        {hasAccounts && !mainAccount && signals.length > 0 && (
           <div className="mt-4 p-3 bg-muted/50 border border-border rounded-md">
             <p className="text-sm text-muted-foreground">
               ⚠️ You have broker accounts but none are active. Activate accounts in Settings.
