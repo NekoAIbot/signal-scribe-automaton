@@ -76,6 +76,10 @@ const MonitoringPage = () => {
             <RefreshCw className={`h-4 w-4 sm:mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">Refresh</span>
           </Button>
+          <Button variant="outline" onClick={handleExport} size="sm" data-testid="export-csv">
+            <Download className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Export CSV</span>
+          </Button>
         </div>
       </div>
 
