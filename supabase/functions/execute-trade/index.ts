@@ -97,47 +97,37 @@ serve(async (req) => {
       console.log(`MetaApi token present, length: ${METAAPI_TOKEN.length}`);
     }
 
-    // Prop-firm risk check
-    if (requestData.brokerAccountId) {
-      timeline.push('risk_check', 'started');
-      const riskCheck = await checkPropFirmRisk(serviceClient, userId, requestData);
-      if (!riskCheck.allowed) {
-        timeline.push('risk_check', 'failed', riskCheck.reason);
-        await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'risk_blocked');
-        return jsonResponse(
-          { success: false, error: `Trade blocked by risk engine: ${riskCheck.reason}`, riskCheck, timeline: timeline.events },
-          corsHeaders
-        );
-      }
-      timeline.push('risk_check', 'success');
+    const mainBrokerAccount = await resolveMainBrokerAccount(serviceClient, userId, requestData.brokerAccountId);
+    if (!mainBrokerAccount) {
+      timeline.push('provisioning', 'failed', 'No active main broker account found');
+      await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'no_active_broker');
+      return jsonResponse({
+        success: false,
+        error: 'No active main broker account found. Add or activate a broker account before generating trades.',
+        timeline: timeline.events,
+      }, corsHeaders);
     }
+
+    requestData.brokerAccountId = mainBrokerAccount.id;
+
+    // Prop-firm risk check
+    timeline.push('risk_check', 'started');
+    const riskCheck = await checkPropFirmRisk(serviceClient, userId, requestData);
+    if (!riskCheck.allowed) {
+      timeline.push('risk_check', 'failed', riskCheck.reason);
+      await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'risk_blocked');
+      return jsonResponse(
+        { success: false, error: `Trade blocked by risk engine: ${riskCheck.reason}`, riskCheck, timeline: timeline.events },
+        corsHeaders
+      );
+    }
+    timeline.push('risk_check', 'success');
 
     let executionResult: { ticketNumber: string; volume: number; mode: string };
 
-    if (PAPER_MODE) {
-      timeline.push('order', 'started', 'Paper-mode (no broker call)');
-      executionResult = {
-        ticketNumber: `PAPER-${Date.now()}`,
-        volume: requestData.lotSize || 0.01,
-        mode: 'paper',
-      };
-      timeline.push('order', 'success', `Paper ticket ${executionResult.ticketNumber}`);
-      timeline.push('filled', 'success');
-    } else if (METAAPI_TOKEN && requestData.brokerAccountId) {
-      const { data: creds } = await serviceClient
-        .from('broker_credentials')
-        .select('*')
-        .eq('id', requestData.brokerAccountId)
-        .eq('user_id', userId)
-        .single();
-
-      if (!creds) {
-        timeline.push('order', 'failed', 'Broker account not found');
-        throw new Error('Broker account not found');
-      }
-
+    if (METAAPI_TOKEN) {
       try {
-        executionResult = await executeViaMetaApi(METAAPI_TOKEN, creds, requestData, timeline);
+        executionResult = await executeViaMetaApi(METAAPI_TOKEN, mainBrokerAccount, requestData, timeline);
       } catch (metaApiError) {
         const message = metaApiError instanceof Error ? metaApiError.message : String(metaApiError);
         console.error('MetaApi execution failed:', message);
@@ -154,6 +144,15 @@ serve(async (req) => {
           throw metaApiError;
         }
       }
+    } else if (PAPER_MODE && requestData.allowPaperMode === true) {
+      timeline.push('order', 'started', 'Paper-mode (no broker call)');
+      executionResult = {
+        ticketNumber: `PAPER-${Date.now()}`,
+        volume: requestData.lotSize || 0.01,
+        mode: 'paper',
+      };
+      timeline.push('order', 'success', `Paper ticket ${executionResult.ticketNumber}`);
+      timeline.push('filled', 'success');
     } else if (MT5_BRIDGE_URL) {
       timeline.push('order', 'started', 'Sending to MT5 bridge');
       executionResult = await executeViaBridge(MT5_BRIDGE_URL, MT5_BRIDGE_API_KEY || '', requestData);
