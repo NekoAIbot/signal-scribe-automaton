@@ -3,12 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { RefreshCw, Search, Radio, Inbox } from "lucide-react";
+import { RefreshCw, Search, Radio, Inbox, Download } from "lucide-react";
 import LiveTradeCard from '@/components/monitoring/LiveTradeCard';
 import TradeHistoryTable from '@/components/monitoring/TradeHistoryTable';
 import PerformanceStats from '@/components/monitoring/PerformanceStats';
 import RealtimeStatusBadge from '@/components/monitoring/RealtimeStatusBadge';
 import { useLiveTrades } from '@/hooks/useLiveTrades';
+import { downloadTradesCsv } from '@/lib/exportTradesCsv';
+import { toast } from 'sonner';
 
 const EmptyState: React.FC<{ message: string }> = ({ message }) => (
   <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
