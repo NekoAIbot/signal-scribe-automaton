@@ -11,7 +11,7 @@ import { useNavigate } from 'react-router-dom';
 
 export function TradingBot() {
   const { isRunning, toggle } = useTradingBot();
-  const { hasAccounts, activeAccounts } = useBrokerAccounts();
+  const { hasAccounts, mainAccount } = useBrokerAccounts();
   const navigate = useNavigate();
 
   const handleToggle = () => {
@@ -71,9 +71,9 @@ export function TradingBot() {
             </Button>
           </div>
 
-          {activeAccounts.length > 0 && (
+          {mainAccount && (
             <div className="text-xs text-muted-foreground">
-              Connected: {activeAccounts.length} active broker account(s)
+              Main broker: {mainAccount.account_name} ({mainAccount.account_type})
             </div>
           )}
         </div>
