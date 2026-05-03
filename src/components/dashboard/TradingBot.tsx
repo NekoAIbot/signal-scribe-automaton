@@ -15,8 +15,8 @@ export function TradingBot() {
   const navigate = useNavigate();
 
   const handleToggle = () => {
-    if (!isRunning && !hasAccounts) {
-      toast.error("Please configure your broker settings first");
+    if (!isRunning && (!hasAccounts || !mainAccount)) {
+      toast.error("Please configure and activate your main broker account first");
       navigate('/settings');
       return;
     }
