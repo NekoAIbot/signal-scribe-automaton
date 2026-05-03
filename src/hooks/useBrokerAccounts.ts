@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { selectMainBrokerAccount } from '@/services/brokerAccountSelection';
 
 export interface BrokerAccount {
   id: string;
@@ -54,7 +55,8 @@ export function useBrokerAccounts() {
   }, [fetchAccounts]);
 
   const activeAccounts = accounts.filter(a => a.is_active);
+  const mainAccount = selectMainBrokerAccount(accounts);
   const hasAccounts = accounts.length > 0;
 
-  return { accounts, activeAccounts, hasAccounts, isLoading, refetch: fetchAccounts };
+  return { accounts, activeAccounts, mainAccount, hasAccounts, isLoading, refetch: fetchAccounts };
 }
