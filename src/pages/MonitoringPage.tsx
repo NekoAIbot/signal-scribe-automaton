@@ -3,12 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { RefreshCw, Search, Radio, Inbox } from "lucide-react";
+import { RefreshCw, Search, Radio, Inbox, Download } from "lucide-react";
 import LiveTradeCard from '@/components/monitoring/LiveTradeCard';
 import TradeHistoryTable from '@/components/monitoring/TradeHistoryTable';
 import PerformanceStats from '@/components/monitoring/PerformanceStats';
 import RealtimeStatusBadge from '@/components/monitoring/RealtimeStatusBadge';
 import { useLiveTrades } from '@/hooks/useLiveTrades';
+import { downloadTradesCsv } from '@/lib/exportTradesCsv';
+import { toast } from 'sonner';
 
 const EmptyState: React.FC<{ message: string }> = ({ message }) => (
   <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
@@ -20,7 +22,13 @@ const EmptyState: React.FC<{ message: string }> = ({ message }) => (
 const MonitoringPage = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [searchTerm, setSearchTerm] = useState('');
-  const { openTrades, closedTrades, isLoading, stats, refresh, realtimeStatus } = useLiveTrades();
+  const { openTrades, closedTrades, isLoading, stats, refresh, realtimeStatus, trades } = useLiveTrades();
+
+  const handleExport = () => {
+    if (!trades.length) { toast.info('No trades to export yet'); return; }
+    downloadTradesCsv(trades);
+    toast.success(`Exported ${trades.length} trades to CSV`);
+  };
 
   const filteredOpenTrades = openTrades.filter(t => t.symbol.toLowerCase().includes(searchTerm.toLowerCase()));
   const filteredClosedTrades = closedTrades.filter(t => t.symbol.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -67,6 +75,10 @@ const MonitoringPage = () => {
           <Button variant="outline" onClick={refresh} disabled={isLoading} size="sm">
             <RefreshCw className={`h-4 w-4 sm:mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">Refresh</span>
+          </Button>
+          <Button variant="outline" onClick={handleExport} size="sm" data-testid="export-csv">
+            <Download className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Export CSV</span>
           </Button>
         </div>
       </div>
