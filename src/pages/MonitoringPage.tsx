@@ -10,6 +10,7 @@ import PerformanceStats from '@/components/monitoring/PerformanceStats';
 import RealtimeStatusBadge from '@/components/monitoring/RealtimeStatusBadge';
 import { useLiveTrades } from '@/hooks/useLiveTrades';
 import { downloadTradesCsv } from '@/lib/exportTradesCsv';
+import NoBrokerBanner from '@/components/common/NoBrokerBanner';
 import { toast } from 'sonner';
 
 const EmptyState: React.FC<{ message: string }> = ({ message }) => (
