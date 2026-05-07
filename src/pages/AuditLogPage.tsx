@@ -53,7 +53,7 @@ const AuditLogPage: React.FC = () => {
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from('execution_audit_log')
+        .from('execution_audit_log' as any)
         .select('*')
         .order('created_at', { ascending: false })
         .limit(200);
