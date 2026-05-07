@@ -123,6 +123,10 @@ serve(async (req) => {
     if (!riskCheck.allowed) {
       timeline.push('risk_check', 'failed', riskCheck.reason);
       await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'risk_blocked');
+      await writeAuditLog(serviceClient, {
+        userId, requestData, timeline: timeline.events, success: false,
+        status: 'risk_blocked', error: riskCheck.reason || 'Risk blocked', retryOf, brokerAccount: mainBrokerAccount,
+      });
       return jsonResponse(
         { success: false, error: `Trade blocked by risk engine: ${riskCheck.reason}`, riskCheck, timeline: timeline.events },
         corsHeaders
