@@ -50,6 +50,7 @@ const MonitoringPage = () => {
 
   return (
     <div className="space-y-4 sm:space-y-6" data-testid="monitoring-page">
+      <NoBrokerBanner />
       {/* Header */}
       <div className="flex flex-col gap-3">
         <div className="flex items-start justify-between gap-2 flex-wrap">
