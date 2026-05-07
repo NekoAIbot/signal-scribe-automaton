@@ -86,6 +86,7 @@ export function Layout() {
                   <NavItem to="/analytics" label="Analytics" icon={BarChart2} />
                   <NavItem to="/alerts" label="Alerts" icon={Bell} />
                   <NavItem to="/monitoring" label="Monitoring" icon={Activity} />
+                  <NavItem to="/audit-log" label="Audit Log" icon={FileText} />
                   <NavItem to="/prop-accounts" label="Prop Accounts" icon={Building2} />
                   <NavItem to="/news" label="Forex News" icon={Newspaper} />
                   <NavItem to="/admin" label="Admin" icon={Users} />
@@ -155,6 +156,7 @@ export function Layout() {
                     <NavItem to="/analytics" label="Analytics" icon={BarChart2} onClick={() => setShowMobileMenu(false)} />
                     <NavItem to="/alerts" label="Alerts" icon={Bell} onClick={() => setShowMobileMenu(false)} />
                     <NavItem to="/monitoring" label="Monitoring" icon={Activity} onClick={() => setShowMobileMenu(false)} />
+                    <NavItem to="/audit-log" label="Audit Log" icon={FileText} onClick={() => setShowMobileMenu(false)} />
                     <NavItem to="/prop-accounts" label="Prop Accounts" icon={Building2} onClick={() => setShowMobileMenu(false)} />
                     <NavItem to="/news" label="Forex News" icon={Newspaper} onClick={() => setShowMobileMenu(false)} />
                     <NavItem to="/admin" label="Admin" icon={Users} onClick={() => setShowMobileMenu(false)} />
