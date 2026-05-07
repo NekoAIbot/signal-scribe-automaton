@@ -100,6 +100,10 @@ const LiveTradeCard: React.FC<LiveTradeCardProps> = ({ trade }) => {
           </Badge>
         </div>
 
+        <div className="mb-3">
+          <BrokerBadge name={tradeBroker?.account_name} type={tradeBroker?.account_type} />
+        </div>
+
         <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-3">
           <div>
             <p className="text-[10px] sm:text-xs text-muted-foreground">Entry</p>
