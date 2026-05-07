@@ -217,11 +217,17 @@ serve(async (req) => {
       ticketNumber: executionResult.ticketNumber,
     });
 
+    await writeAuditLog(serviceClient, {
+      userId, requestData, timeline: timeline.events, success: true,
+      status: 'filled', error: null, retryOf, brokerAccount: mainBrokerAccount, tradeId: savedTrade?.id,
+    });
+
     return jsonResponse({
       success: true,
       ticketNumber: executionResult.ticketNumber,
       volume: executionResult.volume,
       tradeId: savedTrade?.id,
+      brokerAccount: { id: mainBrokerAccount.id, name: mainBrokerAccount.account_name, type: mainBrokerAccount.account_type },
       message: `Trade executed via ${executionResult.mode}`,
       timeline: timeline.events,
     }, corsHeaders);
@@ -231,6 +237,44 @@ serve(async (req) => {
     return jsonResponse({ success: false, error: (error as Error).message, timeline: timeline.events }, corsHeaders);
   }
 });
+
+async function writeAuditLog(client: ReturnType<typeof createClient>, args: {
+  userId: string;
+  requestData: any;
+  timeline: TimelineEvent[];
+  success: boolean;
+  status: string;
+  error: string | null;
+  retryOf?: string | null;
+  brokerAccount: any | null;
+  tradeId?: string | null;
+}) {
+  try {
+    await client.from('execution_audit_log').insert({
+      user_id: args.userId,
+      broker_account_id: args.brokerAccount?.id || args.requestData?.brokerAccountId || null,
+      broker_account_name: args.brokerAccount?.account_name || null,
+      broker_account_type: args.brokerAccount?.account_type || null,
+      symbol: args.requestData?.symbol || null,
+      trade_type: args.requestData?.type || null,
+      lot_size: args.requestData?.lotSize ?? null,
+      entry_price: args.requestData?.price ?? null,
+      stop_loss: args.requestData?.stopLoss ?? null,
+      take_profit: args.requestData?.takeProfit ?? null,
+      strategy_id: args.requestData?.strategyId || null,
+      model_id: args.requestData?.modelId || null,
+      trade_id: args.tradeId || null,
+      retry_of: args.retryOf || null,
+      success: args.success,
+      status: args.status,
+      error_message: args.error,
+      execution_timeline: args.timeline,
+      request_params: args.requestData || {},
+    });
+  } catch (e) {
+    console.error('writeAuditLog failed:', e);
+  }
+}
 
 function jsonResponse(payload: unknown, corsHeaders: Record<string, string>, status = 200) {
   return new Response(JSON.stringify(payload), {
