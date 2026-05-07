@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Outlet, NavLink, useLocation } from "react-router-dom";
-import { Menu, Home, BarChart2, Bell, Settings, Users, Activity, Tv2, LogOut, Newspaper, Building2 } from "lucide-react";
+import { Menu, Home, BarChart2, Bell, Settings, Users, Activity, Tv2, LogOut, Newspaper, Building2, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
