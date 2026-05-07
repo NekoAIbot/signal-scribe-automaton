@@ -22,6 +22,47 @@ const isFailed = (t: Trade) =>
 const LiveTradeCard: React.FC<LiveTradeCardProps> = ({ trade }) => {
   const [open, setOpen] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const { accounts, mainAccount } = useBrokerAccounts();
+  const tradeBroker = accounts.find(a => a.id === trade.broker_account_id) || null;
+
+  const doRetry = async (forceMain: boolean) => {
+    setRetrying(true);
+    try {
+      const target = forceMain ? mainAccount : tradeBroker;
+      if (forceMain && !mainAccount) {
+        toast.error('No active main broker account');
+        setRetrying(false);
+        return;
+      }
+      const { data, error } = await supabase.functions.invoke('execute-trade', {
+        body: {
+          symbol: trade.symbol,
+          type: trade.trade_type,
+          price: trade.entry_price,
+          lotSize: trade.lot_size,
+          stopLoss: trade.stop_loss,
+          takeProfit: trade.take_profit,
+          brokerAccountId: forceMain ? mainAccount?.id : trade.broker_account_id,
+          forceMainBroker: forceMain,
+          strategyId: trade.strategy_id,
+          modelId: trade.model_id,
+          retryOf: trade.id,
+        },
+      });
+      if (error || !data?.success) {
+        toast.error(`Retry failed: ${data?.error || error?.message || 'unknown error'}`);
+      } else {
+        toast.success(`Retry submitted for ${trade.symbol}${target ? ` on ${target.account_name}` : ''}`);
+      }
+    } catch (e: any) {
+      toast.error(`Retry failed: ${e?.message || e}`);
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  const handleRetry = () => doRetry(false);
+  const handleRetryMain = () => doRetry(true);
 
   const handleRetry = async () => {
     setRetrying(true);
