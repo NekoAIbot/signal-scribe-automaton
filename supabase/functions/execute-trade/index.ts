@@ -87,6 +87,9 @@ serve(async (req) => {
 
     const requestData = await req.json();
     console.log('Executing trade:', JSON.stringify(requestData));
+    const retryOf = requestData.retryOf || null;
+    const forceMain = requestData.forceMainBroker === true;
+    if (forceMain) requestData.brokerAccountId = null;
 
     const METAAPI_TOKEN = normalizeMetaApiToken(Deno.env.get('METAAPI_TOKEN') || '');
     const PAPER_MODE = (Deno.env.get('TRADING_PAPER_MODE') || '').toLowerCase() === 'true';
