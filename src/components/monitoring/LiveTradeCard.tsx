@@ -169,17 +169,31 @@ const LiveTradeCard: React.FC<LiveTradeCardProps> = ({ trade }) => {
           <CollapsibleContent className="mt-2 rounded-md border border-border bg-muted/30 p-2 sm:p-3">
             <TradeTimeline events={trade.execution_timeline} />
             {isFailed(trade) && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="mt-2 h-7 text-[10px] sm:text-xs"
-                onClick={handleRetry}
-                disabled={retrying}
-                data-testid={`retry-${trade.id}`}
-              >
-                <RotateCw className={cn('h-3 w-3 mr-1', retrying && 'animate-spin')} />
-                {retrying ? 'Retrying…' : 'Retry failed execution'}
-              </Button>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[10px] sm:text-xs"
+                  onClick={handleRetry}
+                  disabled={retrying}
+                  data-testid={`retry-${trade.id}`}
+                >
+                  <RotateCw className={cn('h-3 w-3 mr-1', retrying && 'animate-spin')} />
+                  {retrying ? 'Retrying…' : 'Retry'}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="h-7 text-[10px] sm:text-xs"
+                  onClick={handleRetryMain}
+                  disabled={retrying || !mainAccount}
+                  data-testid={`retry-main-${trade.id}`}
+                  title={mainAccount ? `Retry on ${mainAccount.account_name}` : 'No active main broker'}
+                >
+                  <Crosshair className="h-3 w-3 mr-1" />
+                  Retry on main broker
+                </Button>
+              </div>
             )}
           </CollapsibleContent>
         </Collapsible>
