@@ -104,6 +104,10 @@ serve(async (req) => {
     if (!mainBrokerAccount) {
       timeline.push('provisioning', 'failed', 'No active main broker account found');
       await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'no_active_broker');
+      await writeAuditLog(serviceClient, {
+        userId, requestData, timeline: timeline.events, success: false,
+        status: 'no_active_broker', error: 'No active main broker account', retryOf, brokerAccount: null,
+      });
       return jsonResponse({
         success: false,
         error: 'No active main broker account found. Add or activate a broker account before generating trades.',
