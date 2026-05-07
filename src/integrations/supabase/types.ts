@@ -100,6 +100,78 @@ export type Database = {
         }
         Relationships: []
       }
+      execution_audit_log: {
+        Row: {
+          broker_account_id: string | null
+          broker_account_name: string | null
+          broker_account_type: string | null
+          created_at: string
+          entry_price: number | null
+          error_message: string | null
+          execution_timeline: Json
+          id: string
+          lot_size: number | null
+          model_id: string | null
+          request_params: Json
+          retry_of: string | null
+          status: string | null
+          stop_loss: number | null
+          strategy_id: string | null
+          success: boolean
+          symbol: string | null
+          take_profit: number | null
+          trade_id: string | null
+          trade_type: string | null
+          user_id: string
+        }
+        Insert: {
+          broker_account_id?: string | null
+          broker_account_name?: string | null
+          broker_account_type?: string | null
+          created_at?: string
+          entry_price?: number | null
+          error_message?: string | null
+          execution_timeline?: Json
+          id?: string
+          lot_size?: number | null
+          model_id?: string | null
+          request_params?: Json
+          retry_of?: string | null
+          status?: string | null
+          stop_loss?: number | null
+          strategy_id?: string | null
+          success?: boolean
+          symbol?: string | null
+          take_profit?: number | null
+          trade_id?: string | null
+          trade_type?: string | null
+          user_id: string
+        }
+        Update: {
+          broker_account_id?: string | null
+          broker_account_name?: string | null
+          broker_account_type?: string | null
+          created_at?: string
+          entry_price?: number | null
+          error_message?: string | null
+          execution_timeline?: Json
+          id?: string
+          lot_size?: number | null
+          model_id?: string | null
+          request_params?: Json
+          retry_of?: string | null
+          status?: string | null
+          stop_loss?: number | null
+          strategy_id?: string | null
+          success?: boolean
+          symbol?: string | null
+          take_profit?: number | null
+          trade_id?: string | null
+          trade_type?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       ml_models: {
         Row: {
           accuracy: number | null
