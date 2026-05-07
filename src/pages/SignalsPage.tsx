@@ -260,6 +260,7 @@ const SignalsPage = () => {
                         <th className="px-4 py-3 text-right font-medium text-muted-foreground hidden md:table-cell">Stop Loss</th>
                         <th className="px-4 py-3 text-right font-medium text-muted-foreground hidden lg:table-cell">TP1 / TP4</th>
                         <th className="px-4 py-3 text-right font-medium text-muted-foreground">Time</th>
+                        <th className="px-4 py-3 text-right font-medium text-muted-foreground">Broker</th>
                         <th className="px-4 py-3 text-right font-medium text-muted-foreground">Status</th>
                         <th className="px-4 py-3 text-right font-medium text-muted-foreground">Action</th>
                       </tr>
@@ -287,6 +288,9 @@ const SignalsPage = () => {
                             {signal.takeProfit1?.toFixed(5)} / {signal.takeProfit4?.toFixed(5)}
                           </td>
                           <td className="px-4 py-3 text-right text-muted-foreground">{formatDate(signal.time)}</td>
+                          <td className="px-4 py-3 text-right">
+                            <BrokerBadge name={mainAccount?.account_name} type={mainAccount?.account_type} />
+                          </td>
                           <td className="px-4 py-3 text-right">
                             <Badge 
                               variant="outline" 
