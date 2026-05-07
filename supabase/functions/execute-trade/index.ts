@@ -172,6 +172,10 @@ serve(async (req) => {
     } else {
       timeline.push('order', 'failed', 'No bridge configured');
       await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'no_bridge');
+      await writeAuditLog(serviceClient, {
+        userId, requestData, timeline: timeline.events, success: false,
+        status: 'no_bridge', error: 'No trading bridge configured', retryOf, brokerAccount: mainBrokerAccount,
+      });
       return jsonResponse({
         success: false,
         error: 'No trading bridge configured. Please add METAAPI_TOKEN or MT5_BRIDGE_URL secret.',
