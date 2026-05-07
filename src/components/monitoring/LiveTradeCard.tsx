@@ -3,11 +3,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowUp, ArrowDown, TrendingUp, TrendingDown, ChevronDown, ChevronUp, History, RotateCw } from "lucide-react";
+import { ArrowUp, ArrowDown, TrendingUp, TrendingDown, ChevronDown, ChevronUp, History, RotateCw, Crosshair } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import TradeTimeline from "./TradeTimeline";
+import BrokerBadge from "@/components/common/BrokerBadge";
+import { useBrokerAccounts } from "@/hooks/useBrokerAccounts";
 import type { Trade } from "@/hooks/useLiveTrades";
 
 interface LiveTradeCardProps { trade: Trade }
