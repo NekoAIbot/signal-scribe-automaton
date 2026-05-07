@@ -12,6 +12,8 @@ import { useBrokerAccounts } from '@/hooks/useBrokerAccounts';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/services/edgeFunctionService';
 import { formatBrokerAccountName } from '@/services/brokerAccountSelection';
+import NoBrokerBanner from '@/components/common/NoBrokerBanner';
+import BrokerBadge from '@/components/common/BrokerBadge';
 
 const formatDate = (timeString: string) => {
   const date = new Date(timeString);
@@ -197,7 +199,16 @@ const SignalsPage = () => {
   
   return (
     <div className="space-y-4 sm:space-y-6">
-      <h1 className="text-xl sm:text-2xl font-bold">Trading Signals</h1>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h1 className="text-xl sm:text-2xl font-bold">Trading Signals</h1>
+        {mainAccount && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>Routing to:</span>
+            <BrokerBadge name={mainAccount.account_name} type={mainAccount.account_type} variant="full" />
+          </div>
+        )}
+      </div>
+      <NoBrokerBanner />
       
       <Card className="bg-trading-card border-trading-border">
         <CardHeader className="pb-2">
@@ -249,6 +260,7 @@ const SignalsPage = () => {
                         <th className="px-4 py-3 text-right font-medium text-muted-foreground hidden md:table-cell">Stop Loss</th>
                         <th className="px-4 py-3 text-right font-medium text-muted-foreground hidden lg:table-cell">TP1 / TP4</th>
                         <th className="px-4 py-3 text-right font-medium text-muted-foreground">Time</th>
+                        <th className="px-4 py-3 text-right font-medium text-muted-foreground">Broker</th>
                         <th className="px-4 py-3 text-right font-medium text-muted-foreground">Status</th>
                         <th className="px-4 py-3 text-right font-medium text-muted-foreground">Action</th>
                       </tr>
@@ -276,6 +288,9 @@ const SignalsPage = () => {
                             {signal.takeProfit1?.toFixed(5)} / {signal.takeProfit4?.toFixed(5)}
                           </td>
                           <td className="px-4 py-3 text-right text-muted-foreground">{formatDate(signal.time)}</td>
+                          <td className="px-4 py-3 text-right">
+                            <BrokerBadge name={mainAccount?.account_name} type={mainAccount?.account_type} />
+                          </td>
                           <td className="px-4 py-3 text-right">
                             <Badge 
                               variant="outline" 

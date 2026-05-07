@@ -15,6 +15,7 @@ import AlertsPage from './pages/AlertsPage';
 import SignalsPage from './pages/SignalsPage';
 import AdminPage from './pages/AdminPage';
 import MonitoringPage from './pages/MonitoringPage';
+import AuditLogPage from './pages/AuditLogPage';
 import SettingsPage from './pages/SettingsPage';
 import ForexNewsPage from './pages/ForexNewsPage';
 import PropAccountsPage from './pages/PropAccountsPage';
@@ -62,6 +63,7 @@ function App() {
                   <Route path="signals" element={<SignalsPage />} />
                   <Route path="alerts" element={<AlertsPage />} />
                   <Route path="monitoring" element={<MonitoringPage />} />
+                  <Route path="audit-log" element={<AuditLogPage />} />
                   <Route path="settings" element={<SettingsPage />} />
                   <Route path="news" element={<ForexNewsPage />} />
                   <Route path="prop-accounts" element={<PropAccountsPage />} />

@@ -87,6 +87,9 @@ serve(async (req) => {
 
     const requestData = await req.json();
     console.log('Executing trade:', JSON.stringify(requestData));
+    const retryOf = requestData.retryOf || null;
+    const forceMain = requestData.forceMainBroker === true;
+    if (forceMain) requestData.brokerAccountId = null;
 
     const METAAPI_TOKEN = normalizeMetaApiToken(Deno.env.get('METAAPI_TOKEN') || '');
     const PAPER_MODE = (Deno.env.get('TRADING_PAPER_MODE') || '').toLowerCase() === 'true';
@@ -101,6 +104,10 @@ serve(async (req) => {
     if (!mainBrokerAccount) {
       timeline.push('provisioning', 'failed', 'No active main broker account found');
       await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'no_active_broker');
+      await writeAuditLog(serviceClient, {
+        userId, requestData, timeline: timeline.events, success: false,
+        status: 'no_active_broker', error: 'No active main broker account', retryOf, brokerAccount: null,
+      });
       return jsonResponse({
         success: false,
         error: 'No active main broker account found. Add or activate a broker account before generating trades.',
@@ -116,6 +123,10 @@ serve(async (req) => {
     if (!riskCheck.allowed) {
       timeline.push('risk_check', 'failed', riskCheck.reason);
       await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'risk_blocked');
+      await writeAuditLog(serviceClient, {
+        userId, requestData, timeline: timeline.events, success: false,
+        status: 'risk_blocked', error: riskCheck.reason || 'Risk blocked', retryOf, brokerAccount: mainBrokerAccount,
+      });
       return jsonResponse(
         { success: false, error: `Trade blocked by risk engine: ${riskCheck.reason}`, riskCheck, timeline: timeline.events },
         corsHeaders
@@ -161,6 +172,10 @@ serve(async (req) => {
     } else {
       timeline.push('order', 'failed', 'No bridge configured');
       await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'no_bridge');
+      await writeAuditLog(serviceClient, {
+        userId, requestData, timeline: timeline.events, success: false,
+        status: 'no_bridge', error: 'No trading bridge configured', retryOf, brokerAccount: mainBrokerAccount,
+      });
       return jsonResponse({
         success: false,
         error: 'No trading bridge configured. Please add METAAPI_TOKEN or MT5_BRIDGE_URL secret.',
@@ -202,11 +217,17 @@ serve(async (req) => {
       ticketNumber: executionResult.ticketNumber,
     });
 
+    await writeAuditLog(serviceClient, {
+      userId, requestData, timeline: timeline.events, success: true,
+      status: 'filled', error: null, retryOf, brokerAccount: mainBrokerAccount, tradeId: savedTrade?.id,
+    });
+
     return jsonResponse({
       success: true,
       ticketNumber: executionResult.ticketNumber,
       volume: executionResult.volume,
       tradeId: savedTrade?.id,
+      brokerAccount: { id: mainBrokerAccount.id, name: mainBrokerAccount.account_name, type: mainBrokerAccount.account_type },
       message: `Trade executed via ${executionResult.mode}`,
       timeline: timeline.events,
     }, corsHeaders);
@@ -216,6 +237,44 @@ serve(async (req) => {
     return jsonResponse({ success: false, error: (error as Error).message, timeline: timeline.events }, corsHeaders);
   }
 });
+
+async function writeAuditLog(client: ReturnType<typeof createClient>, args: {
+  userId: string;
+  requestData: any;
+  timeline: TimelineEvent[];
+  success: boolean;
+  status: string;
+  error: string | null;
+  retryOf?: string | null;
+  brokerAccount: any | null;
+  tradeId?: string | null;
+}) {
+  try {
+    await client.from('execution_audit_log').insert({
+      user_id: args.userId,
+      broker_account_id: args.brokerAccount?.id || args.requestData?.brokerAccountId || null,
+      broker_account_name: args.brokerAccount?.account_name || null,
+      broker_account_type: args.brokerAccount?.account_type || null,
+      symbol: args.requestData?.symbol || null,
+      trade_type: args.requestData?.type || null,
+      lot_size: args.requestData?.lotSize ?? null,
+      entry_price: args.requestData?.price ?? null,
+      stop_loss: args.requestData?.stopLoss ?? null,
+      take_profit: args.requestData?.takeProfit ?? null,
+      strategy_id: args.requestData?.strategyId || null,
+      model_id: args.requestData?.modelId || null,
+      trade_id: args.tradeId || null,
+      retry_of: args.retryOf || null,
+      success: args.success,
+      status: args.status,
+      error_message: args.error,
+      execution_timeline: args.timeline,
+      request_params: args.requestData || {},
+    });
+  } catch (e) {
+    console.error('writeAuditLog failed:', e);
+  }
+}
 
 function jsonResponse(payload: unknown, corsHeaders: Record<string, string>, status = 200) {
   return new Response(JSON.stringify(payload), {

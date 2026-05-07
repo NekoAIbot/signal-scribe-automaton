@@ -10,6 +10,7 @@ import PerformanceStats from '@/components/monitoring/PerformanceStats';
 import RealtimeStatusBadge from '@/components/monitoring/RealtimeStatusBadge';
 import { useLiveTrades } from '@/hooks/useLiveTrades';
 import { downloadTradesCsv } from '@/lib/exportTradesCsv';
+import NoBrokerBanner from '@/components/common/NoBrokerBanner';
 import { toast } from 'sonner';
 
 const EmptyState: React.FC<{ message: string }> = ({ message }) => (
@@ -49,6 +50,7 @@ const MonitoringPage = () => {
 
   return (
     <div className="space-y-4 sm:space-y-6" data-testid="monitoring-page">
+      <NoBrokerBanner />
       {/* Header */}
       <div className="flex flex-col gap-3">
         <div className="flex items-start justify-between gap-2 flex-wrap">

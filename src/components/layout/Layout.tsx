@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Outlet, NavLink, useLocation } from "react-router-dom";
-import { Menu, Home, BarChart2, Bell, Settings, Users, Activity, Tv2, LogOut, Newspaper, Building2 } from "lucide-react";
+import { Menu, Home, BarChart2, Bell, Settings, Users, Activity, Tv2, LogOut, Newspaper, Building2, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
@@ -86,6 +86,7 @@ export function Layout() {
                   <NavItem to="/analytics" label="Analytics" icon={BarChart2} />
                   <NavItem to="/alerts" label="Alerts" icon={Bell} />
                   <NavItem to="/monitoring" label="Monitoring" icon={Activity} />
+                  <NavItem to="/audit-log" label="Audit Log" icon={FileText} />
                   <NavItem to="/prop-accounts" label="Prop Accounts" icon={Building2} />
                   <NavItem to="/news" label="Forex News" icon={Newspaper} />
                   <NavItem to="/admin" label="Admin" icon={Users} />
@@ -155,6 +156,7 @@ export function Layout() {
                     <NavItem to="/analytics" label="Analytics" icon={BarChart2} onClick={() => setShowMobileMenu(false)} />
                     <NavItem to="/alerts" label="Alerts" icon={Bell} onClick={() => setShowMobileMenu(false)} />
                     <NavItem to="/monitoring" label="Monitoring" icon={Activity} onClick={() => setShowMobileMenu(false)} />
+                    <NavItem to="/audit-log" label="Audit Log" icon={FileText} onClick={() => setShowMobileMenu(false)} />
                     <NavItem to="/prop-accounts" label="Prop Accounts" icon={Building2} onClick={() => setShowMobileMenu(false)} />
                     <NavItem to="/news" label="Forex News" icon={Newspaper} onClick={() => setShowMobileMenu(false)} />
                     <NavItem to="/admin" label="Admin" icon={Users} onClick={() => setShowMobileMenu(false)} />

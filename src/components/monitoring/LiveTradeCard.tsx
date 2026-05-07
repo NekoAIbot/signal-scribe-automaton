@@ -3,11 +3,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowUp, ArrowDown, TrendingUp, TrendingDown, ChevronDown, ChevronUp, History, RotateCw } from "lucide-react";
+import { ArrowUp, ArrowDown, TrendingUp, TrendingDown, ChevronDown, ChevronUp, History, RotateCw, Crosshair } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import TradeTimeline from "./TradeTimeline";
+import BrokerBadge from "@/components/common/BrokerBadge";
+import { useBrokerAccounts } from "@/hooks/useBrokerAccounts";
 import type { Trade } from "@/hooks/useLiveTrades";
 
 interface LiveTradeCardProps { trade: Trade }
@@ -20,10 +22,18 @@ const isFailed = (t: Trade) =>
 const LiveTradeCard: React.FC<LiveTradeCardProps> = ({ trade }) => {
   const [open, setOpen] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const { accounts, mainAccount } = useBrokerAccounts();
+  const tradeBroker = accounts.find(a => a.id === trade.broker_account_id) || null;
 
-  const handleRetry = async () => {
+  const doRetry = async (forceMain: boolean) => {
     setRetrying(true);
     try {
+      const target = forceMain ? mainAccount : tradeBroker;
+      if (forceMain && !mainAccount) {
+        toast.error('No active main broker account');
+        setRetrying(false);
+        return;
+      }
       const { data, error } = await supabase.functions.invoke('execute-trade', {
         body: {
           symbol: trade.symbol,
@@ -32,7 +42,8 @@ const LiveTradeCard: React.FC<LiveTradeCardProps> = ({ trade }) => {
           lotSize: trade.lot_size,
           stopLoss: trade.stop_loss,
           takeProfit: trade.take_profit,
-          brokerAccountId: trade.broker_account_id,
+          brokerAccountId: forceMain ? mainAccount?.id : trade.broker_account_id,
+          forceMainBroker: forceMain,
           strategyId: trade.strategy_id,
           modelId: trade.model_id,
           retryOf: trade.id,
@@ -41,7 +52,7 @@ const LiveTradeCard: React.FC<LiveTradeCardProps> = ({ trade }) => {
       if (error || !data?.success) {
         toast.error(`Retry failed: ${data?.error || error?.message || 'unknown error'}`);
       } else {
-        toast.success(`Retry submitted for ${trade.symbol}`);
+        toast.success(`Retry submitted for ${trade.symbol}${target ? ` on ${target.account_name}` : ''}`);
       }
     } catch (e: any) {
       toast.error(`Retry failed: ${e?.message || e}`);
@@ -49,6 +60,10 @@ const LiveTradeCard: React.FC<LiveTradeCardProps> = ({ trade }) => {
       setRetrying(false);
     }
   };
+
+  const handleRetry = () => doRetry(false);
+  const handleRetryMain = () => doRetry(true);
+
   const isPositive = trade.profit >= 0;
   const priceDiff = trade.current_price
     ? ((trade.current_price - trade.entry_price) / trade.entry_price * 100)
@@ -83,6 +98,10 @@ const LiveTradeCard: React.FC<LiveTradeCardProps> = ({ trade }) => {
           )}>
             {trade.status}
           </Badge>
+        </div>
+
+        <div className="mb-3">
+          <BrokerBadge name={tradeBroker?.account_name} type={tradeBroker?.account_type} />
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-3">
@@ -150,17 +169,31 @@ const LiveTradeCard: React.FC<LiveTradeCardProps> = ({ trade }) => {
           <CollapsibleContent className="mt-2 rounded-md border border-border bg-muted/30 p-2 sm:p-3">
             <TradeTimeline events={trade.execution_timeline} />
             {isFailed(trade) && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="mt-2 h-7 text-[10px] sm:text-xs"
-                onClick={handleRetry}
-                disabled={retrying}
-                data-testid={`retry-${trade.id}`}
-              >
-                <RotateCw className={cn('h-3 w-3 mr-1', retrying && 'animate-spin')} />
-                {retrying ? 'Retrying…' : 'Retry failed execution'}
-              </Button>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[10px] sm:text-xs"
+                  onClick={handleRetry}
+                  disabled={retrying}
+                  data-testid={`retry-${trade.id}`}
+                >
+                  <RotateCw className={cn('h-3 w-3 mr-1', retrying && 'animate-spin')} />
+                  {retrying ? 'Retrying…' : 'Retry'}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="h-7 text-[10px] sm:text-xs"
+                  onClick={handleRetryMain}
+                  disabled={retrying || !mainAccount}
+                  data-testid={`retry-main-${trade.id}`}
+                  title={mainAccount ? `Retry on ${mainAccount.account_name}` : 'No active main broker'}
+                >
+                  <Crosshair className="h-3 w-3 mr-1" />
+                  Retry on main broker
+                </Button>
+              </div>
             )}
           </CollapsibleContent>
         </Collapsible>
