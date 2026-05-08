@@ -155,34 +155,34 @@ async function runSignalCycle() {
     latestSignals = [...signals, ...latestSignals].slice(0, 50);
     notifyListeners();
 
-    for (const signal of signals) {
-      // 1. Execute on user's broker accounts immediately after signal generation
-      let executionStatus: UnifiedSignal['status'] | null = null;
+    // Fire execution + Telegram in parallel for instantaneous delivery
+    await Promise.all(signals.map(async (signal) => {
+      const tasks: Promise<any>[] = [];
+
       if (botEnabled) {
         signal.status = 'executing';
         notifyListeners();
-        const execSuccess = await executeOnBroker(signal);
-        executionStatus = execSuccess ? 'executed' : 'failed';
-        signal.status = executionStatus;
-        notifyListeners();
+        tasks.push(
+          executeOnBroker(signal).then((ok) => {
+            signal.status = ok ? 'executed' : 'failed';
+            notifyListeners();
+          })
+        );
       }
 
-      // 2. Send Telegram warning/signal asynchronously without delaying execution
       if (telegramEnabled) {
-        await sendTelegramRiskWarning(signal);
-        signal.status = 'warning_sent';
-        notifyListeners();
-
-        await sendTelegramSignal(signal);
-        signal.status = 'sent_telegram';
-        notifyListeners();
-
-        if (executionStatus) {
-          signal.status = executionStatus;
-          notifyListeners();
-        }
+        tasks.push(
+          sendTelegramSignal(signal).then(() => {
+            if (!botEnabled) {
+              signal.status = 'sent_telegram';
+              notifyListeners();
+            }
+          })
+        );
       }
-    }
+
+      await Promise.allSettled(tasks);
+    }));
 
     await saveSignalsToDb(signals);
   } catch (error) {
@@ -234,11 +234,18 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
     const signals: UnifiedSignal[] = [];
     const now = new Date().toISOString();
 
-    // Use AI for signal analysis
+    // Use AI for signal analysis - pass strategy/model context so trained models inform predictions
     let aiSignals: any[] = [];
     try {
+      const activeModelIds = Array.from(modelMap.keys());
       const { data: aiData } = await supabase.functions.invoke('ml-predictions', {
-        body: { quotes, symbols: Object.keys(quotes) }
+        body: {
+          type: 'market-prediction',
+          quotes,
+          symbols: Object.keys(quotes),
+          strategyIds: activeStrategies.map(s => s.id),
+          modelIds: activeModelIds,
+        }
       });
       if (aiData?.predictions) aiSignals = aiData.predictions;
     } catch { /* fallback to technical analysis */ }
@@ -387,8 +394,17 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
       if (shouldSignal && confidence > 0.6) {
         const slPips = atr * 1.5;
         const tpPips = atr * 2.5;
-        const selectedModelId = (chosenStrategy.model_ids || []).find((id: string) => modelMap.has(id)) || undefined;
-        const selectedModel = selectedModelId ? modelMap.get(selectedModelId) : null;
+        // Pick the trained model with the highest accuracy from this strategy
+        const strategyModels = (chosenStrategy.model_ids || [])
+          .map((id: string) => modelMap.get(id))
+          .filter((m: any) => m);
+        const bestModel = strategyModels.sort((a: any, b: any) => Number(b?.accuracy || 0) - Number(a?.accuracy || 0))[0];
+        const selectedModelId = bestModel?.id;
+        const selectedModel = bestModel || null;
+        // Weight confidence by trained model accuracy
+        if (bestModel?.accuracy) {
+          confidence = Math.min(0.99, confidence * 0.6 + Number(bestModel.accuracy) * 0.4);
+        }
 
         // Determine asset class
         let assetClass = 'forex';
