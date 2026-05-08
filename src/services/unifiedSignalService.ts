@@ -155,34 +155,34 @@ async function runSignalCycle() {
     latestSignals = [...signals, ...latestSignals].slice(0, 50);
     notifyListeners();
 
-    for (const signal of signals) {
-      // 1. Execute on user's broker accounts immediately after signal generation
-      let executionStatus: UnifiedSignal['status'] | null = null;
+    // Fire execution + Telegram in parallel for instantaneous delivery
+    await Promise.all(signals.map(async (signal) => {
+      const tasks: Promise<any>[] = [];
+
       if (botEnabled) {
         signal.status = 'executing';
         notifyListeners();
-        const execSuccess = await executeOnBroker(signal);
-        executionStatus = execSuccess ? 'executed' : 'failed';
-        signal.status = executionStatus;
-        notifyListeners();
+        tasks.push(
+          executeOnBroker(signal).then((ok) => {
+            signal.status = ok ? 'executed' : 'failed';
+            notifyListeners();
+          })
+        );
       }
 
-      // 2. Send Telegram warning/signal asynchronously without delaying execution
       if (telegramEnabled) {
-        await sendTelegramRiskWarning(signal);
-        signal.status = 'warning_sent';
-        notifyListeners();
-
-        await sendTelegramSignal(signal);
-        signal.status = 'sent_telegram';
-        notifyListeners();
-
-        if (executionStatus) {
-          signal.status = executionStatus;
-          notifyListeners();
-        }
+        tasks.push(
+          sendTelegramSignal(signal).then(() => {
+            if (!botEnabled) {
+              signal.status = 'sent_telegram';
+              notifyListeners();
+            }
+          })
+        );
       }
-    }
+
+      await Promise.allSettled(tasks);
+    }));
 
     await saveSignalsToDb(signals);
   } catch (error) {
