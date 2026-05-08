@@ -234,11 +234,18 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
     const signals: UnifiedSignal[] = [];
     const now = new Date().toISOString();
 
-    // Use AI for signal analysis
+    // Use AI for signal analysis - pass strategy/model context so trained models inform predictions
     let aiSignals: any[] = [];
     try {
+      const activeModelIds = Array.from(modelMap.keys());
       const { data: aiData } = await supabase.functions.invoke('ml-predictions', {
-        body: { quotes, symbols: Object.keys(quotes) }
+        body: {
+          type: 'market-prediction',
+          quotes,
+          symbols: Object.keys(quotes),
+          strategyIds: activeStrategies.map(s => s.id),
+          modelIds: activeModelIds,
+        }
       });
       if (aiData?.predictions) aiSignals = aiData.predictions;
     } catch { /* fallback to technical analysis */ }
