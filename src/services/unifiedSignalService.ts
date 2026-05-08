@@ -394,8 +394,17 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
       if (shouldSignal && confidence > 0.6) {
         const slPips = atr * 1.5;
         const tpPips = atr * 2.5;
-        const selectedModelId = (chosenStrategy.model_ids || []).find((id: string) => modelMap.has(id)) || undefined;
-        const selectedModel = selectedModelId ? modelMap.get(selectedModelId) : null;
+        // Pick the trained model with the highest accuracy from this strategy
+        const strategyModels = (chosenStrategy.model_ids || [])
+          .map((id: string) => modelMap.get(id))
+          .filter((m: any) => m);
+        const bestModel = strategyModels.sort((a: any, b: any) => Number(b?.accuracy || 0) - Number(a?.accuracy || 0))[0];
+        const selectedModelId = bestModel?.id;
+        const selectedModel = bestModel || null;
+        // Weight confidence by trained model accuracy
+        if (bestModel?.accuracy) {
+          confidence = Math.min(0.99, confidence * 0.6 + Number(bestModel.accuracy) * 0.4);
+        }
 
         // Determine asset class
         let assetClass = 'forex';
