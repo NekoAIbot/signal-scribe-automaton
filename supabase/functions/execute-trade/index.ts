@@ -412,33 +412,73 @@ async function executeViaMetaApi(token: string, creds: any, data: any, timeline:
   );
 
   if (!metaApiAccount) {
-    timeline.push('provisioning', 'started', `Provisioning new account (login ${creds.login})`);
-    const provisionRes = await metaApiFetch(`/users/current/accounts`, {
-      method: 'POST',
-      headers: { 'auth-token': token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const provisionWith = async (serverName: string) => {
+      timeline.push('provisioning', 'started', `Provisioning new account (login ${creds.login}, server ${serverName})`);
+      const body: any = {
         name: creds.account_name || `Account ${creds.login}`,
         type: 'cloud-g2',
         login: String(creds.login),
         password: decodedPassword,
-        server: creds.server,
+        server: serverName,
         platform,
         application: 'MetaApi',
         magic: 234000,
-      })
-    });
+      };
+      if (provisioningProfileId) body.provisioningProfileId = provisioningProfileId;
+      return metaApiFetch(`/users/current/accounts`, {
+        method: 'POST',
+        headers: { 'auth-token': token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    };
+
+    let provisionRes = await provisionWith(creds.server);
 
     if (!provisionRes.ok) {
       const errText = await provisionRes.text();
-      console.error(`MetaApi provision failed [${provisionRes.status}]: ${errText}`);
+      console.warn(`MetaApi provision attempt 1 failed [${provisionRes.status}]: ${errText}`);
       timeline.push('provisioning', 'failed', `${provisionRes.status}: ${errText.slice(0, 200)}`);
-      if (errText.toLowerCase().includes('provisioning profile') && !provisioningProfileId) {
-        throw new Error('MetaApi provisioning requires a profile for this broker server. Set METAAPI_PROVISIONING_PROFILE_ID in Supabase secrets.');
-      }
-      throw new Error(`MetaApi provision failed: ${provisionRes.status} ${errText}`);
-    }
 
-    metaApiAccount = await provisionRes.json();
+      // Auto-correct: MetaApi error often returns "Suggested server names: X, Y"
+      const suggestedMatch = errText.match(/Suggested server names?:\s*([^"\\}]+)/i);
+      const suggestions = suggestedMatch
+        ? suggestedMatch[1].split(/[,\s]+/).map(s => s.trim()).filter(Boolean)
+        : [];
+
+      // Also try common typo fixes (Derive -> Deriv etc.)
+      const typoFixed = String(creds.server || '').replace(/Derive/gi, 'Deriv');
+      if (typoFixed && typoFixed !== creds.server && !suggestions.includes(typoFixed)) {
+        suggestions.unshift(typoFixed);
+      }
+
+      let resolved = false;
+      for (const candidate of suggestions.slice(0, 3)) {
+        timeline.push('provisioning', 'started', `Retrying with corrected server "${candidate}"`);
+        const retryRes = await provisionWith(candidate);
+        if (retryRes.ok) {
+          metaApiAccount = await retryRes.json();
+          // Persist the corrected server back to broker_credentials
+          try {
+            const sb = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
+            await sb.from('broker_credentials').update({ server: candidate }).eq('id', creds.id);
+            timeline.push('provisioning', 'success', `Server name corrected to "${candidate}"`);
+          } catch {}
+          resolved = true;
+          break;
+        }
+        const retryErr = await retryRes.text();
+        timeline.push('provisioning', 'failed', `${retryRes.status}: ${retryErr.slice(0, 200)}`);
+      }
+
+      if (!resolved) {
+        if (errText.toLowerCase().includes('provisioning profile') && !provisioningProfileId) {
+          throw new Error('MetaApi provisioning requires a profile for this broker server. Set METAAPI_PROVISIONING_PROFILE_ID in Supabase secrets.');
+        }
+        throw new Error(`MetaApi provision failed: ${provisionRes.status} ${errText}`);
+      }
+    } else {
+      metaApiAccount = await provisionRes.json();
+    }
   }
 
   const accountId = metaApiAccount.id || metaApiAccount._id;
