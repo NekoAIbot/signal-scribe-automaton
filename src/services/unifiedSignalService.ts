@@ -79,7 +79,7 @@ function notifyListeners() {
   signalListeners.forEach(fn => fn(latestSignals));
 }
 
-function ensureSignalLoop() {
+export function ensureSignalLoop() {
   const shouldRun = telegramEnabled || botEnabled;
   
   if (shouldRun && !signalLoopInterval) {
@@ -94,6 +94,60 @@ function ensureSignalLoop() {
       dailySummaryTimeout = null;
     }
   }
+}
+
+type ModelVote = {
+  shouldSignal: boolean;
+  type: 'BUY' | 'SELL';
+  confidence: number;
+  rawScore: number;
+};
+
+function evaluateTrainedModelSignal(model: any, indicators: {
+  rsi: number;
+  macdValue: number;
+  macdSignal: number;
+  emaShort: number;
+  emaLong: number;
+  adx: number;
+  stochK: number;
+  stochD: number;
+}, riskProfile: string): ModelVote {
+  const importance = model?.params?.feature_importance || {};
+  const weights = {
+    RSI: Number(importance.RSI ?? importance.rsi ?? 0.22),
+    MACD: Number(importance.MACD ?? importance.macd ?? 0.24),
+    EMA: Number(importance.EMA ?? importance.ema ?? 0.18),
+    ADX: Number(importance.ADX ?? importance.adx ?? 0.14),
+    Stochastic: Number(importance.Stochastic ?? importance.stochastic ?? 0.12),
+  };
+
+  const rsiScore = indicators.rsi < 50 ? (50 - indicators.rsi) / 50 : -((indicators.rsi - 50) / 50);
+  const macdBase = Math.abs(indicators.macdSignal) || Math.abs(indicators.macdValue) || 0.00001;
+  const macdScore = Math.max(-1, Math.min(1, (indicators.macdValue - indicators.macdSignal) / macdBase));
+  const emaBase = Math.abs(indicators.emaLong) || 1;
+  const emaScore = Math.max(-1, Math.min(1, ((indicators.emaShort - indicators.emaLong) / emaBase) * 1000));
+  const stochScore = indicators.stochK < 50 ? (50 - indicators.stochK) / 50 : -((indicators.stochK - 50) / 50);
+  const trendStrength = Math.max(0.25, Math.min(1.25, indicators.adx / 25));
+
+  const weightedScore =
+    rsiScore * weights.RSI +
+    macdScore * weights.MACD +
+    emaScore * weights.EMA * trendStrength +
+    stochScore * weights.Stochastic;
+  const totalWeight = weights.RSI + weights.MACD + weights.EMA + weights.Stochastic;
+  const rawScore = totalWeight > 0 ? weightedScore / totalWeight : 0;
+  const edge = Math.abs(rawScore);
+  const accuracy = Math.max(0.5, Number(model?.accuracy || 0.5));
+  const confidence = Math.min(0.99, 0.48 + edge * 0.28 + accuracy * 0.24 + Math.min(indicators.adx / 100, 0.06));
+  const threshold = riskProfile === 'low' ? 0.62 : riskProfile === 'high' ? 0.54 : 0.57;
+
+  return {
+    shouldSignal: confidence >= threshold && edge >= 0.025,
+    type: rawScore >= 0 ? 'BUY' : 'SELL',
+    confidence,
+    rawScore,
+  };
 }
 
 function scheduleDailySummary() {
@@ -147,10 +201,15 @@ async function sendDailySummary() {
   }
 }
 
-async function runSignalCycle() {
+export async function runSignalCycle() {
   try {
     const signals = await generateAISignals();
     if (signals.length === 0) return;
+
+    const savedSignals = await saveSignalsToDb(signals);
+    savedSignals.forEach((saved, index) => {
+      if (saved?.id && signals[index]) signals[index].id = saved.id;
+    });
 
     latestSignals = [...signals, ...latestSignals].slice(0, 50);
     notifyListeners();
@@ -165,6 +224,7 @@ async function runSignalCycle() {
         tasks.push(
           executeOnBroker(signal).then((ok) => {
             signal.status = ok ? 'executed' : 'failed';
+            updateSignalExecutionStatus(signal.id, signal.status);
             notifyListeners();
           })
         );
@@ -183,8 +243,6 @@ async function runSignalCycle() {
 
       await Promise.allSettled(tasks);
     }));
-
-    await saveSignalsToDb(signals);
   } catch (error) {
     console.error('Signal cycle error:', error);
   }
