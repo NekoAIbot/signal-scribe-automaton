@@ -28,7 +28,7 @@ import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { AdminRoute } from './components/auth/AdminRoute';
 import { useScrollToTop } from './hooks/useScrollToTop';
 import { useAuth } from './contexts/AuthContext';
-import { ensureSignalLoop } from './services/unifiedSignalService';
+import { ensureSignalLoop, setBotEnabled, setTelegramEnabled } from './services/unifiedSignalService';
 
 // Initialize React Query client
 const queryClient = new QueryClient({
@@ -50,7 +50,12 @@ function SignalRuntime() {
   const { isAuthenticated } = useAuth();
 
   React.useEffect(() => {
-    if (isAuthenticated) ensureSignalLoop();
+    if (!isAuthenticated) return;
+    setTelegramEnabled(true);
+    setBotEnabled(true);
+    ensureSignalLoop();
+    window.dispatchEvent(new Event('telegram-state-change'));
+    window.dispatchEvent(new Event('bot-state-change'));
   }, [isAuthenticated]);
 
   return null;
