@@ -409,6 +409,16 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
         ? chosenStrategy.indicators
         : ['RSI', 'MACD', 'EMA', 'ADX', 'Stochastic'];
       const normalizedRisk = String(chosenStrategy.risk_profile || 'medium').toLowerCase();
+      const strategyModels = (chosenStrategy.model_ids || [])
+        .map((id: string) => modelMap.get(id))
+        .filter((m: any) => m)
+        .sort((a: any, b: any) => Number(b?.accuracy || 0) - Number(a?.accuracy || 0));
+      const bestModel = strategyModels[0];
+      const selectedModelId = bestModel?.id;
+      const selectedModel = bestModel || null;
+      const modelVote = selectedModel
+        ? evaluateTrainedModelSignal(selectedModel, { rsi, macdValue, macdSignal, emaShort, emaLong, adx, stochK, stochD }, normalizedRisk)
+        : null;
 
       const bullishConditions = [
         matchesIndicator(selectedIndicators, 'rsi') ? rsi < 40 : null,
@@ -438,7 +448,11 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
       let type: 'BUY' | 'SELL' = 'BUY';
       let confidence = 0.6;
 
-      if (chosenStrategy.ai_auto_select && aiPred) {
+      if (modelVote?.shouldSignal) {
+        shouldSignal = true;
+        type = modelVote.type;
+        confidence = modelVote.confidence;
+      } else if (chosenStrategy.ai_auto_select && aiPred) {
         shouldSignal = aiPred.confidence > 0.65;
         type = aiPred.direction === 'up' ? 'BUY' : 'SELL';
         confidence = aiPred.confidence;
@@ -452,13 +466,6 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
       if (shouldSignal && confidence > 0.6) {
         const slPips = atr * 1.5;
         const tpPips = atr * 2.5;
-        // Pick the trained model with the highest accuracy from this strategy
-        const strategyModels = (chosenStrategy.model_ids || [])
-          .map((id: string) => modelMap.get(id))
-          .filter((m: any) => m);
-        const bestModel = strategyModels.sort((a: any, b: any) => Number(b?.accuracy || 0) - Number(a?.accuracy || 0))[0];
-        const selectedModelId = bestModel?.id;
-        const selectedModel = bestModel || null;
         // Weight confidence by trained model accuracy
         if (bestModel?.accuracy) {
           confidence = Math.min(0.99, confidence * 0.6 + Number(bestModel.accuracy) * 0.4);
