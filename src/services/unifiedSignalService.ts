@@ -509,6 +509,7 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
             tp_distance: tpPips,
             risk_reward_ratio: (tpPips / slPips).toFixed(2),
             pip_value: symbol.includes('JPY') ? 0.01 : 0.0001,
+            model_edge: modelVote?.rawScore,
           }
         });
       }
