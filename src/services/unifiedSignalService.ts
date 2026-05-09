@@ -622,10 +622,22 @@ async function executeOnBroker(signal: UnifiedSignal): Promise<boolean> {
   }
 }
 
+async function updateSignalExecutionStatus(signalId: string, status: UnifiedSignal['status']) {
+  if (!signalId || signalId.startsWith('sig-')) return;
+  try {
+    await supabase
+      .from('trading_signals')
+      .update({ status, is_active: status !== 'executed' })
+      .eq('id', signalId);
+  } catch (error) {
+    console.error('Failed to update signal status:', error);
+  }
+}
+
 async function saveSignalsToDb(signals: UnifiedSignal[]) {
   try {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) return [];
 
     const inserts = signals.map(s => ({
       user_id: user.id,
@@ -642,9 +654,12 @@ async function saveSignalsToDb(signals: UnifiedSignal[]) {
       status: s.status,
     }));
 
-    await supabase.from('trading_signals').insert(inserts);
+    const { data, error } = await supabase.from('trading_signals').insert(inserts).select('id');
+    if (error) throw error;
+    return data || [];
   } catch (error) {
     console.error('Failed to save signals:', error);
+    return [];
   }
 }
 
