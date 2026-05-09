@@ -50,8 +50,8 @@ let dailyTrades: { symbol: string; type: string; profit?: number; status: string
 
 // Load persisted states
 try {
-  telegramEnabled = localStorage.getItem('telegramBotActive') === 'true';
-  botEnabled = localStorage.getItem('tradingBotRunning') === 'true';
+  telegramEnabled = localStorage.getItem('telegramBotActive') !== 'false';
+  botEnabled = localStorage.getItem('tradingBotRunning') !== 'false';
 } catch {}
 
 export function getTelegramEnabled() { return telegramEnabled; }
