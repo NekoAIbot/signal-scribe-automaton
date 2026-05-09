@@ -27,6 +27,8 @@ import NotFound from './pages/NotFound';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { AdminRoute } from './components/auth/AdminRoute';
 import { useScrollToTop } from './hooks/useScrollToTop';
+import { useAuth } from './contexts/AuthContext';
+import { ensureSignalLoop, setBotEnabled, setTelegramEnabled } from './services/unifiedSignalService';
 
 // Initialize React Query client
 const queryClient = new QueryClient({
@@ -44,6 +46,21 @@ function ScrollToTop() {
   return null;
 }
 
+function SignalRuntime() {
+  const { isAuthenticated } = useAuth();
+
+  React.useEffect(() => {
+    if (!isAuthenticated) return;
+    setTelegramEnabled(true);
+    setBotEnabled(true);
+    ensureSignalLoop();
+    window.dispatchEvent(new Event('telegram-state-change'));
+    window.dispatchEvent(new Event('bot-state-change'));
+  }, [isAuthenticated]);
+
+  return null;
+}
+
 function App() {
   return (
     <React.StrictMode>
@@ -51,6 +68,7 @@ function App() {
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
             <ScrollToTop />
+            <SignalRuntime />
             
             <Routes>
               <Route path="/login" element={<LoginPage />} />

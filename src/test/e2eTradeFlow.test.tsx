@@ -48,6 +48,17 @@ vi.mock('@/integrations/supabase/client', () => {
   return { supabase };
 });
 
+vi.mock('@/hooks/useBrokerAccounts', () => ({
+  useBrokerAccounts: () => ({
+    accounts: [],
+    activeAccounts: [],
+    mainAccount: null,
+    hasAccounts: false,
+    isLoading: false,
+    refetch: vi.fn(),
+  }),
+}));
+
 const buildTrade = (overrides: Partial<Trade> = {}): Trade => ({
   id: 'trade-123',
   user_id: 'user-1',
