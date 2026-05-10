@@ -61,13 +61,32 @@ export function getLatestSignals() { return latestSignals; }
 export function setTelegramEnabled(enabled: boolean) {
   telegramEnabled = enabled;
   localStorage.setItem('telegramBotActive', String(enabled));
+  syncTradingBotSettings();
   ensureSignalLoop();
 }
 
 export function setBotEnabled(enabled: boolean) {
   botEnabled = enabled;
   localStorage.setItem('tradingBotRunning', String(enabled));
+  syncTradingBotSettings();
   ensureSignalLoop();
+}
+
+export async function syncTradingBotSettings() {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase.from('trading_bot_settings').upsert({
+      user_id: user.id,
+      bot_enabled: botEnabled,
+      telegram_enabled: telegramEnabled,
+      interval_seconds: 60,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id' });
+  } catch (error) {
+    console.error('Failed to sync trading bot settings:', error);
+  }
 }
 
 export function onSignalsUpdate(listener: (signals: UnifiedSignal[]) => void) {
