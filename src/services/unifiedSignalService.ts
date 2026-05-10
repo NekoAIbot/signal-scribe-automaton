@@ -77,7 +77,7 @@ export async function syncTradingBotSettings() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    await supabase.from('trading_bot_settings').upsert({
+    await (supabase as any).from('trading_bot_settings').upsert({
       user_id: user.id,
       bot_enabled: botEnabled,
       telegram_enabled: telegramEnabled,
@@ -87,6 +87,15 @@ export async function syncTradingBotSettings() {
   } catch (error) {
     console.error('Failed to sync trading bot settings:', error);
   }
+}
+
+function isMarketOpenForSymbol(symbol: string, at: Date) {
+  const clean = symbol.replace('/', '').toUpperCase();
+  const day = at.getUTCDay();
+  const isWeekday = day >= 1 && day <= 5;
+  if (['BTCUSD', 'ETHUSD', 'SOLUSD', 'BNBUSD', 'XRPUSD'].includes(clean)) return true;
+  if (clean.length === 6) return isWeekday;
+  return isWeekday;
 }
 
 export function onSignalsUpdate(listener: (signals: UnifiedSignal[]) => void) {
