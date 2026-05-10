@@ -279,14 +279,20 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
     if (strategyError) throw strategyError;
     if (!activeStrategies?.length) return [];
 
+    const aiSoloActive = activeStrategies.some((strategy) => strategy.ai_auto_select);
     const referencedModelIds = Array.from(
       new Set(activeStrategies.flatMap((strategy) => strategy.model_ids || []))
     );
 
-    const modelResult = referencedModelIds.length > 0
+    const modelResult = aiSoloActive
       ? await supabase
           .from('ml_models')
-          .select('id, name, type, accuracy, is_active')
+          .select('id, name, type, accuracy, is_active, params')
+          .eq('is_active', true)
+      : referencedModelIds.length > 0
+      ? await supabase
+          .from('ml_models')
+          .select('id, name, type, accuracy, is_active, params')
           .in('id', referencedModelIds)
           .eq('is_active', true)
       : { data: [], error: null };
@@ -299,7 +305,7 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
     const allSymbols = [
       'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'NZD/USD',
       'BTC/USD', 'ETH/USD', 'XAU/USD', 'US500', 'US30', 'USOIL'
-    ];
+    ].filter(symbol => isMarketOpenForSymbol(symbol, new Date()));
     
     const { data: quotesData } = await supabase.functions.invoke('fetch-market-quotes', {
       body: { symbols: allSymbols.join(',') }
