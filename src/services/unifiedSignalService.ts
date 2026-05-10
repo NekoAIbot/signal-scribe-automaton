@@ -61,13 +61,41 @@ export function getLatestSignals() { return latestSignals; }
 export function setTelegramEnabled(enabled: boolean) {
   telegramEnabled = enabled;
   localStorage.setItem('telegramBotActive', String(enabled));
+  syncTradingBotSettings();
   ensureSignalLoop();
 }
 
 export function setBotEnabled(enabled: boolean) {
   botEnabled = enabled;
   localStorage.setItem('tradingBotRunning', String(enabled));
+  syncTradingBotSettings();
   ensureSignalLoop();
+}
+
+export async function syncTradingBotSettings() {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await (supabase as any).from('trading_bot_settings').upsert({
+      user_id: user.id,
+      bot_enabled: botEnabled,
+      telegram_enabled: telegramEnabled,
+      interval_seconds: 60,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id' });
+  } catch (error) {
+    console.error('Failed to sync trading bot settings:', error);
+  }
+}
+
+function isMarketOpenForSymbol(symbol: string, at: Date) {
+  const clean = symbol.replace('/', '').toUpperCase();
+  const day = at.getUTCDay();
+  const isWeekday = day >= 1 && day <= 5;
+  if (['BTCUSD', 'ETHUSD', 'SOLUSD', 'BNBUSD', 'XRPUSD'].includes(clean)) return true;
+  if (clean.length === 6) return isWeekday;
+  return isWeekday;
 }
 
 export function onSignalsUpdate(listener: (signals: UnifiedSignal[]) => void) {
@@ -260,14 +288,20 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
     if (strategyError) throw strategyError;
     if (!activeStrategies?.length) return [];
 
+    const aiSoloActive = activeStrategies.some((strategy) => strategy.ai_auto_select);
     const referencedModelIds = Array.from(
       new Set(activeStrategies.flatMap((strategy) => strategy.model_ids || []))
     );
 
-    const modelResult = referencedModelIds.length > 0
+    const modelResult = aiSoloActive
       ? await supabase
           .from('ml_models')
-          .select('id, name, type, accuracy, is_active')
+          .select('id, name, type, accuracy, is_active, params')
+          .eq('is_active', true)
+      : referencedModelIds.length > 0
+      ? await supabase
+          .from('ml_models')
+          .select('id, name, type, accuracy, is_active, params')
           .in('id', referencedModelIds)
           .eq('is_active', true)
       : { data: [], error: null };
@@ -280,7 +314,7 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
     const allSymbols = [
       'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'NZD/USD',
       'BTC/USD', 'ETH/USD', 'XAU/USD', 'US500', 'US30', 'USOIL'
-    ];
+    ].filter(symbol => isMarketOpenForSymbol(symbol, new Date()));
     
     const { data: quotesData } = await supabase.functions.invoke('fetch-market-quotes', {
       body: { symbols: allSymbols.join(',') }
@@ -319,7 +353,9 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
 
       const displaySymbol = symbol.includes('/') ? symbol : (symbol.length === 6 ? symbol.slice(0, 3) + '/' + symbol.slice(3) : symbol);
 
-      const matchingStrategies = activeStrategies.filter((strategy) => {
+      const aiSoloStrategy = activeStrategies.find((strategy) => strategy.ai_auto_select);
+      const strategiesForSymbol = aiSoloStrategy ? [aiSoloStrategy] : activeStrategies;
+      const matchingStrategies = strategiesForSymbol.filter((strategy) => {
         const assets = strategy.assets || [];
         if (assets.length === 0) return true;
 
@@ -404,7 +440,7 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
 
       // AI prediction or technical analysis decision
       const aiPred = aiSignals.find((p: any) => p.symbol === symbol || p.symbol === displaySymbol);
-      const chosenStrategy = matchingStrategies.find((strategy) => strategy.ai_auto_select) || matchingStrategies[0];
+      const chosenStrategy = aiSoloStrategy || matchingStrategies[0];
       const selectedIndicators = chosenStrategy.indicators?.length
         ? chosenStrategy.indicators
         : ['RSI', 'MACD', 'EMA', 'ADX', 'Stochastic'];
@@ -453,8 +489,8 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
         type = modelVote.type;
         confidence = modelVote.confidence;
       } else if (chosenStrategy.ai_auto_select && aiPred) {
-        shouldSignal = aiPred.confidence > 0.65;
-        type = aiPred.direction === 'up' ? 'BUY' : 'SELL';
+        shouldSignal = aiPred.confidence > 0.58;
+        type = aiPred.direction === 'down' || aiPred.prediction === 'SELL' ? 'SELL' : 'BUY';
         confidence = aiPred.confidence;
       } else {
         const strongestVote = Math.max(bullishVotes, bearishVotes);

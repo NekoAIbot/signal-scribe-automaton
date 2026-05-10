@@ -28,7 +28,7 @@ import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { AdminRoute } from './components/auth/AdminRoute';
 import { useScrollToTop } from './hooks/useScrollToTop';
 import { useAuth } from './contexts/AuthContext';
-import { ensureSignalLoop, setBotEnabled, setTelegramEnabled } from './services/unifiedSignalService';
+import { ensureSignalLoop, setBotEnabled, setTelegramEnabled, syncTradingBotSettings } from './services/unifiedSignalService';
 
 // Initialize React Query client
 const queryClient = new QueryClient({
@@ -53,6 +53,7 @@ function SignalRuntime() {
     if (!isAuthenticated) return;
     setTelegramEnabled(true);
     setBotEnabled(true);
+    syncTradingBotSettings();
     ensureSignalLoop();
     window.dispatchEvent(new Event('telegram-state-change'));
     window.dispatchEvent(new Event('bot-state-change'));

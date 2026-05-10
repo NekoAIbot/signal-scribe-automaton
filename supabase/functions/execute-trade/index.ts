@@ -56,34 +56,42 @@ serve(async (req) => {
   );
 
   try {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      timeline.push('auth', 'failed', 'Missing Authorization header');
-      return jsonResponse({ success: false, error: 'Unauthorized', timeline: timeline.events }, corsHeaders);
-    }
-
-    const authClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
     let userId = '';
-    const { data: { user }, error: userError } = await authClient.auth.getUser();
-    if (user?.id) {
-      userId = user.id;
+    const internalUserId = req.headers.get('x-internal-user-id');
+    const internalSecret = req.headers.get('x-trading-bot-secret');
+
+    if (internalUserId && internalSecret === Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')) {
+      userId = internalUserId;
+      timeline.push('auth', 'success', `Authenticated scheduled bot for ${userId.slice(0, 8)}…`);
     } else {
-      if (userError) console.error('Primary auth check failed:', userError.message);
-      const token = authHeader.replace('Bearer ', '');
-      const { data: { user: verifiedUser }, error: verifiedUserError } =
-        await serviceClient.auth.getUser(token);
-      if (verifiedUserError || !verifiedUser) {
-        timeline.push('auth', 'failed', verifiedUserError?.message || 'Auth failed');
+      const authHeader = req.headers.get('Authorization');
+      if (!authHeader?.startsWith('Bearer ')) {
+        timeline.push('auth', 'failed', 'Missing Authorization header');
         return jsonResponse({ success: false, error: 'Unauthorized', timeline: timeline.events }, corsHeaders);
       }
-      userId = verifiedUser.id;
+
+      const authClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        { global: { headers: { Authorization: authHeader } } }
+      );
+
+      const { data: { user }, error: userError } = await authClient.auth.getUser();
+      if (user?.id) {
+        userId = user.id;
+      } else {
+        if (userError) console.error('Primary auth check failed:', userError.message);
+        const token = authHeader.replace('Bearer ', '');
+        const { data: { user: verifiedUser }, error: verifiedUserError } =
+          await serviceClient.auth.getUser(token);
+        if (verifiedUserError || !verifiedUser) {
+          timeline.push('auth', 'failed', verifiedUserError?.message || 'Auth failed');
+          return jsonResponse({ success: false, error: 'Unauthorized', timeline: timeline.events }, corsHeaders);
+        }
+        userId = verifiedUser.id;
+      }
+      timeline.push('auth', 'success', `Authenticated user ${userId.slice(0, 8)}…`);
     }
-    timeline.push('auth', 'success', `Authenticated user ${userId.slice(0, 8)}…`);
 
     const requestData = await req.json();
     console.log('Executing trade:', JSON.stringify(requestData));

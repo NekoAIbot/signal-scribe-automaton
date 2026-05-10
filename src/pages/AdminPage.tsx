@@ -239,24 +239,18 @@ const AdminPage = () => {
       }
 
       await Promise.all(
-        strategies
-          .filter(strategy => uniqueStrategyIds.includes(strategy.id))
-          .map(strategy =>
-            updateStrategy({
-              ...strategy,
-              is_active: true,
-              model_ids: uniqueModelIds.length > 0
-                ? Array.from(new Set([
-                    ...(strategy.model_ids || (strategy.model_id ? [strategy.model_id] : [])),
-                    ...uniqueModelIds,
-                  ]))
-                : strategy.model_ids || [],
-            })
-          )
+        strategies.map(strategy =>
+          updateStrategy({
+            ...strategy,
+            is_active: uniqueStrategyIds.includes(strategy.id),
+            ai_auto_select: uniqueStrategyIds.includes(strategy.id),
+            model_ids: [],
+          })
+        )
       );
 
       await loadAllData();
-      toast.success('AI selections applied and your existing manual choices were preserved.');
+      toast.success('AI strategy solo mode enabled. Manual strategies are paused while AI auto-selection is active.');
     } catch (error) {
       console.error('Error applying AI recommendations:', error);
       toast.error('Failed to apply recommendations');

@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.prop-risk-monitor]
 verify_jwt = false
+
+[functions.run-trading-bot]
+verify_jwt = false

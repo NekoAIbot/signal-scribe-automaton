@@ -149,7 +149,63 @@ Return JSON: {"overall":<-1 to 1>,"twitter":<-1 to 1>,"news":<-1 to 1>,"technica
 }
 
 async function generateMarketPrediction(data: any, supabaseClient: any, userId: string | null) {
-  const symbol = data.symbol || 'EUR/USD';
+  const symbols = Array.isArray(data.symbols) && data.symbols.length > 0
+    ? data.symbols
+    : [data.symbol || 'EUR/USD'];
+  const quotes = data.quotes || {};
+  const currentTimeUtc = data.currentTimeUtc || new Date().toISOString();
+  const marketSession = data.marketSession || 'Current Session';
+
+  if (symbols.length > 1 || Object.keys(quotes).length > 0) {
+    const predictions = symbols.map((symbol: string) => {
+      const quote = quotes[symbol] || quotes[String(symbol).replace('/', '')] || {};
+      const bid = Number(quote.bid || quote.price || 0);
+      const ask = Number(quote.ask || quote.price || 0);
+      const mid = bid && ask ? (bid + ask) / 2 : Number(quote.price || 0);
+      const spread = bid && ask ? Math.abs(ask - bid) : 0;
+      const momentum = Number(quote.percent_change || quote.change || 0);
+      const direction = momentum < 0 ? 'down' : 'up';
+      const confidence = Math.max(0.58, Math.min(0.82, 0.62 + Math.min(Math.abs(momentum) / 10, 0.12) - Math.min(spread / Math.max(mid, 1), 0.04)));
+      return {
+        symbol,
+        direction,
+        prediction: direction === 'up' ? 'BUY' : 'SELL',
+        confidence,
+        advice: `${marketSession} live quote reviewed at ${currentTimeUtc}; ${direction === 'up' ? 'upside' : 'downside'} bias from current market condition.`,
+      };
+    });
+
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    if (LOVABLE_API_KEY && data.aiSolo) {
+      try {
+        const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'google/gemini-2.5-flash-lite',
+            messages: [
+              { role: 'system', content: 'You are a live market AI strategy engine. Return ONLY JSON: {"predictions":[{"symbol":"EURUSD","direction":"up|down","confidence":0.65,"advice":"brief current-condition reason"}]}' },
+              { role: 'user', content: JSON.stringify({ currentTimeUtc, marketSession, quotes, strategies: data.strategyIds, models: data.modelIds }) }
+            ],
+            response_format: { type: 'json_object' }
+          })
+        });
+        if (aiResponse.ok) {
+          const aiData = await aiResponse.json();
+          const parsed = JSON.parse(aiData.choices?.[0]?.message?.content || '{}');
+          if (Array.isArray(parsed.predictions) && parsed.predictions.length > 0) {
+            return { success: true, predictions: parsed.predictions };
+          }
+        }
+      } catch (e) {
+        console.error('AI market prediction error:', e);
+      }
+    }
+
+    return { success: true, predictions };
+  }
+
+  const symbol = symbols[0];
 
   // Get recent signals for this symbol
   const { data: signals } = await supabaseClient
