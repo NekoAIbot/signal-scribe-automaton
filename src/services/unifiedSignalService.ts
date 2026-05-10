@@ -338,7 +338,9 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
 
       const displaySymbol = symbol.includes('/') ? symbol : (symbol.length === 6 ? symbol.slice(0, 3) + '/' + symbol.slice(3) : symbol);
 
-      const matchingStrategies = activeStrategies.filter((strategy) => {
+      const aiSoloStrategy = activeStrategies.find((strategy) => strategy.ai_auto_select);
+      const strategiesForSymbol = aiSoloStrategy ? [aiSoloStrategy] : activeStrategies;
+      const matchingStrategies = strategiesForSymbol.filter((strategy) => {
         const assets = strategy.assets || [];
         if (assets.length === 0) return true;
 
@@ -423,7 +425,7 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
 
       // AI prediction or technical analysis decision
       const aiPred = aiSignals.find((p: any) => p.symbol === symbol || p.symbol === displaySymbol);
-      const chosenStrategy = matchingStrategies.find((strategy) => strategy.ai_auto_select) || matchingStrategies[0];
+      const chosenStrategy = aiSoloStrategy || matchingStrategies[0];
       const selectedIndicators = chosenStrategy.indicators?.length
         ? chosenStrategy.indicators
         : ['RSI', 'MACD', 'EMA', 'ADX', 'Stochastic'];
@@ -472,8 +474,8 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
         type = modelVote.type;
         confidence = modelVote.confidence;
       } else if (chosenStrategy.ai_auto_select && aiPred) {
-        shouldSignal = aiPred.confidence > 0.65;
-        type = aiPred.direction === 'up' ? 'BUY' : 'SELL';
+        shouldSignal = aiPred.confidence > 0.58;
+        type = aiPred.direction === 'down' || aiPred.prediction === 'SELL' ? 'SELL' : 'BUY';
         confidence = aiPred.confidence;
       } else {
         const strongestVote = Math.max(bullishVotes, bearishVotes);
