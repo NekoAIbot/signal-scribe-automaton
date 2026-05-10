@@ -394,6 +394,33 @@ export type Database = {
         }
         Relationships: []
       }
+      trading_bot_settings: {
+        Row: {
+          bot_enabled: boolean
+          created_at: string
+          interval_seconds: number
+          telegram_enabled: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          bot_enabled?: boolean
+          created_at?: string
+          interval_seconds?: number
+          telegram_enabled?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          bot_enabled?: boolean
+          created_at?: string
+          interval_seconds?: number
+          telegram_enabled?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       trading_signals: {
         Row: {
           confidence: number | null
