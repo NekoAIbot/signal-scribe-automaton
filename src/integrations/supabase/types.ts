@@ -112,6 +112,7 @@ export type Database = {
           id: string
           lot_size: number | null
           model_id: string | null
+          model_version: string | null
           request_params: Json
           retry_of: string | null
           status: string | null
@@ -135,6 +136,7 @@ export type Database = {
           id?: string
           lot_size?: number | null
           model_id?: string | null
+          model_version?: string | null
           request_params?: Json
           retry_of?: string | null
           status?: string | null
@@ -158,6 +160,7 @@ export type Database = {
           id?: string
           lot_size?: number | null
           model_id?: string | null
+          model_version?: string | null
           request_params?: Json
           retry_of?: string | null
           status?: string | null
@@ -378,6 +381,7 @@ export type Database = {
           last_execution_status: string | null
           lot_size: number
           model_id: string | null
+          model_version: string | null
           open_time: string
           profit: number | null
           status: string
@@ -404,6 +408,7 @@ export type Database = {
           last_execution_status?: string | null
           lot_size?: number
           model_id?: string | null
+          model_version?: string | null
           open_time?: string
           profit?: number | null
           status?: string
@@ -430,6 +435,7 @@ export type Database = {
           last_execution_status?: string | null
           lot_size?: number
           model_id?: string | null
+          model_version?: string | null
           open_time?: string
           profit?: number | null
           status?: string
@@ -481,6 +487,7 @@ export type Database = {
           id: string
           is_active: boolean | null
           model_id: string | null
+          model_version: string | null
           signal_type: Database["public"]["Enums"]["signal_type"]
           status: string | null
           stop_loss: number | null
@@ -498,6 +505,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           model_id?: string | null
+          model_version?: string | null
           signal_type: Database["public"]["Enums"]["signal_type"]
           status?: string | null
           stop_loss?: number | null
@@ -515,6 +523,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           model_id?: string | null
+          model_version?: string | null
           signal_type?: Database["public"]["Enums"]["signal_type"]
           status?: string | null
           stop_loss?: number | null
