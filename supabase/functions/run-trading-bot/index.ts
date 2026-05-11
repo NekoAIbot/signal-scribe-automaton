@@ -98,8 +98,9 @@ async function runForUser(client: any, supabaseUrl: string, anonKey: string, ser
     }));
 
     const executed = outcomes.filter((outcome: any) => outcome.status === "fulfilled" && outcome.value.executed).length;
+    const retraining = await triggerAndProcessRetraining(client, supabaseUrl, anonKey, serviceKey, userId, timeline);
     timeline.push({ stage: "cycle", status: "success", at: nowIso(), message: `Generated ${signals.length}, executed ${executed}` });
-    return { userId, generated: signals.length, executed, telegramSent: setting.telegram_enabled ? signals.length : 0, timeline };
+    return { userId, generated: signals.length, executed, telegramSent: setting.telegram_enabled ? signals.length : 0, retraining, timeline };
   } catch (error) {
     timeline.push({ stage: "cycle", status: "failed", at: nowIso(), message: error instanceof Error ? error.message : "Unknown error" });
     console.error("runForUser failed:", error);
@@ -125,7 +126,7 @@ async function generateSignalsForUser(client: any, supabaseUrl: string, anonKey:
   const referencedModelIds = Array.from(new Set(usableStrategies.flatMap((strategy: any) => strategy.model_ids || [])));
   const { data: userModels, error: modelError } = await client
     .from("ml_models")
-    .select("id, name, type, accuracy, is_active, params")
+      .select("id, name, type, accuracy, version, is_active, params")
     .eq("user_id", userId)
     .eq("is_active", true);
   if (modelError) throw modelError;
@@ -189,6 +190,7 @@ async function generateSignalsForUser(client: any, supabaseUrl: string, anonKey:
       strategy: aiSoloStrategy ? `AI Strategy · ${strategy.name}` : strategy.name,
       strategyId: strategy.id,
       modelId: selectedModel?.id || null,
+      modelVersion: selectedModel?.version || null,
       modelUsed: selectedModel ? `${selectedModel.name} · ${selectedModel.type}` : "AI Market Strategy",
       assetClass: classifyAsset(symbol),
       indicators,
