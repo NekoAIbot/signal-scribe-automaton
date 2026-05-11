@@ -217,6 +217,57 @@ export type Database = {
         }
         Relationships: []
       }
+      model_versions: {
+        Row: {
+          activated_for_signals_at: string
+          created_at: string
+          executed_trade_count: number
+          id: string
+          metrics: Json
+          model_id: string
+          model_snapshot: Json
+          previous_version: string | null
+          trade_sample_window_end: string | null
+          trade_sample_window_start: string | null
+          trained_at: string
+          trigger_reason: string
+          user_id: string
+          version: string
+        }
+        Insert: {
+          activated_for_signals_at?: string
+          created_at?: string
+          executed_trade_count?: number
+          id?: string
+          metrics?: Json
+          model_id: string
+          model_snapshot?: Json
+          previous_version?: string | null
+          trade_sample_window_end?: string | null
+          trade_sample_window_start?: string | null
+          trained_at?: string
+          trigger_reason?: string
+          user_id: string
+          version: string
+        }
+        Update: {
+          activated_for_signals_at?: string
+          created_at?: string
+          executed_trade_count?: number
+          id?: string
+          metrics?: Json
+          model_id?: string
+          model_snapshot?: Json
+          previous_version?: string | null
+          trade_sample_window_end?: string | null
+          trade_sample_window_start?: string | null
+          trained_at?: string
+          trigger_reason?: string
+          user_id?: string
+          version?: string
+        }
+        Relationships: []
+      }
       price_alerts: {
         Row: {
           condition: string
