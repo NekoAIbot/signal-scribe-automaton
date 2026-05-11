@@ -272,6 +272,7 @@ async function writeAuditLog(client: ReturnType<typeof createClient>, args: {
       take_profit: args.requestData?.takeProfit ?? null,
       strategy_id: args.requestData?.strategyId || null,
       model_id: args.requestData?.modelId || null,
+      model_version: args.requestData?.modelVersion || null,
       trade_id: args.tradeId || null,
       retry_of: args.retryOf || null,
       success: args.success,
