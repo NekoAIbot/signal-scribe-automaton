@@ -334,6 +334,87 @@ async function getMarketAdvice(supabaseUrl: string, anonKey: string, quotes: any
   }
 }
 
+async function triggerAndProcessRetraining(client: any, supabaseUrl: string, anonKey: string, serviceKey: string, userId: string, timeline: TimelineEvent[]) {
+  const threshold = Math.max(3, Number(Deno.env.get("MODEL_RETRAIN_TRADE_THRESHOLD") || 10));
+  const summary = { queued: 0, completed: 0, threshold };
+
+  const { data: models } = await client
+    .from("ml_models")
+    .select("id, name, type, version, indicators, params, last_trained_at")
+    .eq("user_id", userId)
+    .eq("is_active", true);
+
+  for (const model of models || []) {
+    const { data: latestVersion } = await client
+      .from("model_versions")
+      .select("trained_at")
+      .eq("model_id", model.id)
+      .order("trained_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const windowStart = latestVersion?.trained_at || model.last_trained_at || new Date(Date.now() - 30 * 86400000).toISOString();
+    const { count } = await client
+      .from("trades")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("model_id", model.id)
+      .eq("last_execution_status", "filled")
+      .gte("created_at", windowStart);
+
+    if ((count || 0) < threshold) continue;
+
+    const { error } = await client.from("model_retraining_jobs").insert({
+      user_id: userId,
+      model_id: model.id,
+      status: "pending",
+      trigger_reason: "executed_trade_threshold",
+      triggering_trade_count: count,
+      trade_sample_window_start: windowStart,
+      trade_sample_window_end: nowIso(),
+      metadata: { threshold, modelName: model.name, previousVersion: model.version },
+    });
+    if (!error) summary.queued += 1;
+  }
+
+  const { data: jobs } = await client
+    .from("model_retraining_jobs")
+    .select("*, ml_models: model_id(id, name, type, version, indicators, params)")
+    .eq("user_id", userId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: true })
+    .limit(2);
+
+  for (const job of jobs || []) {
+    await client.from("model_retraining_jobs").update({ status: "processing", started_at: nowIso() }).eq("id", job.id);
+    try {
+      const model = job.ml_models || {};
+      const result = await invokeFunction(supabaseUrl, anonKey, "train-ml-model", {
+        modelId: job.model_id,
+        modelType: model.type || "LSTM",
+        name: model.name,
+        indicators: model.indicators || undefined,
+        epochs: 60,
+        learningRate: model.params?.learningRate || 0.001,
+        batchSize: model.params?.batchSize || 32,
+        dataWindow: 250,
+        datasetSize: Math.max(500, Number(job.triggering_trade_count || 0) * 50),
+        triggerReason: "executed_trade_threshold",
+        executedTradeCount: job.triggering_trade_count,
+        tradeSampleWindowStart: job.trade_sample_window_start,
+        tradeSampleWindowEnd: job.trade_sample_window_end,
+        previousVersion: model.version,
+      }, { "x-internal-user-id": userId, "x-trading-bot-secret": serviceKey });
+      await client.from("model_retraining_jobs").update({ status: "completed", completed_at: nowIso(), result_version: result?.model?.version || null, metadata: { ...(job.metadata || {}), resultModel: result?.model || null } }).eq("id", job.id);
+      summary.completed += 1;
+    } catch (error) {
+      await client.from("model_retraining_jobs").update({ status: "failed", completed_at: nowIso(), error_message: error instanceof Error ? error.message : String(error) }).eq("id", job.id);
+    }
+  }
+
+  timeline.push({ stage: "model_retraining", status: "success", at: nowIso(), message: `Queued ${summary.queued}, completed ${summary.completed}; threshold ${threshold} executed trades` });
+  return summary;
+}
+
 async function sendTelegram(supabaseUrl: string, anonKey: string, signal: any) {
   return invokeFunction(supabaseUrl, anonKey, "send-notification", {
     type: "trade_alert",
