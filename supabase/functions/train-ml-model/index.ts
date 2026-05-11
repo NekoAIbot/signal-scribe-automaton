@@ -17,7 +17,12 @@ serve(async (req) => {
     
     let userId: string;
     
-    if (authHeader?.startsWith('Bearer ')) {
+    const internalUserId = req.headers.get('x-internal-user-id');
+    const internalSecret = req.headers.get('x-trading-bot-secret');
+
+    if (internalUserId && internalSecret === Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')) {
+      userId = internalUserId;
+    } else if (authHeader?.startsWith('Bearer ')) {
       const supabaseClient = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -213,6 +218,21 @@ Respond ONLY with valid JSON:
       if (error) throw error;
       model = data;
     }
+
+    await supabaseClient.from('model_versions').upsert({
+      user_id: user.id,
+      model_id: model.id,
+      version: model.version || '1.0',
+      previous_version: params.previousVersion || null,
+      trained_at: model.last_trained_at || new Date().toISOString(),
+      activated_for_signals_at: new Date().toISOString(),
+      trigger_reason: params.triggerReason || 'manual',
+      executed_trade_count: Number(params.executedTradeCount || 0),
+      trade_sample_window_start: params.tradeSampleWindowStart || null,
+      trade_sample_window_end: params.tradeSampleWindowEnd || null,
+      metrics: trainingStats.metrics || {},
+      model_snapshot: { name: model.name, type: model.type, accuracy: model.accuracy, indicators, params: trainingStats },
+    }, { onConflict: 'model_id,version' });
 
     return new Response(JSON.stringify({
       success: true,
