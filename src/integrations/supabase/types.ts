@@ -112,6 +112,7 @@ export type Database = {
           id: string
           lot_size: number | null
           model_id: string | null
+          model_version: string | null
           request_params: Json
           retry_of: string | null
           status: string | null
@@ -135,6 +136,7 @@ export type Database = {
           id?: string
           lot_size?: number | null
           model_id?: string | null
+          model_version?: string | null
           request_params?: Json
           retry_of?: string | null
           status?: string | null
@@ -158,6 +160,7 @@ export type Database = {
           id?: string
           lot_size?: number | null
           model_id?: string | null
+          model_version?: string | null
           request_params?: Json
           retry_of?: string | null
           status?: string | null
@@ -214,6 +217,111 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
           version?: string | null
+        }
+        Relationships: []
+      }
+      model_retraining_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          metadata: Json
+          model_id: string
+          result_version: string | null
+          started_at: string | null
+          status: string
+          trade_sample_window_end: string | null
+          trade_sample_window_start: string | null
+          trigger_reason: string
+          triggering_trade_count: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          metadata?: Json
+          model_id: string
+          result_version?: string | null
+          started_at?: string | null
+          status?: string
+          trade_sample_window_end?: string | null
+          trade_sample_window_start?: string | null
+          trigger_reason?: string
+          triggering_trade_count?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          metadata?: Json
+          model_id?: string
+          result_version?: string | null
+          started_at?: string | null
+          status?: string
+          trade_sample_window_end?: string | null
+          trade_sample_window_start?: string | null
+          trigger_reason?: string
+          triggering_trade_count?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      model_versions: {
+        Row: {
+          activated_for_signals_at: string
+          created_at: string
+          executed_trade_count: number
+          id: string
+          metrics: Json
+          model_id: string
+          model_snapshot: Json
+          previous_version: string | null
+          trade_sample_window_end: string | null
+          trade_sample_window_start: string | null
+          trained_at: string
+          trigger_reason: string
+          user_id: string
+          version: string
+        }
+        Insert: {
+          activated_for_signals_at?: string
+          created_at?: string
+          executed_trade_count?: number
+          id?: string
+          metrics?: Json
+          model_id: string
+          model_snapshot?: Json
+          previous_version?: string | null
+          trade_sample_window_end?: string | null
+          trade_sample_window_start?: string | null
+          trained_at?: string
+          trigger_reason?: string
+          user_id: string
+          version: string
+        }
+        Update: {
+          activated_for_signals_at?: string
+          created_at?: string
+          executed_trade_count?: number
+          id?: string
+          metrics?: Json
+          model_id?: string
+          model_snapshot?: Json
+          previous_version?: string | null
+          trade_sample_window_end?: string | null
+          trade_sample_window_start?: string | null
+          trained_at?: string
+          trigger_reason?: string
+          user_id?: string
+          version?: string
         }
         Relationships: []
       }
@@ -327,6 +435,7 @@ export type Database = {
           last_execution_status: string | null
           lot_size: number
           model_id: string | null
+          model_version: string | null
           open_time: string
           profit: number | null
           status: string
@@ -353,6 +462,7 @@ export type Database = {
           last_execution_status?: string | null
           lot_size?: number
           model_id?: string | null
+          model_version?: string | null
           open_time?: string
           profit?: number | null
           status?: string
@@ -379,6 +489,7 @@ export type Database = {
           last_execution_status?: string | null
           lot_size?: number
           model_id?: string | null
+          model_version?: string | null
           open_time?: string
           profit?: number | null
           status?: string
@@ -430,6 +541,7 @@ export type Database = {
           id: string
           is_active: boolean | null
           model_id: string | null
+          model_version: string | null
           signal_type: Database["public"]["Enums"]["signal_type"]
           status: string | null
           stop_loss: number | null
@@ -447,6 +559,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           model_id?: string | null
+          model_version?: string | null
           signal_type: Database["public"]["Enums"]["signal_type"]
           status?: string | null
           stop_loss?: number | null
@@ -464,6 +577,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           model_id?: string | null
+          model_version?: string | null
           signal_type?: Database["public"]["Enums"]["signal_type"]
           status?: string | null
           stop_loss?: number | null
