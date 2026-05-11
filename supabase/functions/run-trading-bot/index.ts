@@ -378,7 +378,7 @@ async function triggerAndProcessRetraining(client: any, supabaseUrl: string, ano
 
   const { data: jobs } = await client
     .from("model_retraining_jobs")
-    .select("*, ml_models: model_id(id, name, type, version, indicators, params)")
+    .select("*")
     .eq("user_id", userId)
     .eq("status", "pending")
     .order("created_at", { ascending: true })
@@ -387,7 +387,13 @@ async function triggerAndProcessRetraining(client: any, supabaseUrl: string, ano
   for (const job of jobs || []) {
     await client.from("model_retraining_jobs").update({ status: "processing", started_at: nowIso() }).eq("id", job.id);
     try {
-      const model = job.ml_models || {};
+      const { data: model } = await client
+        .from("ml_models")
+        .select("id, name, type, version, indicators, params")
+        .eq("id", job.model_id)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (!model) throw new Error("Retraining model was not found");
       const result = await invokeFunction(supabaseUrl, anonKey, "train-ml-model", {
         modelId: job.model_id,
         modelType: model.type || "LSTM",
