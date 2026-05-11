@@ -220,6 +220,60 @@ export type Database = {
         }
         Relationships: []
       }
+      model_retraining_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          metadata: Json
+          model_id: string
+          result_version: string | null
+          started_at: string | null
+          status: string
+          trade_sample_window_end: string | null
+          trade_sample_window_start: string | null
+          trigger_reason: string
+          triggering_trade_count: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          metadata?: Json
+          model_id: string
+          result_version?: string | null
+          started_at?: string | null
+          status?: string
+          trade_sample_window_end?: string | null
+          trade_sample_window_start?: string | null
+          trigger_reason?: string
+          triggering_trade_count?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          metadata?: Json
+          model_id?: string
+          result_version?: string | null
+          started_at?: string | null
+          status?: string
+          trade_sample_window_end?: string | null
+          trade_sample_window_start?: string | null
+          trigger_reason?: string
+          triggering_trade_count?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       model_versions: {
         Row: {
           activated_for_signals_at: string
