@@ -14,6 +14,47 @@ const normalizeSymbolForProvider = (symbol: string) => {
 const normalizeSymbolKey = (symbol: string) => symbol.replace('/', '').toUpperCase();
 type Quote = { bid: number; ask: number; timestamp: number; source?: string };
 
+const toYahooSymbol = (symbol: string) => {
+  const clean = normalizeSymbolKey(symbol);
+  if (clean === 'BTCUSD') return 'BTC-USD';
+  if (clean === 'ETHUSD') return 'ETH-USD';
+  if (clean === 'XAUUSD') return 'GC=F';
+  if (clean === 'XAGUSD') return 'SI=F';
+  if (clean === 'USOIL') return 'CL=F';
+  if (clean === 'US500') return '^GSPC';
+  if (clean === 'US30') return '^DJI';
+  if (clean === 'NAS100') return '^IXIC';
+  if (clean.length === 6) return `${clean}=X`;
+  return clean;
+};
+
+async function fetchYahooMarketData(symbol: string, includeCandles: boolean): Promise<{ quote?: Quote; candles?: number[] }> {
+  try {
+    const yahooSymbol = toYahooSymbol(symbol);
+    const range = includeCandles ? '2d' : '1d';
+    const interval = includeCandles ? '5m' : '1m';
+    const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?range=${range}&interval=${interval}`);
+    if (!res.ok) return {};
+    const json = await res.json();
+    const result = json?.chart?.result?.[0];
+    const meta = result?.meta || {};
+    const closes = (result?.indicators?.quote?.[0]?.close || [])
+      .map((value: unknown) => Number(value))
+      .filter((value: number) => Number.isFinite(value) && value > 0);
+    const price = Number(meta.regularMarketPrice || meta.previousClose || closes[closes.length - 1] || 0);
+    if (!price) return { candles: closes };
+    const clean = normalizeSymbolKey(symbol);
+    const spread = clean.includes('JPY') ? 0.01 : clean.length === 6 ? 0.0002 : price * 0.0006;
+    return {
+      quote: { bid: price - spread / 2, ask: price + spread / 2, timestamp: Date.now(), source: 'yahoo' },
+      candles: closes,
+    };
+  } catch (error) {
+    console.error(`Yahoo fallback failed for ${symbol}:`, error);
+    return {};
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
