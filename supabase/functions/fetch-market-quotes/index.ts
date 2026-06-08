@@ -55,6 +55,80 @@ async function fetchYahooMarketData(symbol: string, includeCandles: boolean): Pr
   }
 }
 
+async function fetchCryptoMarketData(symbol: string, includeCandles: boolean): Promise<{ quote?: Quote; candles?: number[] }> {
+  const clean = normalizeSymbolKey(symbol);
+  const base = clean.replace(/USD$/, '');
+  if (!['BTC', 'ETH', 'SOL', 'BNB', 'XRP'].includes(base) || !clean.endsWith('USD')) return {};
+
+  const binanceSymbol = `${base}USDT`;
+  const [bookRes, candleRes] = await Promise.all([
+    fetch(`https://api.binance.com/api/v3/ticker/bookTicker?symbol=${binanceSymbol}`).catch(() => null),
+    includeCandles ? fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=5m&limit=100`).catch(() => null) : Promise.resolve(null),
+  ]);
+
+  const result: { quote?: Quote; candles?: number[] } = {};
+  if (bookRes?.ok) {
+    const book = await bookRes.json();
+    const bid = Number(book.bidPrice);
+    const ask = Number(book.askPrice);
+    if (bid > 0 && ask > 0) result.quote = { bid, ask, timestamp: Date.now(), source: 'binance' };
+  }
+  if (includeCandles && candleRes?.ok) {
+    const rows = await candleRes.json();
+    const closes = Array.isArray(rows)
+      ? rows.map((row: any[]) => Number(row?.[4])).filter((value: number) => Number.isFinite(value) && value > 0)
+      : [];
+    if (closes.length >= 30) result.candles = closes;
+  }
+  return result;
+}
+
+async function fetchForexMarketData(symbol: string, includeCandles: boolean): Promise<{ quote?: Quote; candles?: number[] }> {
+  const clean = normalizeSymbolKey(symbol);
+  if (clean.length !== 6) return {};
+  const base = clean.slice(0, 3);
+  const quoteCurrency = clean.slice(3, 6);
+  const result: { quote?: Quote; candles?: number[] } = {};
+
+  const latestRes = await fetch(`https://api.frankfurter.dev/v1/latest?base=${base}&symbols=${quoteCurrency}`).catch(() => null);
+  if (latestRes?.ok) {
+    const latest = await latestRes.json();
+    const price = Number(latest?.rates?.[quoteCurrency]);
+    if (price > 0) {
+      const spread = clean.includes('JPY') ? 0.01 : 0.0002;
+      result.quote = { bid: price - spread / 2, ask: price + spread / 2, timestamp: Date.now(), source: 'frankfurter' };
+    }
+  }
+
+  if (includeCandles) {
+    const end = new Date().toISOString().slice(0, 10);
+    const start = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+    const historyRes = await fetch(`https://api.frankfurter.dev/v1/${start}..?base=${base}&symbols=${quoteCurrency}`).catch(() => null);
+    if (historyRes?.ok) {
+      const history = await historyRes.json();
+      const closes = Object.entries(history?.rates || {})
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([, rates]: [string, any]) => Number(rates?.[quoteCurrency]))
+        .filter((value: number) => Number.isFinite(value) && value > 0);
+      if (closes.length >= 30) result.candles = closes;
+    }
+  }
+  return result;
+}
+
+async function fetchFallbackMarketData(symbol: string, includeCandles: boolean) {
+  const clean = normalizeSymbolKey(symbol);
+  if (['BTCUSD', 'ETHUSD', 'SOLUSD', 'BNBUSD', 'XRPUSD'].includes(clean)) {
+    const crypto = await fetchCryptoMarketData(symbol, includeCandles);
+    if (crypto.quote || crypto.candles?.length) return crypto;
+  }
+  if (clean.length === 6) {
+    const forex = await fetchForexMarketData(symbol, includeCandles);
+    if (forex.quote || forex.candles?.length) return forex;
+  }
+  return fetchYahooMarketData(symbol, includeCandles);
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -152,7 +226,7 @@ serve(async (req) => {
     const fallbackSymbols = Array.from(new Set([...missingSymbols, ...needsCandleFallback]));
 
     for (const symbol of fallbackSymbols.slice(0, 10)) {
-      const fallback = await fetchYahooMarketData(symbol, candles);
+      const fallback = await fetchFallbackMarketData(symbol, candles);
       const key = normalizeSymbolKey(symbol);
       if (fallback?.quote && !quotes[key]) quotes[key] = fallback.quote;
       if (candles && fallback?.candles?.length && fallback.candles.length >= 30) candleMap[key] = fallback.candles;
