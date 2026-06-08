@@ -13,6 +13,7 @@ const normalizeSymbolForProvider = (symbol: string) => {
 
 const normalizeSymbolKey = (symbol: string) => symbol.replace('/', '').toUpperCase();
 type Quote = { bid: number; ask: number; timestamp: number; source?: string };
+let trueFxCache: { at: number; rates: Record<string, Quote> } | null = null;
 
 const toYahooSymbol = (symbol: string) => {
   const clean = normalizeSymbolKey(symbol);
@@ -83,6 +84,33 @@ async function fetchCryptoMarketData(symbol: string, includeCandles: boolean): P
   return result;
 }
 
+async function fetchTrueFxQuotes(): Promise<Record<string, Quote>> {
+  if (trueFxCache && Date.now() - trueFxCache.at < 10_000) return trueFxCache.rates;
+  const res = await fetch('https://webrates.truefx.com/rates/connect.html?f=csv').catch(() => null);
+  if (!res?.ok) return {};
+  const text = await res.text();
+  const rates: Record<string, Quote> = {};
+
+  const joinPrice = (whole: string, fraction: string) => {
+    const normalizedWhole = String(whole || '').trim();
+    const normalizedFraction = String(fraction || '').trim();
+    return Number(`${normalizedWhole}${normalizedFraction}`);
+  };
+
+  for (const line of text.split(/\r?\n/)) {
+    const parts = line.split(',');
+    if (parts.length < 5 || !parts[0]?.includes('/')) continue;
+    const key = normalizeSymbolKey(parts[0]);
+    const bid = joinPrice(parts[2], parts[3]);
+    const ask = joinPrice(parts[4], parts[5]);
+    const timestamp = Number(parts[1]) || Date.now();
+    if (bid > 0 && ask > 0) rates[key] = { bid, ask, timestamp, source: 'truefx' };
+  }
+
+  trueFxCache = { at: Date.now(), rates };
+  return rates;
+}
+
 async function fetchForexMarketData(symbol: string, includeCandles: boolean): Promise<{ quote?: Quote; candles?: number[] }> {
   const clean = normalizeSymbolKey(symbol);
   if (clean.length !== 6) return {};
@@ -90,8 +118,11 @@ async function fetchForexMarketData(symbol: string, includeCandles: boolean): Pr
   const quoteCurrency = clean.slice(3, 6);
   const result: { quote?: Quote; candles?: number[] } = {};
 
-  const latestRes = await fetch(`https://api.frankfurter.dev/v1/latest?base=${base}&symbols=${quoteCurrency}`).catch(() => null);
-  if (latestRes?.ok) {
+  const trueFxQuotes = await fetchTrueFxQuotes();
+  if (trueFxQuotes[clean]) result.quote = trueFxQuotes[clean];
+
+  const latestRes = result.quote ? null : await fetch(`https://api.frankfurter.dev/v1/latest?base=${base}&symbols=${quoteCurrency}`).catch(() => null);
+  if (!result.quote && latestRes?.ok) {
     const latest = await latestRes.json();
     const price = Number(latest?.rates?.[quoteCurrency]);
     if (price > 0) {
