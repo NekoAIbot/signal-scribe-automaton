@@ -61,7 +61,7 @@ serve(async (req) => {
   }
 
   try {
-    const { symbols = '', candles = false } = await req.json().catch(() => ({}));
+    const { symbols = '', candles = false, preferTwelveData = false } = await req.json().catch(() => ({}));
     const requestedSymbols = symbols
       ? symbols.split(',').map((s: string) => s.trim()).filter(Boolean)
       : [];
@@ -75,7 +75,7 @@ serve(async (req) => {
 
     const providerSymbols = requestedSymbols.map(normalizeSymbolForProvider);
 
-    const apiKey = Deno.env.get('TWELVEDATA_API_KEY');
+    const apiKey = preferTwelveData ? Deno.env.get('TWELVEDATA_API_KEY') : '';
     let quoteJson: any = {};
     let primaryProviderAvailable = Boolean(apiKey);
     if (apiKey) {
@@ -89,7 +89,7 @@ serve(async (req) => {
         console.warn(`TwelveData quote unavailable, using Yahoo fallback: ${quoteRes.status}: ${err.slice(0, 240)}`);
       }
     } else {
-      console.warn('TWELVEDATA_API_KEY is not configured, using Yahoo fallback market data');
+      console.warn('Using Yahoo market data provider for live quotes/candles');
     }
     const quotes: Record<string, Quote> = {};
 
@@ -117,7 +117,7 @@ serve(async (req) => {
       }
     }
 
-    const responseBody: Record<string, unknown> = { quotes, source: 'twelvedata' };
+    const responseBody: Record<string, unknown> = { quotes, source: primaryProviderAvailable ? 'twelvedata' : 'yahoo' };
 
     // 2) Optional candle fetch per symbol
     const candleMap: Record<string, number[]> = {};
@@ -161,7 +161,7 @@ serve(async (req) => {
     if (fallbackSymbols.length > 0) {
       responseBody.quotes = quotes;
       responseBody.candles = candleMap;
-      responseBody.source = Object.values(quotes).some((q: any) => q.source === 'yahoo') ? 'twelvedata+yahoo' : 'twelvedata';
+      responseBody.source = primaryProviderAvailable && Object.values(quotes).some((q: any) => q.source === 'twelvedata') ? 'twelvedata+yahoo' : 'yahoo';
     }
 
     return new Response(JSON.stringify(responseBody), {
