@@ -13,6 +13,7 @@ const normalizeSymbolForProvider = (symbol: string) => {
 
 const normalizeSymbolKey = (symbol: string) => symbol.replace('/', '').toUpperCase();
 type Quote = { bid: number; ask: number; timestamp: number; source?: string };
+let trueFxCache: { at: number; rates: Record<string, Quote> } | null = null;
 
 const toYahooSymbol = (symbol: string) => {
   const clean = normalizeSymbolKey(symbol);
@@ -55,23 +56,117 @@ async function fetchYahooMarketData(symbol: string, includeCandles: boolean): Pr
   }
 }
 
+async function fetchCryptoMarketData(symbol: string, includeCandles: boolean): Promise<{ quote?: Quote; candles?: number[] }> {
+  const clean = normalizeSymbolKey(symbol);
+  const base = clean.replace(/USD$/, '');
+  if (!['BTC', 'ETH', 'SOL', 'BNB', 'XRP'].includes(base) || !clean.endsWith('USD')) return {};
+
+  const binanceSymbol = `${base}USDT`;
+  const [bookRes, candleRes] = await Promise.all([
+    fetch(`https://api.binance.com/api/v3/ticker/bookTicker?symbol=${binanceSymbol}`).catch(() => null),
+    includeCandles ? fetch(`https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=5m&limit=100`).catch(() => null) : Promise.resolve(null),
+  ]);
+
+  const result: { quote?: Quote; candles?: number[] } = {};
+  if (bookRes?.ok) {
+    const book = await bookRes.json();
+    const bid = Number(book.bidPrice);
+    const ask = Number(book.askPrice);
+    if (bid > 0 && ask > 0) result.quote = { bid, ask, timestamp: Date.now(), source: 'binance' };
+  }
+  if (includeCandles && candleRes?.ok) {
+    const rows = await candleRes.json();
+    const closes = Array.isArray(rows)
+      ? rows.map((row: any[]) => Number(row?.[4])).filter((value: number) => Number.isFinite(value) && value > 0)
+      : [];
+    if (closes.length >= 30) result.candles = closes;
+  }
+  return result;
+}
+
+async function fetchTrueFxQuotes(): Promise<Record<string, Quote>> {
+  if (trueFxCache && Date.now() - trueFxCache.at < 10_000) return trueFxCache.rates;
+  const res = await fetch('https://webrates.truefx.com/rates/connect.html?f=csv').catch(() => null);
+  if (!res?.ok) return {};
+  const text = await res.text();
+  const rates: Record<string, Quote> = {};
+
+  const joinPrice = (whole: string, fraction: string) => {
+    const normalizedWhole = String(whole || '').trim();
+    const normalizedFraction = String(fraction || '').trim();
+    return Number(`${normalizedWhole}${normalizedFraction}`);
+  };
+
+  for (const line of text.split(/\r?\n/)) {
+    const parts = line.split(',');
+    if (parts.length < 5 || !parts[0]?.includes('/')) continue;
+    const key = normalizeSymbolKey(parts[0]);
+    const bid = joinPrice(parts[2], parts[3]);
+    const ask = joinPrice(parts[4], parts[5]);
+    const timestamp = Number(parts[1]) || Date.now();
+    if (bid > 0 && ask > 0) rates[key] = { bid, ask, timestamp, source: 'truefx' };
+  }
+
+  trueFxCache = { at: Date.now(), rates };
+  return rates;
+}
+
+async function fetchForexMarketData(symbol: string, includeCandles: boolean): Promise<{ quote?: Quote; candles?: number[] }> {
+  const clean = normalizeSymbolKey(symbol);
+  if (clean.length !== 6) return {};
+  const base = clean.slice(0, 3);
+  const quoteCurrency = clean.slice(3, 6);
+  const result: { quote?: Quote; candles?: number[] } = {};
+
+  const trueFxQuotes = await fetchTrueFxQuotes();
+  if (trueFxQuotes[clean]) result.quote = trueFxQuotes[clean];
+
+  const latestRes = result.quote ? null : await fetch(`https://api.frankfurter.dev/v1/latest?base=${base}&symbols=${quoteCurrency}`).catch(() => null);
+  if (!result.quote && latestRes?.ok) {
+    const latest = await latestRes.json();
+    const price = Number(latest?.rates?.[quoteCurrency]);
+    if (price > 0) {
+      const spread = clean.includes('JPY') ? 0.01 : 0.0002;
+      result.quote = { bid: price - spread / 2, ask: price + spread / 2, timestamp: Date.now(), source: 'frankfurter' };
+    }
+  }
+
+  if (includeCandles) {
+    const end = new Date().toISOString().slice(0, 10);
+    const start = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+    const historyRes = await fetch(`https://api.frankfurter.dev/v1/${start}..?base=${base}&symbols=${quoteCurrency}`).catch(() => null);
+    if (historyRes?.ok) {
+      const history = await historyRes.json();
+      const closes = Object.entries(history?.rates || {})
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([, rates]: [string, any]) => Number(rates?.[quoteCurrency]))
+        .filter((value: number) => Number.isFinite(value) && value > 0);
+      if (closes.length >= 30) result.candles = closes;
+    }
+  }
+  return result;
+}
+
+async function fetchFallbackMarketData(symbol: string, includeCandles: boolean) {
+  const clean = normalizeSymbolKey(symbol);
+  if (['BTCUSD', 'ETHUSD', 'SOLUSD', 'BNBUSD', 'XRPUSD'].includes(clean)) {
+    const crypto = await fetchCryptoMarketData(symbol, includeCandles);
+    if (crypto.quote || crypto.candles?.length) return crypto;
+  }
+  if (clean.length === 6) {
+    const forex = await fetchForexMarketData(symbol, includeCandles);
+    if (forex.quote || forex.candles?.length) return forex;
+  }
+  return fetchYahooMarketData(symbol, includeCandles);
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const apiKey = Deno.env.get('TWELVEDATA_API_KEY');
-    if (!apiKey) {
-      return new Response(JSON.stringify({
-        error: 'TWELVEDATA_API_KEY is not configured. Real quotes cannot be fetched.'
-      }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const { symbols = '', candles = false } = await req.json().catch(() => ({}));
+    const { symbols = '', candles = false, preferTwelveData = false } = await req.json().catch(() => ({}));
     const requestedSymbols = symbols
       ? symbols.split(',').map((s: string) => s.trim()).filter(Boolean)
       : [];
@@ -85,18 +180,22 @@ serve(async (req) => {
 
     const providerSymbols = requestedSymbols.map(normalizeSymbolForProvider);
 
-    // 1) Fetch live quotes
-    const quoteUrl = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(providerSymbols.join(','))}&apikey=${apiKey}`;
-    const quoteRes = await fetch(quoteUrl);
-    if (!quoteRes.ok) {
-      const err = await quoteRes.text();
-      return new Response(JSON.stringify({ error: `Quote provider error ${quoteRes.status}: ${err}` }), {
-        status: 502,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    const apiKey = preferTwelveData ? Deno.env.get('TWELVEDATA_API_KEY') : '';
+    let quoteJson: any = {};
+    let primaryProviderAvailable = Boolean(apiKey);
+    if (apiKey) {
+      const quoteUrl = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(providerSymbols.join(','))}&apikey=${apiKey}`;
+      const quoteRes = await fetch(quoteUrl);
+      if (quoteRes.ok) {
+        quoteJson = await quoteRes.json();
+      } else {
+        primaryProviderAvailable = false;
+        const err = await quoteRes.text();
+        console.warn(`TwelveData quote unavailable, using Yahoo fallback: ${quoteRes.status}: ${err.slice(0, 240)}`);
+      }
+    } else {
+      console.warn('Using Yahoo market data provider for live quotes/candles');
     }
-
-    const quoteJson = await quoteRes.json();
     const quotes: Record<string, Quote> = {};
 
     const entries = typeof quoteJson === 'object' && quoteJson !== null
@@ -123,16 +222,20 @@ serve(async (req) => {
       }
     }
 
-    const responseBody: Record<string, unknown> = { quotes, source: 'twelvedata' };
+    const responseBody: Record<string, unknown> = { quotes, source: primaryProviderAvailable ? 'twelvedata' : 'yahoo' };
 
     // 2) Optional candle fetch per symbol
     const candleMap: Record<string, number[]> = {};
-    if (candles) {
+    if (candles && apiKey && primaryProviderAvailable) {
       for (const providerSymbol of providerSymbols.slice(0, 10)) {
         const tsRes = await fetch(
           `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(providerSymbol)}&interval=5min&outputsize=100&apikey=${apiKey}`
         );
-        if (!tsRes.ok) continue;
+        if (!tsRes.ok) {
+          const err = await tsRes.text();
+          console.warn(`TwelveData candles unavailable for ${providerSymbol}, using fallback if needed: ${tsRes.status}: ${err.slice(0, 180)}`);
+          continue;
+        }
         const tsJson = await tsRes.json();
         const values = Array.isArray(tsJson?.values) ? tsJson.values : [];
         const closes = values
@@ -154,7 +257,7 @@ serve(async (req) => {
     const fallbackSymbols = Array.from(new Set([...missingSymbols, ...needsCandleFallback]));
 
     for (const symbol of fallbackSymbols.slice(0, 10)) {
-      const fallback = await fetchYahooMarketData(symbol, candles);
+      const fallback = await fetchFallbackMarketData(symbol, candles);
       const key = normalizeSymbolKey(symbol);
       if (fallback?.quote && !quotes[key]) quotes[key] = fallback.quote;
       if (candles && fallback?.candles?.length && fallback.candles.length >= 30) candleMap[key] = fallback.candles;
@@ -163,7 +266,7 @@ serve(async (req) => {
     if (fallbackSymbols.length > 0) {
       responseBody.quotes = quotes;
       responseBody.candles = candleMap;
-      responseBody.source = Object.values(quotes).some((q: any) => q.source === 'yahoo') ? 'twelvedata+yahoo' : 'twelvedata';
+      responseBody.source = primaryProviderAvailable && Object.values(quotes).some((q: any) => q.source === 'twelvedata') ? 'twelvedata+yahoo' : 'yahoo';
     }
 
     return new Response(JSON.stringify(responseBody), {

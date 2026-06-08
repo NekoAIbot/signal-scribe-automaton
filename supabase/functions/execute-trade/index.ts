@@ -54,9 +54,12 @@ serve(async (req) => {
     Deno.env.get('SUPABASE_URL') ?? '',
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
   );
+  let userId = '';
+  let requestData: any = {};
+  let retryOf: string | null = null;
+  let mainBrokerAccount: any | null = null;
 
   try {
-    let userId = '';
     const internalUserId = req.headers.get('x-internal-user-id');
     const internalSecret = req.headers.get('x-trading-bot-secret');
 
@@ -93,9 +96,9 @@ serve(async (req) => {
       timeline.push('auth', 'success', `Authenticated user ${userId.slice(0, 8)}…`);
     }
 
-    const requestData = await req.json();
+    requestData = await req.json();
     console.log('Executing trade:', JSON.stringify(requestData));
-    const retryOf = requestData.retryOf || null;
+    retryOf = requestData.retryOf || null;
     const forceMain = requestData.forceMainBroker === true;
     if (forceMain) requestData.brokerAccountId = null;
 
@@ -108,7 +111,7 @@ serve(async (req) => {
       console.log(`MetaApi token present, length: ${METAAPI_TOKEN.length}`);
     }
 
-    const mainBrokerAccount = await resolveMainBrokerAccount(serviceClient, userId, requestData.brokerAccountId);
+    mainBrokerAccount = await resolveMainBrokerAccount(serviceClient, userId, requestData.brokerAccountId);
     if (!mainBrokerAccount) {
       timeline.push('provisioning', 'failed', 'No active main broker account found');
       await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'no_active_broker');
@@ -152,8 +155,8 @@ serve(async (req) => {
         console.error('MetaApi execution failed:', message);
         timeline.push('order', 'failed', message);
 
-        if ((message.includes('401') || message.toLowerCase().includes('auth')) && MT5_BRIDGE_URL) {
-          console.warn('MetaApi auth failed. Falling back to MT5 bridge execution.');
+        if (MT5_BRIDGE_URL) {
+          console.warn('MetaApi execution failed. Falling back to MT5 bridge execution.');
           timeline.push('order', 'started', 'Falling back to MT5 bridge');
           executionResult = await executeViaBridge(MT5_BRIDGE_URL, MT5_BRIDGE_API_KEY || '', requestData);
           timeline.push('order', 'success', `Bridge ticket ${executionResult.ticketNumber}`);
@@ -243,6 +246,18 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error executing trade:', error);
     timeline.push('failed', 'failed', (error as Error).message);
+    if (userId) {
+      await writeAuditLog(serviceClient, {
+        userId,
+        requestData,
+        timeline: timeline.events,
+        success: false,
+        status: 'execution_failed',
+        error: (error as Error).message,
+        retryOf,
+        brokerAccount: mainBrokerAccount,
+      });
+    }
     return jsonResponse({ success: false, error: (error as Error).message, timeline: timeline.events }, corsHeaders);
   }
 });
