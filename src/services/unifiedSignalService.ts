@@ -296,12 +296,12 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
     const modelResult = aiSoloActive
       ? await supabase
           .from('ml_models')
-          .select('id, name, type, accuracy, is_active, params')
+          .select('id, name, type, accuracy, version, is_active, params')
           .eq('is_active', true)
       : referencedModelIds.length > 0
       ? await supabase
           .from('ml_models')
-          .select('id, name, type, accuracy, is_active, params')
+          .select('id, name, type, accuracy, version, is_active, params')
           .in('id', referencedModelIds)
           .eq('is_active', true)
       : { data: [], error: null };
@@ -316,13 +316,15 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
       'BTC/USD', 'ETH/USD', 'XAU/USD', 'US500', 'US30', 'USOIL'
     ].filter(symbol => isMarketOpenForSymbol(symbol, new Date()));
     
-    const { data: quotesData } = await supabase.functions.invoke('fetch-market-quotes', {
-      body: { symbols: allSymbols.join(',') }
+    const { data: quotesData, error: quotesError } = await supabase.functions.invoke('fetch-market-quotes', {
+      body: { symbols: allSymbols.join(','), candles: true }
     });
 
+    if (quotesError) throw quotesError;
     if (!quotesData?.quotes) return [];
 
     const quotes = quotesData.quotes;
+    const candlesMap = quotesData.candles || {};
     const signals: UnifiedSignal[] = [];
     const now = new Date().toISOString();
 
@@ -367,17 +369,8 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
 
       if (matchingStrategies.length === 0) continue;
 
-      // Fetch real OHLC candle data for technical indicators
-      let candles: number[] = [];
-      try {
-        const { data: candleData } = await supabase.functions.invoke('fetch-market-quotes', {
-          body: { symbols: symbol.replace('/', ''), candles: true }
-        });
-        if (candleData?.candles?.[symbol.replace('/', '')]) {
-          candles = candleData.candles[symbol.replace('/', '')];
-        }
-      } catch {}
-
+      const normalizedSymbol = symbol.replace('/', '').toUpperCase();
+      const candles: number[] = candlesMap[normalizedSymbol] || [];
       if (candles.length < 30) continue;
 
       // Real RSI calculation
@@ -528,6 +521,7 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
           status: 'new',
           assetClass,
           modelId: selectedModelId,
+          modelVersion: selectedModel?.version,
           modelUsed: selectedModel ? `${selectedModel.name} · ${selectedModel.type}` : (chosenStrategy.ai_auto_select ? 'AI Auto-Selection' : 'Technical Indicators'),
           indicators: {
             rsi,
