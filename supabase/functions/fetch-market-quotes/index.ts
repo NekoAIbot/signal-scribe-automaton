@@ -61,16 +61,6 @@ serve(async (req) => {
   }
 
   try {
-    const apiKey = Deno.env.get('TWELVEDATA_API_KEY');
-    if (!apiKey) {
-      return new Response(JSON.stringify({
-        error: 'TWELVEDATA_API_KEY is not configured. Real quotes cannot be fetched.'
-      }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
     const { symbols = '', candles = false } = await req.json().catch(() => ({}));
     const requestedSymbols = symbols
       ? symbols.split(',').map((s: string) => s.trim()).filter(Boolean)
@@ -85,18 +75,22 @@ serve(async (req) => {
 
     const providerSymbols = requestedSymbols.map(normalizeSymbolForProvider);
 
-    // 1) Fetch live quotes
-    const quoteUrl = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(providerSymbols.join(','))}&apikey=${apiKey}`;
-    const quoteRes = await fetch(quoteUrl);
-    if (!quoteRes.ok) {
-      const err = await quoteRes.text();
-      return new Response(JSON.stringify({ error: `Quote provider error ${quoteRes.status}: ${err}` }), {
-        status: 502,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    const apiKey = Deno.env.get('TWELVEDATA_API_KEY');
+    let quoteJson: any = {};
+    let primaryProviderAvailable = Boolean(apiKey);
+    if (apiKey) {
+      const quoteUrl = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(providerSymbols.join(','))}&apikey=${apiKey}`;
+      const quoteRes = await fetch(quoteUrl);
+      if (quoteRes.ok) {
+        quoteJson = await quoteRes.json();
+      } else {
+        primaryProviderAvailable = false;
+        const err = await quoteRes.text();
+        console.warn(`TwelveData quote unavailable, using Yahoo fallback: ${quoteRes.status}: ${err.slice(0, 240)}`);
+      }
+    } else {
+      console.warn('TWELVEDATA_API_KEY is not configured, using Yahoo fallback market data');
     }
-
-    const quoteJson = await quoteRes.json();
     const quotes: Record<string, Quote> = {};
 
     const entries = typeof quoteJson === 'object' && quoteJson !== null
@@ -127,12 +121,16 @@ serve(async (req) => {
 
     // 2) Optional candle fetch per symbol
     const candleMap: Record<string, number[]> = {};
-    if (candles) {
+    if (candles && apiKey && primaryProviderAvailable) {
       for (const providerSymbol of providerSymbols.slice(0, 10)) {
         const tsRes = await fetch(
           `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(providerSymbol)}&interval=5min&outputsize=100&apikey=${apiKey}`
         );
-        if (!tsRes.ok) continue;
+        if (!tsRes.ok) {
+          const err = await tsRes.text();
+          console.warn(`TwelveData candles unavailable for ${providerSymbol}, using fallback if needed: ${tsRes.status}: ${err.slice(0, 180)}`);
+          continue;
+        }
         const tsJson = await tsRes.json();
         const values = Array.isArray(tsJson?.values) ? tsJson.values : [];
         const closes = values
