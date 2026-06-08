@@ -35,6 +35,7 @@ export interface UnifiedSignal {
   calculations?: Record<string, any>;
   modelUsed?: string;
   modelId?: string;
+  modelVersion?: string;
   assetClass?: string;
   strategyId?: string;
 }
