@@ -748,7 +748,13 @@ export type Database = {
         | "XGBoost"
       signal_type: "buy" | "sell" | "hold"
       strategy_status: "active" | "inactive" | "testing"
-      subscription_tier: "free" | "basic" | "premium" | "enterprise"
+      subscription_tier:
+        | "free"
+        | "basic"
+        | "premium"
+        | "enterprise"
+        | "starter"
+        | "pro"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -888,7 +894,14 @@ export const Constants = {
       ],
       signal_type: ["buy", "sell", "hold"],
       strategy_status: ["active", "inactive", "testing"],
-      subscription_tier: ["free", "basic", "premium", "enterprise"],
+      subscription_tier: [
+        "free",
+        "basic",
+        "premium",
+        "enterprise",
+        "starter",
+        "pro",
+      ],
     },
   },
 } as const
