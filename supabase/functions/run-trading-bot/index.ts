@@ -112,7 +112,7 @@ async function runForUser(client: any, supabaseUrl: string, anonKey: string, ser
       const jobs: Promise<any>[] = [];
 
       if (setting.telegram_enabled) jobs.push(sendTelegram(supabaseUrl, anonKey, signal));
-      if (setting.bot_enabled) jobs.push(executeTrade(supabaseUrl, anonKey, serviceKey, userId, signal));
+      if (setting.bot_enabled && autoExecuteAllowed) jobs.push(executeTrade(supabaseUrl, anonKey, serviceKey, userId, signal));
 
       const settled = await Promise.allSettled(jobs);
       const executed = settled.some((result: any) => result.status === "fulfilled" && result.value?.success === true && result.value?.tradeId);
