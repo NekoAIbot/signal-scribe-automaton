@@ -145,18 +145,49 @@ serve(async (req) => {
     }
     timeline.push('risk_check', 'success');
 
+    // Tier gate: only paid tiers can auto-execute
+    const tierInfo = await loadTier(serviceClient, userId);
+    timeline.push('tier_check', 'started', `Tier: ${tierInfo.tier}`);
+    if (!tierInfo.auto_execute && !requestData.manualOverride) {
+      timeline.push('tier_check', 'failed', `${tierInfo.tier} tier cannot auto-execute trades`);
+      await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'tier_blocked');
+      await writeAuditLog(serviceClient, {
+        userId, requestData, timeline: timeline.events, success: false,
+        status: 'tier_blocked', error: `Tier ${tierInfo.tier} cannot auto-execute`, retryOf, brokerAccount: mainBrokerAccount,
+      });
+      return jsonResponse({
+        success: false,
+        error: `Your ${tierInfo.tier} plan does not support auto-execution. Upgrade to Starter or higher.`,
+        timeline: timeline.events,
+      }, corsHeaders);
+    }
+    const brokerType = String(mainBrokerAccount.broker_type || 'mt5').toLowerCase();
+    if (tierInfo.allowed_brokers.length && !tierInfo.allowed_brokers.includes(brokerType)) {
+      timeline.push('tier_check', 'failed', `Broker ${brokerType} not allowed on ${tierInfo.tier}`);
+      return jsonResponse({
+        success: false,
+        error: `Broker "${brokerType}" requires an upgrade. Allowed on ${tierInfo.tier}: ${tierInfo.allowed_brokers.join(', ')}`,
+        timeline: timeline.events,
+      }, corsHeaders);
+    }
+    timeline.push('tier_check', 'success');
+
     let executionResult: { ticketNumber: string; volume: number; mode: string };
 
-    if (METAAPI_TOKEN) {
+    // Route by broker_type: free cloud-native brokers first
+    if (['deriv','binance','oanda','capital'].includes(brokerType)) {
+      timeline.push('order', 'started', `Sending to ${brokerType.toUpperCase()} API`);
+      executionResult = await executeViaBrokerApi(brokerType, mainBrokerAccount, requestData);
+      timeline.push('order', 'success', `${brokerType} ticket ${executionResult.ticketNumber}`);
+      timeline.push('filled', 'success');
+    } else if (METAAPI_TOKEN) {
       try {
         executionResult = await executeViaMetaApi(METAAPI_TOKEN, mainBrokerAccount, requestData, timeline);
       } catch (metaApiError) {
         const message = metaApiError instanceof Error ? metaApiError.message : String(metaApiError);
         console.error('MetaApi execution failed:', message);
         timeline.push('order', 'failed', message);
-
         if (MT5_BRIDGE_URL) {
-          console.warn('MetaApi execution failed. Falling back to MT5 bridge execution.');
           timeline.push('order', 'started', 'Falling back to MT5 bridge');
           executionResult = await executeViaBridge(MT5_BRIDGE_URL, MT5_BRIDGE_API_KEY || '', requestData);
           timeline.push('order', 'success', `Bridge ticket ${executionResult.ticketNumber}`);
@@ -168,11 +199,7 @@ serve(async (req) => {
       }
     } else if (PAPER_MODE && requestData.allowPaperMode === true) {
       timeline.push('order', 'started', 'Paper-mode (no broker call)');
-      executionResult = {
-        ticketNumber: `PAPER-${Date.now()}`,
-        volume: requestData.lotSize || 0.01,
-        mode: 'paper',
-      };
+      executionResult = { ticketNumber: `PAPER-${Date.now()}`, volume: requestData.lotSize || 0.01, mode: 'paper' };
       timeline.push('order', 'success', `Paper ticket ${executionResult.ticketNumber}`);
       timeline.push('filled', 'success');
     } else if (MT5_BRIDGE_URL) {
@@ -181,15 +208,15 @@ serve(async (req) => {
       timeline.push('order', 'success', `Bridge ticket ${executionResult.ticketNumber}`);
       timeline.push('filled', 'success');
     } else {
-      timeline.push('order', 'failed', 'No bridge configured');
+      timeline.push('order', 'failed', 'No broker route configured');
       await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'no_bridge');
       await writeAuditLog(serviceClient, {
         userId, requestData, timeline: timeline.events, success: false,
-        status: 'no_bridge', error: 'No trading bridge configured', retryOf, brokerAccount: mainBrokerAccount,
+        status: 'no_bridge', error: 'No broker route configured', retryOf, brokerAccount: mainBrokerAccount,
       });
       return jsonResponse({
         success: false,
-        error: 'No trading bridge configured. Please add METAAPI_TOKEN or MT5_BRIDGE_URL secret.',
+        error: 'No broker route configured. Add a Deriv/Binance/OANDA API token in Settings, or set METAAPI_TOKEN / MT5_BRIDGE_URL.',
         timeline: timeline.events,
       }, corsHeaders);
     }
