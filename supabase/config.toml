@@ -38,3 +38,10 @@ verify_jwt = false
 
 [functions.run-trading-bot]
 verify_jwt = false
+
+[functions.paystack-create-subscription]
+verify_jwt = false
+
+[functions.paystack-webhook]
+verify_jwt = false
+
