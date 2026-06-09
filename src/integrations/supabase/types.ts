@@ -60,41 +60,56 @@ export type Database = {
       }
       broker_credentials: {
         Row: {
+          account_id: string | null
           account_name: string
           account_type: string
+          api_secret: string | null
+          api_token: string | null
           broker_type: string
           created_at: string | null
-          encrypted_password: string
+          encrypted_password: string | null
+          environment: string | null
           id: string
           is_active: boolean | null
-          login: string
-          server: string
+          login: string | null
+          metadata: Json | null
+          server: string | null
           updated_at: string | null
           user_id: string
         }
         Insert: {
+          account_id?: string | null
           account_name: string
           account_type?: string
+          api_secret?: string | null
+          api_token?: string | null
           broker_type?: string
           created_at?: string | null
-          encrypted_password: string
+          encrypted_password?: string | null
+          environment?: string | null
           id?: string
           is_active?: boolean | null
-          login: string
-          server: string
+          login?: string | null
+          metadata?: Json | null
+          server?: string | null
           updated_at?: string | null
           user_id: string
         }
         Update: {
+          account_id?: string | null
           account_name?: string
           account_type?: string
+          api_secret?: string | null
+          api_token?: string | null
           broker_type?: string
           created_at?: string | null
-          encrypted_password?: string
+          encrypted_password?: string | null
+          environment?: string | null
           id?: string
           is_active?: boolean | null
-          login?: string
-          server?: string
+          login?: string | null
+          metadata?: Json | null
+          server?: string | null
           updated_at?: string | null
           user_id?: string
         }
@@ -396,27 +411,48 @@ export type Database = {
       }
       subscription_plans: {
         Row: {
+          allowed_brokers: string[] | null
+          allowed_markets: string[] | null
+          auto_execute: boolean | null
           created_at: string | null
           features: string[] | null
           id: string
+          interval: string | null
           is_active: boolean | null
+          max_broker_accounts: number | null
+          max_signals_per_day: number | null
           name: string
+          paystack_plan_code: string | null
           price: number
         }
         Insert: {
+          allowed_brokers?: string[] | null
+          allowed_markets?: string[] | null
+          auto_execute?: boolean | null
           created_at?: string | null
           features?: string[] | null
           id: string
+          interval?: string | null
           is_active?: boolean | null
+          max_broker_accounts?: number | null
+          max_signals_per_day?: number | null
           name: string
+          paystack_plan_code?: string | null
           price: number
         }
         Update: {
+          allowed_brokers?: string[] | null
+          allowed_markets?: string[] | null
+          auto_execute?: boolean | null
           created_at?: string | null
           features?: string[] | null
           id?: string
+          interval?: string | null
           is_active?: boolean | null
+          max_broker_accounts?: number | null
+          max_signals_per_day?: number | null
           name?: string
+          paystack_plan_code?: string | null
           price?: number
         }
         Relationships: []
@@ -687,27 +723,42 @@ export type Database = {
       }
       user_subscriptions: {
         Row: {
+          amount: number | null
           created_at: string | null
+          currency: string | null
+          current_period_end: string | null
           ends_at: string | null
           id: string
+          paystack_customer_code: string | null
+          paystack_subscription_code: string | null
           plan_id: string | null
           starts_at: string | null
           status: string | null
           user_id: string
         }
         Insert: {
+          amount?: number | null
           created_at?: string | null
+          currency?: string | null
+          current_period_end?: string | null
           ends_at?: string | null
           id?: string
+          paystack_customer_code?: string | null
+          paystack_subscription_code?: string | null
           plan_id?: string | null
           starts_at?: string | null
           status?: string | null
           user_id: string
         }
         Update: {
+          amount?: number | null
           created_at?: string | null
+          currency?: string | null
+          current_period_end?: string | null
           ends_at?: string | null
           id?: string
+          paystack_customer_code?: string | null
+          paystack_subscription_code?: string | null
           plan_id?: string | null
           starts_at?: string | null
           status?: string | null
@@ -728,6 +779,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_user_tier: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
