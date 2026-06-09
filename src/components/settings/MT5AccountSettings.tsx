@@ -8,143 +8,123 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Trash2, Plus, Eye, EyeOff, RefreshCw } from "lucide-react";
+import { Trash2, Plus, Eye, EyeOff, RefreshCw, ExternalLink } from "lucide-react";
 
 interface BrokerCredential {
   id: string;
+  broker_type: string;
   account_name: string;
-  login: string;
-  server: string;
+  login: string | null;
+  server: string | null;
   account_type: string;
+  environment: string | null;
+  account_id: string | null;
   is_active: boolean;
   created_at: string;
 }
+
+const BROKERS = [
+  { value: 'deriv',   label: 'Deriv',        markets: 'Crypto + Synthetics + Forex', needs: ['api_token'], tierMin: 'free',  url: 'https://app.deriv.com/account/api-token' },
+  { value: 'binance', label: 'Binance',      markets: 'Crypto',                       needs: ['api_token','api_secret'], tierMin: 'starter', url: 'https://www.binance.com/en/my/settings/api-management' },
+  { value: 'oanda',   label: 'OANDA',        markets: 'Forex + CFDs',                 needs: ['api_token','account_id'], tierMin: 'pro',     url: 'https://www.oanda.com/account/tpa/personal_token' },
+  { value: 'capital', label: 'Capital.com',  markets: 'Forex + Crypto + Stocks',      needs: ['api_token','account_id','password'], tierMin: 'pro', url: 'https://capital.com/trading/api' },
+  { value: 'mt5',     label: 'MT5 (Legacy)', markets: 'Forex + CFDs via MetaApi',     needs: ['login','password','server'], tierMin: 'enterprise', url: '' },
+];
 
 export const MT5AccountSettings = () => {
   const { user } = useAuth();
   const [credentials, setCredentials] = useState<BrokerCredential[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  
-  const [newAccount, setNewAccount] = useState({
+
+  const [form, setForm] = useState({
+    broker_type: 'deriv',
     account_name: '',
+    api_token: '',
+    api_secret: '',
+    account_id: '',
     login: '',
     password: '',
     server: '',
-    account_type: 'demo'
+    environment: 'demo',
+    account_type: 'demo',
   });
 
-  // Fetch existing credentials
+  const broker = BROKERS.find(b => b.value === form.broker_type)!;
+
   const fetchCredentials = async () => {
     if (!user?.id) return;
-    
     setIsLoading(true);
     try {
       const { data, error } = await supabase
         .from('broker_credentials')
-        .select('id, account_name, login, server, account_type, is_active, created_at')
-        .eq('broker_type', 'mt5')
+        .select('id, broker_type, account_name, login, server, account_type, environment, account_id, is_active, created_at')
         .order('created_at', { ascending: false });
-      
       if (error) throw error;
-      setCredentials(data || []);
+      setCredentials((data as any) || []);
     } catch (error) {
       console.error('Error fetching credentials:', error);
-      toast.error('Failed to load MT5 accounts');
+      toast.error('Failed to load broker accounts');
     } finally {
       setIsLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchCredentials();
-  }, [user?.id]);
+  useEffect(() => { fetchCredentials(); }, [user?.id]);
 
-  // Add new account
-  const handleAddAccount = async () => {
-    if (!user?.id) {
-      toast.error('You must be logged in');
-      return;
+  const handleAdd = async () => {
+    if (!user?.id) { toast.error('You must be logged in'); return; }
+    if (!form.account_name) { toast.error('Account name required'); return; }
+    for (const f of broker.needs) {
+      if (!(form as any)[f]) { toast.error(`${f.replace('_',' ')} required for ${broker.label}`); return; }
     }
-
-    if (!newAccount.account_name || !newAccount.login || !newAccount.password || !newAccount.server) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
-
     setIsSaving(true);
     try {
-      // Simple encoding for storage (in production, use proper encryption)
-      const encodedPassword = btoa(newAccount.password);
-      
-      const { error } = await supabase
-        .from('broker_credentials')
-        .insert({
-          user_id: user.id,
-          broker_type: 'mt5',
-          account_name: newAccount.account_name,
-          login: newAccount.login,
-          encrypted_password: encodedPassword,
-          server: newAccount.server,
-          account_type: newAccount.account_type
-        });
-
+      const payload: any = {
+        user_id: user.id,
+        broker_type: form.broker_type,
+        account_name: form.account_name,
+        account_type: form.account_type,
+        environment: form.environment,
+        api_token: form.api_token || null,
+        api_secret: form.api_secret ? btoa(form.api_secret) : null,
+        account_id: form.account_id || null,
+        login: form.login || form.account_id || form.account_name,
+        server: form.server || form.broker_type,
+        encrypted_password: form.password ? btoa(form.password) : 'n/a',
+      };
+      const { error } = await supabase.from('broker_credentials').insert(payload);
       if (error) throw error;
-
-      toast.success('MT5 account added successfully');
-      setNewAccount({ account_name: '', login: '', password: '', server: '', account_type: 'demo' });
+      toast.success(`${broker.label} account added`);
+      setForm({ ...form, account_name: '', api_token: '', api_secret: '', account_id: '', login: '', password: '', server: '' });
       setShowAddForm(false);
       fetchCredentials();
     } catch (error: any) {
       console.error('Error adding account:', error);
-      if (error.code === '23505') {
-        toast.error('An account with this login and server already exists');
-      } else {
-        toast.error('Failed to add MT5 account');
-      }
+      toast.error(error?.message || 'Failed to add account');
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Delete account
-  const handleDeleteAccount = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this MT5 account?')) return;
-
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this broker account?')) return;
     try {
-      const { error } = await supabase
-        .from('broker_credentials')
-        .delete()
-        .eq('id', id);
-
+      const { error } = await supabase.from('broker_credentials').delete().eq('id', id);
       if (error) throw error;
-
-      toast.success('MT5 account deleted');
+      toast.success('Account deleted');
       fetchCredentials();
-    } catch (error) {
-      console.error('Error deleting account:', error);
-      toast.error('Failed to delete account');
-    }
+    } catch (e) { toast.error('Failed to delete'); }
   };
 
-  // Toggle active status
-  const handleToggleActive = async (id: string, currentStatus: boolean) => {
+  const handleToggle = async (id: string, current: boolean) => {
     try {
-      const { error } = await supabase
-        .from('broker_credentials')
-        .update({ is_active: !currentStatus })
-        .eq('id', id);
-
+      const { error } = await supabase.from('broker_credentials').update({ is_active: !current }).eq('id', id);
       if (error) throw error;
-
-      toast.success(`Account ${!currentStatus ? 'activated' : 'deactivated'}`);
       fetchCredentials();
-    } catch (error) {
-      console.error('Error updating account:', error);
-      toast.error('Failed to update account status');
-    }
+    } catch { toast.error('Failed to update'); }
   };
 
   return (
@@ -152,154 +132,119 @@ export const MT5AccountSettings = () => {
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>MT5 Trading Accounts</CardTitle>
-            <CardDescription>
-              Connect your MetaTrader 5 accounts for automated trading
-            </CardDescription>
+            <CardTitle>Broker Accounts</CardTitle>
+            <CardDescription>Connect a free cloud broker (Deriv, Binance, OANDA, Capital.com) — no MT5 or VPS required</CardDescription>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={fetchCredentials}>
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-            <Button size="sm" onClick={() => setShowAddForm(!showAddForm)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Account
-            </Button>
+            <Button variant="outline" size="sm" onClick={fetchCredentials}><RefreshCw className="h-4 w-4" /></Button>
+            <Button size="sm" onClick={() => setShowAddForm(!showAddForm)}><Plus className="h-4 w-4 mr-2" />Add Broker</Button>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Add Account Form */}
         {showAddForm && (
           <Card className="border-dashed">
             <CardContent className="pt-4 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="account_name">Account Name</Label>
-                  <Input
-                    id="account_name"
-                    placeholder="My Demo Account"
-                    value={newAccount.account_name}
-                    onChange={(e) => setNewAccount({ ...newAccount, account_name: e.target.value })}
-                  />
+                  <Label>Broker</Label>
+                  <Select value={form.broker_type} onValueChange={(v) => setForm({ ...form, broker_type: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {BROKERS.map(b => (
+                        <SelectItem key={b.value} value={b.value}>{b.label} — {b.markets}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {broker.url && (
+                    <a href={broker.url} target="_blank" rel="noreferrer" className="text-xs text-primary inline-flex items-center gap-1">
+                      Get {broker.label} API token <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="account_type">Account Type</Label>
-                  <Select
-                    value={newAccount.account_type}
-                    onValueChange={(value) => setNewAccount({ ...newAccount, account_type: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
+                  <Label>Account Name</Label>
+                  <Input value={form.account_name} onChange={(e) => setForm({ ...form, account_name: e.target.value })} placeholder="My Trading Account" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Environment</Label>
+                  <Select value={form.environment} onValueChange={(v) => setForm({ ...form, environment: v, account_type: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="demo">Demo</SelectItem>
+                      <SelectItem value="demo">Demo / Practice</SelectItem>
                       <SelectItem value="live">Live</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="login">Login ID</Label>
-                  <Input
-                    id="login"
-                    placeholder="12345678"
-                    value={newAccount.login}
-                    onChange={(e) => setNewAccount({ ...newAccount, login: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <div className="relative">
-                    <Input
-                      id="password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="••••••••"
-                      value={newAccount.password}
-                      onChange={(e) => setNewAccount({ ...newAccount, password: e.target.value })}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-0 top-0 h-full px-3"
-                      onClick={() => setShowPassword(!showPassword)}
-                    >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </Button>
+                {broker.needs.includes('account_id') && (
+                  <div className="space-y-2">
+                    <Label>Account ID</Label>
+                    <Input value={form.account_id} onChange={(e) => setForm({ ...form, account_id: e.target.value })} placeholder="001-001-12345-001" />
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="server">Server</Label>
-                  <Input
-                    id="server"
-                    placeholder="MetaQuotes-Demo"
-                    value={newAccount.server}
-                    onChange={(e) => setNewAccount({ ...newAccount, server: e.target.value })}
-                  />
-                </div>
+                )}
+                {broker.needs.includes('api_token') && (
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>API Token / Key</Label>
+                    <Input value={form.api_token} onChange={(e) => setForm({ ...form, api_token: e.target.value })} placeholder="Paste your token" type={showSecret ? 'text' : 'password'} />
+                  </div>
+                )}
+                {broker.needs.includes('api_secret') && (
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>API Secret</Label>
+                    <div className="relative">
+                      <Input value={form.api_secret} onChange={(e) => setForm({ ...form, api_secret: e.target.value })} type={showSecret ? 'text' : 'password'} />
+                      <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-0 h-full px-3" onClick={() => setShowSecret(!showSecret)}>
+                        {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {broker.needs.includes('login') && (
+                  <div className="space-y-2"><Label>MT5 Login</Label><Input value={form.login} onChange={(e) => setForm({ ...form, login: e.target.value })} /></div>
+                )}
+                {broker.needs.includes('password') && (
+                  <div className="space-y-2"><Label>Password</Label><Input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} type="password" /></div>
+                )}
+                {broker.needs.includes('server') && (
+                  <div className="space-y-2"><Label>MT5 Server</Label><Input value={form.server} onChange={(e) => setForm({ ...form, server: e.target.value })} placeholder="Broker-Demo" /></div>
+                )}
               </div>
-              
               <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={() => setShowAddForm(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleAddAccount} disabled={isSaving}>
-                  {isSaving ? 'Saving...' : 'Save Account'}
-                </Button>
+                <Button variant="outline" onClick={() => setShowAddForm(false)}>Cancel</Button>
+                <Button onClick={handleAdd} disabled={isSaving}>{isSaving ? 'Saving…' : 'Save Account'}</Button>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Existing Accounts */}
         {isLoading ? (
-          <div className="text-center py-4 text-muted-foreground">Loading accounts...</div>
+          <div className="text-center py-4 text-muted-foreground">Loading…</div>
         ) : credentials.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
-            <p>No MT5 accounts connected yet.</p>
-            <p className="text-sm">Click "Add Account" to connect your first trading account.</p>
+            <p>No broker accounts connected.</p>
+            <p className="text-sm">Start with a free Deriv account (no upfront cost) or Binance testnet.</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {credentials.map((cred) => (
-              <div
-                key={cred.id}
-                className="flex items-center justify-between p-4 rounded-lg border bg-card"
-              >
-                <div className="flex items-center gap-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{cred.account_name}</span>
-                      <Badge variant={cred.account_type === 'demo' ? 'secondary' : 'default'}>
-                        {cred.account_type}
-                      </Badge>
-                      <Badge variant={cred.is_active ? 'success' : 'outline'}>
-                        {cred.is_active ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      Login: {cred.login} • Server: {cred.server}
-                    </div>
+            {credentials.map((c) => (
+              <div key={c.id} className="flex items-center justify-between p-4 rounded-lg border bg-card">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium">{c.account_name}</span>
+                    <Badge variant="secondary">{c.broker_type.toUpperCase()}</Badge>
+                    <Badge variant={c.environment === 'live' ? 'default' : 'secondary'}>{c.environment || c.account_type}</Badge>
+                    <Badge variant={c.is_active ? 'success' as any : 'outline'}>{c.is_active ? 'Active' : 'Inactive'}</Badge>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {c.account_id ? `Account: ${c.account_id}` : (c.login ? `Login: ${c.login}` : '')}
+                    {c.server ? ` • ${c.server}` : ''}
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleToggleActive(cred.id, cred.is_active)}
-                  >
-                    {cred.is_active ? 'Deactivate' : 'Activate'}
+                  <Button variant="outline" size="sm" onClick={() => handleToggle(c.id, c.is_active)}>
+                    {c.is_active ? 'Deactivate' : 'Activate'}
                   </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => handleDeleteAccount(cred.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <Button variant="destructive" size="sm" onClick={() => handleDelete(c.id)}><Trash2 className="h-4 w-4" /></Button>
                 </div>
               </div>
             ))}
@@ -307,8 +252,7 @@ export const MT5AccountSettings = () => {
         )}
 
         <div className="text-sm text-muted-foreground mt-4 p-3 bg-muted/50 rounded-lg">
-          <strong>Security Note:</strong> Your credentials are stored securely and encrypted. 
-          We recommend using demo accounts for testing before connecting live accounts.
+          <strong>Free Cloud Brokers:</strong> Deriv / Binance / OANDA / Capital.com run server-side, so trades execute 24/7 without you keeping a PC or MT5 open.
         </div>
       </CardContent>
     </Card>

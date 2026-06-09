@@ -61,11 +61,33 @@ async function runForUser(client: any, supabaseUrl: string, anonKey: string, ser
   const timeline: TimelineEvent[] = [{ stage: "cycle", status: "started", at: nowIso(), message: "Scheduled trading cycle started" }];
   try {
     const userId = setting.user_id;
-    const signals = await generateSignalsForUser(client, supabaseUrl, anonKey, userId, timeline);
+
+    // Tier gate
+    const { data: tierId } = await client.rpc('get_user_tier', { _user_id: userId });
+    const tier = String(tierId || 'free');
+    const { data: plan } = await client.from('subscription_plans')
+      .select('auto_execute, max_signals_per_day, allowed_brokers, allowed_markets')
+      .eq('id', tier).maybeSingle();
+    const autoExecuteAllowed = plan?.auto_execute ?? false;
+    const maxSignals = plan?.max_signals_per_day ?? 5;
+    const allowedMarkets: string[] = (plan?.allowed_markets as string[]) || ['crypto'];
+
+    // Daily signal cap
+    const todayStart = new Date(); todayStart.setUTCHours(0,0,0,0);
+    const { count: todayCount } = await client.from('trading_signals')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId).gte('created_at', todayStart.toISOString());
+    if ((todayCount ?? 0) >= maxSignals) {
+      timeline.push({ stage: 'tier_check', status: 'skipped', at: nowIso(), message: `Daily signal cap reached for ${tier} (${todayCount}/${maxSignals})` });
+      return { userId, generated: 0, executed: 0, telegramSent: 0, tier, timeline };
+    }
+
+    const signals = (await generateSignalsForUser(client, supabaseUrl, anonKey, userId, timeline))
+      .filter((s: any) => allowedMarkets.includes(classifyAsset(s.symbol)));
 
     if (signals.length === 0) {
-      timeline.push({ stage: "signal_generation", status: "skipped", at: nowIso(), message: "No valid market-hours signal from active strategies/models" });
-      return { userId, generated: 0, executed: 0, telegramSent: 0, timeline };
+      timeline.push({ stage: "signal_generation", status: "skipped", at: nowIso(), message: "No valid signal for current tier/markets" });
+      return { userId, generated: 0, executed: 0, telegramSent: 0, tier, timeline };
     }
 
     const { data: savedSignals, error: saveError } = await client.from("trading_signals").insert(signals.map((signal: any) => ({
@@ -90,7 +112,7 @@ async function runForUser(client: any, supabaseUrl: string, anonKey: string, ser
       const jobs: Promise<any>[] = [];
 
       if (setting.telegram_enabled) jobs.push(sendTelegram(supabaseUrl, anonKey, signal));
-      if (setting.bot_enabled) jobs.push(executeTrade(supabaseUrl, anonKey, serviceKey, userId, signal));
+      if (setting.bot_enabled && autoExecuteAllowed) jobs.push(executeTrade(supabaseUrl, anonKey, serviceKey, userId, signal));
 
       const settled = await Promise.allSettled(jobs);
       const executed = settled.some((result: any) => result.status === "fulfilled" && result.value?.success === true && result.value?.tradeId);

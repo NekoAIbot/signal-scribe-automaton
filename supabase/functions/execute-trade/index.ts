@@ -145,18 +145,49 @@ serve(async (req) => {
     }
     timeline.push('risk_check', 'success');
 
+    // Tier gate: only paid tiers can auto-execute
+    const tierInfo = await loadTier(serviceClient, userId);
+    timeline.push('tier_check', 'started', `Tier: ${tierInfo.tier}`);
+    if (!tierInfo.auto_execute && !requestData.manualOverride) {
+      timeline.push('tier_check', 'failed', `${tierInfo.tier} tier cannot auto-execute trades`);
+      await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'tier_blocked');
+      await writeAuditLog(serviceClient, {
+        userId, requestData, timeline: timeline.events, success: false,
+        status: 'tier_blocked', error: `Tier ${tierInfo.tier} cannot auto-execute`, retryOf, brokerAccount: mainBrokerAccount,
+      });
+      return jsonResponse({
+        success: false,
+        error: `Your ${tierInfo.tier} plan does not support auto-execution. Upgrade to Starter or higher.`,
+        timeline: timeline.events,
+      }, corsHeaders);
+    }
+    const brokerType = String(mainBrokerAccount.broker_type || 'mt5').toLowerCase();
+    if (tierInfo.allowed_brokers.length && !tierInfo.allowed_brokers.includes(brokerType)) {
+      timeline.push('tier_check', 'failed', `Broker ${brokerType} not allowed on ${tierInfo.tier}`);
+      return jsonResponse({
+        success: false,
+        error: `Broker "${brokerType}" requires an upgrade. Allowed on ${tierInfo.tier}: ${tierInfo.allowed_brokers.join(', ')}`,
+        timeline: timeline.events,
+      }, corsHeaders);
+    }
+    timeline.push('tier_check', 'success');
+
     let executionResult: { ticketNumber: string; volume: number; mode: string };
 
-    if (METAAPI_TOKEN) {
+    // Route by broker_type: free cloud-native brokers first
+    if (['deriv','binance','oanda','capital'].includes(brokerType)) {
+      timeline.push('order', 'started', `Sending to ${brokerType.toUpperCase()} API`);
+      executionResult = await executeViaBrokerApi(brokerType, mainBrokerAccount, requestData);
+      timeline.push('order', 'success', `${brokerType} ticket ${executionResult.ticketNumber}`);
+      timeline.push('filled', 'success');
+    } else if (METAAPI_TOKEN) {
       try {
         executionResult = await executeViaMetaApi(METAAPI_TOKEN, mainBrokerAccount, requestData, timeline);
       } catch (metaApiError) {
         const message = metaApiError instanceof Error ? metaApiError.message : String(metaApiError);
         console.error('MetaApi execution failed:', message);
         timeline.push('order', 'failed', message);
-
         if (MT5_BRIDGE_URL) {
-          console.warn('MetaApi execution failed. Falling back to MT5 bridge execution.');
           timeline.push('order', 'started', 'Falling back to MT5 bridge');
           executionResult = await executeViaBridge(MT5_BRIDGE_URL, MT5_BRIDGE_API_KEY || '', requestData);
           timeline.push('order', 'success', `Bridge ticket ${executionResult.ticketNumber}`);
@@ -168,11 +199,7 @@ serve(async (req) => {
       }
     } else if (PAPER_MODE && requestData.allowPaperMode === true) {
       timeline.push('order', 'started', 'Paper-mode (no broker call)');
-      executionResult = {
-        ticketNumber: `PAPER-${Date.now()}`,
-        volume: requestData.lotSize || 0.01,
-        mode: 'paper',
-      };
+      executionResult = { ticketNumber: `PAPER-${Date.now()}`, volume: requestData.lotSize || 0.01, mode: 'paper' };
       timeline.push('order', 'success', `Paper ticket ${executionResult.ticketNumber}`);
       timeline.push('filled', 'success');
     } else if (MT5_BRIDGE_URL) {
@@ -181,15 +208,15 @@ serve(async (req) => {
       timeline.push('order', 'success', `Bridge ticket ${executionResult.ticketNumber}`);
       timeline.push('filled', 'success');
     } else {
-      timeline.push('order', 'failed', 'No bridge configured');
+      timeline.push('order', 'failed', 'No broker route configured');
       await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'no_bridge');
       await writeAuditLog(serviceClient, {
         userId, requestData, timeline: timeline.events, success: false,
-        status: 'no_bridge', error: 'No trading bridge configured', retryOf, brokerAccount: mainBrokerAccount,
+        status: 'no_bridge', error: 'No broker route configured', retryOf, brokerAccount: mainBrokerAccount,
       });
       return jsonResponse({
         success: false,
-        error: 'No trading bridge configured. Please add METAAPI_TOKEN or MT5_BRIDGE_URL secret.',
+        error: 'No broker route configured. Add a Deriv/Binance/OANDA API token in Settings, or set METAAPI_TOKEN / MT5_BRIDGE_URL.',
         timeline: timeline.events,
       }, corsHeaders);
     }
@@ -639,4 +666,133 @@ async function sendTelegramNotification(tradeInfo: any) {
   } catch (error) {
     console.error('Telegram notification error:', error);
   }
+}
+
+// ---------- Tier loader ----------
+async function loadTier(client: any, userId: string) {
+  try {
+    const { data: tierId } = await client.rpc('get_user_tier', { _user_id: userId });
+    const tier = String(tierId || 'free');
+    const { data: plan } = await client.from('subscription_plans').select('id, auto_execute, allowed_brokers, max_signals_per_day').eq('id', tier).maybeSingle();
+    return {
+      tier,
+      auto_execute: plan?.auto_execute ?? (tier !== 'free'),
+      allowed_brokers: (plan?.allowed_brokers as string[]) || [],
+      max_signals_per_day: plan?.max_signals_per_day ?? 5,
+    };
+  } catch (e) {
+    console.error('loadTier error:', e);
+    return { tier: 'free', auto_execute: false, allowed_brokers: ['deriv'], max_signals_per_day: 5 };
+  }
+}
+
+// ---------- Broker adapters (free, cloud-native) ----------
+async function executeViaBrokerApi(brokerType: string, creds: any, data: any): Promise<{ ticketNumber: string; volume: number; mode: string }> {
+  switch (brokerType) {
+    case 'binance': return executeBinance(creds, data);
+    case 'deriv':   return executeDeriv(creds, data);
+    case 'oanda':   return executeOanda(creds, data);
+    case 'capital': return executeCapital(creds, data);
+    default: throw new Error(`Unsupported broker: ${brokerType}`);
+  }
+}
+
+async function executeBinance(creds: any, data: any) {
+  const apiKey = creds.api_token;
+  const apiSecret = decodeStoredPassword(creds.api_secret || creds.encrypted_password || '');
+  if (!apiKey || !apiSecret) throw new Error('Binance requires api_token (API key) and api_secret');
+  const base = (creds.environment === 'live') ? 'https://api.binance.com' : 'https://testnet.binance.vision';
+  const symbol = data.symbol.replace('/', '').toUpperCase().replace('USD', 'USDT');
+  const side = data.type === 'BUY' ? 'BUY' : 'SELL';
+  const qty = data.lotSize || 0.001;
+  const timestamp = Date.now();
+  const query = `symbol=${symbol}&side=${side}&type=MARKET&quantity=${qty}&timestamp=${timestamp}`;
+  const sig = await hmacSha256(apiSecret, query);
+  const res = await fetch(`${base}/api/v3/order?${query}&signature=${sig}`, {
+    method: 'POST', headers: { 'X-MBX-APIKEY': apiKey }
+  });
+  if (!res.ok) throw new Error(`Binance error ${res.status}: ${await res.text()}`);
+  const j = await res.json();
+  return { ticketNumber: String(j.orderId), volume: qty, mode: 'binance' };
+}
+
+async function executeDeriv(creds: any, data: any) {
+  const token = creds.api_token;
+  if (!token) throw new Error('Deriv requires api_token');
+  const appId = Deno.env.get('DERIV_APP_ID') || '1089';
+  return await new Promise<{ ticketNumber: string; volume: number; mode: string }>((resolve, reject) => {
+    const ws = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${appId}`);
+    const timeout = setTimeout(() => { try { ws.close(); } catch {} reject(new Error('Deriv timeout')); }, 15000);
+    const symbol = (data.symbol || '').replace('/', '');
+    const amount = Math.max(0.35, (data.lotSize || 1));
+    ws.onopen = () => ws.send(JSON.stringify({ authorize: token }));
+    ws.onmessage = (ev: MessageEvent) => {
+      const msg = JSON.parse(ev.data as string);
+      if (msg.error) { clearTimeout(timeout); ws.close(); return reject(new Error(`Deriv: ${msg.error.message}`)); }
+      if (msg.msg_type === 'authorize') {
+        ws.send(JSON.stringify({
+          buy: 1, price: amount,
+          parameters: { amount, basis: 'stake', contract_type: data.type === 'BUY' ? 'CALL' : 'PUT', currency: msg.authorize.currency || 'USD', duration: 5, duration_unit: 'm', symbol }
+        }));
+      } else if (msg.msg_type === 'buy') {
+        clearTimeout(timeout); ws.close();
+        resolve({ ticketNumber: String(msg.buy.contract_id), volume: amount, mode: 'deriv' });
+      }
+    };
+    ws.onerror = (e) => { clearTimeout(timeout); reject(new Error(`Deriv WS error: ${String(e)}`)); };
+  });
+}
+
+async function executeOanda(creds: any, data: any) {
+  const token = creds.api_token;
+  const accountId = creds.account_id || creds.login;
+  if (!token || !accountId) throw new Error('OANDA requires api_token and account_id');
+  const base = (creds.environment === 'live') ? 'https://api-fxtrade.oanda.com' : 'https://api-fxpractice.oanda.com';
+  const instrument = data.symbol.replace('/', '_').toUpperCase();
+  const units = (data.type === 'BUY' ? 1 : -1) * Math.round((data.lotSize || 0.01) * 100000);
+  const body: any = { order: { units: String(units), instrument, type: 'MARKET', timeInForce: 'FOK', positionFill: 'DEFAULT' } };
+  if (data.stopLoss) body.order.stopLossOnFill = { price: String(data.stopLoss) };
+  if (data.takeProfit) body.order.takeProfitOnFill = { price: String(data.takeProfit) };
+  const res = await fetch(`${base}/v3/accounts/${accountId}/orders`, {
+    method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`OANDA error ${res.status}: ${await res.text()}`);
+  const j = await res.json();
+  const ticket = j.orderFillTransaction?.id || j.orderCreateTransaction?.id;
+  return { ticketNumber: String(ticket), volume: Math.abs(units) / 100000, mode: 'oanda' };
+}
+
+async function executeCapital(creds: any, data: any) {
+  const apiKey = creds.api_token;
+  const identifier = creds.account_id || creds.login;
+  const password = decodeStoredPassword(creds.encrypted_password || creds.api_secret || '');
+  if (!apiKey || !identifier || !password) throw new Error('Capital.com requires api_token, account_id, and password');
+  const base = (creds.environment === 'live') ? 'https://api-capital.backend-capital.com' : 'https://demo-api-capital.backend-capital.com';
+  const sess = await fetch(`${base}/api/v1/session`, {
+    method: 'POST', headers: { 'X-CAP-API-KEY': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identifier, password })
+  });
+  if (!sess.ok) throw new Error(`Capital.com auth ${sess.status}: ${await sess.text()}`);
+  const cst = sess.headers.get('CST') || '';
+  const xsec = sess.headers.get('X-SECURITY-TOKEN') || '';
+  const epic = data.symbol.replace('/', '').toUpperCase();
+  const body: any = { epic, direction: data.type, size: data.lotSize || 0.01, orderType: 'MARKET' };
+  if (data.stopLoss) body.stopLevel = data.stopLoss;
+  if (data.takeProfit) body.profitLevel = data.takeProfit;
+  const res = await fetch(`${base}/api/v1/positions`, {
+    method: 'POST',
+    headers: { 'X-CAP-API-KEY': apiKey, 'CST': cst, 'X-SECURITY-TOKEN': xsec, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error(`Capital.com order ${res.status}: ${await res.text()}`);
+  const j = await res.json();
+  return { ticketNumber: String(j.dealReference || Date.now()), volume: data.lotSize || 0.01, mode: 'capital' };
+}
+
+async function hmacSha256(secret: string, payload: string) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(payload));
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
