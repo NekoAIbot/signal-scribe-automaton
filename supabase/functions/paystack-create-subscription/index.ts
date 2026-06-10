@@ -22,7 +22,7 @@ serve(async (req) => {
     if (!planId) throw new Error("planId required");
 
     const { data: plan, error: planErr } = await service.from("subscription_plans")
-      .select("id, name, price, paystack_plan_code, currency:interval")
+      .select("id, name, price, paystack_plan_code")
       .eq("id", planId).maybeSingle();
     if (planErr || !plan) throw new Error("Plan not found");
     if (!plan.price || plan.price <= 0) throw new Error("Free plan does not require checkout");
