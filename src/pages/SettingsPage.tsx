@@ -73,8 +73,9 @@ const SettingsPage = () => {
       <h1 className="text-xl sm:text-2xl font-bold mb-6">Settings</h1>
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
-          <TabsTrigger value="subscription">Subscription</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5">
+          <TabsTrigger value="subscription">Plans</TabsTrigger>
+          <TabsTrigger value="status">Status</TabsTrigger>
           <TabsTrigger value="account">Account</TabsTrigger>
           <TabsTrigger value="broker">Broker</TabsTrigger>
           <TabsTrigger value="preferences">Preferences</TabsTrigger>
@@ -82,6 +83,10 @@ const SettingsPage = () => {
         
         <TabsContent value="subscription">
           <SubscriptionPlans />
+        </TabsContent>
+
+        <TabsContent value="status">
+          <SubscriptionStatus />
         </TabsContent>
         
         <TabsContent value="account">
