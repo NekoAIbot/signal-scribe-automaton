@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SubscriptionPlans } from "@/components/settings/SubscriptionPlans";
+import { SubscriptionStatus } from "@/components/settings/SubscriptionStatus";
 import { MT5AccountSettings } from "@/components/settings/MT5AccountSettings";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -11,11 +12,61 @@ import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePreferences } from "@/hooks/usePreferences";
+import { supabase } from "@/integrations/supabase/client";
 
 const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState("subscription");
   const { user, logout } = useAuth();
   const { preferences, updatePreference, setThemePreference } = usePreferences();
+
+  // Paystack return: poll user_subscriptions and confirm tier change
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('paystack') !== 'success' || !user?.id) return;
+
+    const initialTier = (user as any)?.subscriptionTier || 'free';
+    setActiveTab('status');
+    const toastId = toast.loading('Verifying Paystack payment…', { description: 'Waiting for webhook confirmation' });
+
+    let attempts = 0;
+    const maxAttempts = 20; // ~60s
+    const poll = setInterval(async () => {
+      attempts += 1;
+      const { data: sub } = await supabase
+        .from('user_subscriptions')
+        .select('plan_id, status, created_at')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('subscription_tier')
+        .eq('id', user.id)
+        .maybeSingle();
+      const newTier = (profile?.subscription_tier as string) || initialTier;
+      if (sub && newTier !== initialTier) {
+        clearInterval(poll);
+        toast.success(`Upgraded to ${newTier.toUpperCase()}`, {
+          id: toastId,
+          description: `Previous tier: ${initialTier.toUpperCase()} → now ${newTier.toUpperCase()}`,
+        });
+        // Clean the URL so reloads don't re-trigger
+        window.history.replaceState({}, '', window.location.pathname);
+        setTimeout(() => window.location.reload(), 1500);
+      } else if (attempts >= maxAttempts) {
+        clearInterval(poll);
+        toast.warning('Still waiting for Paystack confirmation', {
+          id: toastId,
+          description: 'Webhook hasn\'t arrived yet. Check the Subscription Status tab.',
+        });
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }, 3000);
+
+    return () => clearInterval(poll);
+  }, [user?.id]);
 
   return (
     <div className="container mx-auto p-4 sm:p-6 max-w-5xl">
