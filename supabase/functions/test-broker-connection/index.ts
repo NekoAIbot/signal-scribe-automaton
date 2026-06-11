@@ -6,6 +6,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform",
 };
 
+const REQUIRED_SCOPES: Record<string, string[]> = {
+  deriv:   ["read", "trade", "trading_information", "payments"],
+  binance: ["Enable Reading", "Enable Spot & Margin Trading"],
+  oanda:   ["Read account", "Trade"],
+  capital: ["Trading API enabled", "Custom password set"],
+  mt5:     ["Investor / Master password", "Trading enabled"],
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
@@ -23,26 +31,66 @@ serve(async (req) => {
     if (cErr || !cred) throw new Error("Broker credential not found");
 
     const result = await testBroker(cred);
-    // Persist status
+    const requiredScopes = REQUIRED_SCOPES[cred.broker_type] || [];
+    const missingScopes = result.missingScopes ?? inferMissingScopes(cred.broker_type, result.message, result.ok);
+
+    const mergedMeta = {
+      ...(cred.metadata || {}),
+      last_test: {
+        ok: result.ok,
+        message: result.message,
+        details: result.details ?? null,
+        required_scopes: requiredScopes,
+        missing_scopes: missingScopes,
+        tested_at: new Date().toISOString(),
+      },
+    };
+
     await service.from("broker_credentials").update({
       updated_at: new Date().toISOString(),
+      metadata: mergedMeta,
     }).eq("id", credentialId);
 
-    return json({ ok: result.ok, broker: cred.broker_type, ...result });
+    return json({
+      ok: result.ok,
+      broker: cred.broker_type,
+      message: result.message,
+      details: result.details,
+      required_scopes: requiredScopes,
+      missing_scopes: missingScopes,
+    });
   } catch (e) {
     console.error("test-broker-connection error:", e);
     return json({ ok: false, error: (e as Error).message }, 400);
   }
 });
 
-async function testBroker(cred: any): Promise<{ ok: boolean; message: string; details?: any }> {
+function inferMissingScopes(broker: string, message: string | undefined, ok: boolean): string[] {
+  if (ok) return [];
+  const m = (message || "").toLowerCase();
+  const out: string[] = [];
+  if (broker === "deriv") {
+    if (m.includes("invalidtoken") || m.includes("token")) out.push("read", "trade");
+    if (m.includes("permission") || m.includes("scope")) out.push("trade", "payments");
+  } else if (broker === "binance") {
+    if (m.includes("api-key") || m.includes("invalid api")) out.push("Enable Reading");
+    if (m.includes("permission") || m.includes("trading")) out.push("Enable Spot & Margin Trading");
+    if (m.includes("ip")) out.push("Whitelist server IP or disable IP restriction");
+  } else if (broker === "oanda") {
+    if (m.includes("insufficient") || m.includes("unauthor")) out.push("Read account", "Trade");
+  } else if (broker === "capital") {
+    if (m.includes("401") || m.includes("invalid")) out.push("Trading API enabled", "Custom password set");
+  }
+  return Array.from(new Set(out));
+}
+
+async function testBroker(cred: any): Promise<{ ok: boolean; message: string; details?: any; missingScopes?: string[] }> {
   const token = cred.api_token;
   const env = cred.environment || "demo";
   try {
     switch (cred.broker_type) {
       case "deriv": {
-        if (!token) return { ok: false, message: "API token missing" };
-        // Use WebSocket via fetch upgrade not possible; use HTTP auth ping
+        if (!token) return { ok: false, message: "API token missing", missingScopes: ["read", "trade"] };
         const ws = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=1089`);
         return await new Promise((resolve) => {
           const timer = setTimeout(() => { ws.close(); resolve({ ok: false, message: "Timeout connecting to Deriv" }); }, 8000);
@@ -52,13 +100,25 @@ async function testBroker(cred: any): Promise<{ ok: boolean; message: string; de
             const data = JSON.parse(e.data);
             ws.close();
             if (data.error) resolve({ ok: false, message: data.error.message });
-            else resolve({ ok: true, message: `Authorized as ${data.authorize?.loginid}`, details: { balance: data.authorize?.balance, currency: data.authorize?.currency } });
+            else {
+              const scopes: string[] = data.authorize?.scopes || [];
+              const required = ["read", "trade"];
+              const missing = required.filter((s) => !scopes.includes(s));
+              resolve({
+                ok: missing.length === 0,
+                message: missing.length === 0
+                  ? `Authorized as ${data.authorize?.loginid}`
+                  : `Token missing scopes: ${missing.join(", ")}`,
+                details: { balance: data.authorize?.balance, currency: data.authorize?.currency, scopes },
+                missingScopes: missing,
+              });
+            }
           };
           ws.onerror = () => { clearTimeout(timer); resolve({ ok: false, message: "WebSocket error" }); };
         });
       }
       case "binance": {
-        if (!token || !cred.api_secret) return { ok: false, message: "API key/secret missing" };
+        if (!token || !cred.api_secret) return { ok: false, message: "API key/secret missing", missingScopes: ["Enable Reading"] };
         const base = env === "live" ? "https://api.binance.com" : "https://testnet.binance.vision";
         const secret = atob(cred.api_secret);
         const ts = Date.now();
@@ -67,10 +127,17 @@ async function testBroker(cred: any): Promise<{ ok: boolean; message: string; de
         const r = await fetch(`${base}/api/v3/account?${query}&signature=${sig}`, { headers: { "X-MBX-APIKEY": token } });
         const j = await r.json();
         if (!r.ok) return { ok: false, message: j.msg || `HTTP ${r.status}` };
-        return { ok: true, message: "Connected", details: { canTrade: j.canTrade, balances: (j.balances || []).filter((b: any) => parseFloat(b.free) > 0).slice(0, 5) } };
+        const missing: string[] = [];
+        if (!j.canTrade) missing.push("Enable Spot & Margin Trading");
+        return {
+          ok: missing.length === 0,
+          message: missing.length === 0 ? "Connected" : "Missing trading permission",
+          details: { canTrade: j.canTrade, balances: (j.balances || []).filter((b: any) => parseFloat(b.free) > 0).slice(0, 5) },
+          missingScopes: missing,
+        };
       }
       case "oanda": {
-        if (!token || !cred.account_id) return { ok: false, message: "Token/account_id missing" };
+        if (!token || !cred.account_id) return { ok: false, message: "Token/account_id missing", missingScopes: ["Read account"] };
         const base = env === "live" ? "https://api-fxtrade.oanda.com" : "https://api-fxpractice.oanda.com";
         const r = await fetch(`${base}/v3/accounts/${cred.account_id}/summary`, { headers: { Authorization: `Bearer ${token}` } });
         const j = await r.json();
@@ -78,7 +145,7 @@ async function testBroker(cred: any): Promise<{ ok: boolean; message: string; de
         return { ok: true, message: "Connected", details: { balance: j.account?.balance, currency: j.account?.currency } };
       }
       case "capital": {
-        if (!token || !cred.account_id || !cred.encrypted_password) return { ok: false, message: "Credentials missing" };
+        if (!token || !cred.account_id || !cred.encrypted_password) return { ok: false, message: "Credentials missing", missingScopes: ["Custom password set"] };
         const base = env === "live" ? "https://api-capital.backend-capital.com" : "https://demo-api-capital.backend-capital.com";
         const pwd = atob(cred.encrypted_password);
         const r = await fetch(`${base}/api/v1/session`, {
