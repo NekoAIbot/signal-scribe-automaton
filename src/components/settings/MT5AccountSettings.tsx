@@ -245,28 +245,46 @@ export const MT5AccountSettings = () => {
           </div>
         ) : (
           <div className="space-y-3">
-            {credentials.map((c) => (
-              <div key={c.id} className="flex items-center justify-between p-4 rounded-lg border bg-card">
-                <div>
+            {credentials.map((c) => {
+              const st = statuses[c.id];
+              const isTesting = !!testing[c.id];
+              return (
+              <div key={c.id} className="flex items-center justify-between p-4 rounded-lg border bg-card gap-3 flex-wrap">
+                <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium">{c.account_name}</span>
                     <Badge variant="secondary">{c.broker_type.toUpperCase()}</Badge>
                     <Badge variant={c.environment === 'live' ? 'default' : 'secondary'}>{c.environment || c.account_type}</Badge>
                     <Badge variant={c.is_active ? 'success' as any : 'outline'}>{c.is_active ? 'Active' : 'Inactive'}</Badge>
+                    {isTesting ? (
+                      <Badge variant="outline" className="gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Testing</Badge>
+                    ) : st ? (
+                      st.ok
+                        ? <Badge className="gap-1 bg-green-500/20 text-green-400 border-green-500/40"><CheckCircle2 className="h-3 w-3" /> Verified</Badge>
+                        : <Badge className="gap-1 bg-red-500/20 text-red-400 border-red-500/40"><XCircle className="h-3 w-3" /> Invalid</Badge>
+                    ) : (
+                      <Badge variant="outline" className="gap-1 text-muted-foreground"><HelpCircle className="h-3 w-3" /> Untested</Badge>
+                    )}
                   </div>
                   <div className="text-sm text-muted-foreground">
                     {c.account_id ? `Account: ${c.account_id}` : (c.login ? `Login: ${c.login}` : '')}
                     {c.server ? ` • ${c.server}` : ''}
                   </div>
+                  {st && (
+                    <div className={`text-xs mt-1 ${st.ok ? 'text-green-400' : 'text-red-400'}`}>{st.message}</div>
+                  )}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
+                  <Button variant="outline" size="sm" onClick={() => testConnection(c.id)} disabled={isTesting}>
+                    {isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Test'}
+                  </Button>
                   <Button variant="outline" size="sm" onClick={() => handleToggle(c.id, c.is_active)}>
                     {c.is_active ? 'Deactivate' : 'Activate'}
                   </Button>
                   <Button variant="destructive" size="sm" onClick={() => handleDelete(c.id)}><Trash2 className="h-4 w-4" /></Button>
                 </div>
               </div>
-            ))}
+            );})}
           </div>
         )}
 
