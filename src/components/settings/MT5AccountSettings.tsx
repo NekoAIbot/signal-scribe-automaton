@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Trash2, Plus, Eye, EyeOff, RefreshCw, ExternalLink } from "lucide-react";
+import { Trash2, Plus, Eye, EyeOff, RefreshCw, ExternalLink, CheckCircle2, XCircle, Loader2, HelpCircle } from "lucide-react";
 
 interface BrokerCredential {
   id: string;
@@ -38,6 +38,25 @@ export const MT5AccountSettings = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [testing, setTesting] = useState<Record<string, boolean>>({});
+  const [statuses, setStatuses] = useState<Record<string, { ok: boolean; message: string; at: string }>>({});
+
+  const testConnection = async (id: string) => {
+    setTesting((t) => ({ ...t, [id]: true }));
+    try {
+      const { data, error } = await supabase.functions.invoke('test-broker-connection', { body: { credentialId: id } });
+      if (error) throw error;
+      setStatuses((s) => ({ ...s, [id]: { ok: !!data?.ok, message: data?.message || data?.error || 'Unknown', at: new Date().toISOString() } }));
+      if (data?.ok) toast.success(`Connected: ${data.message}`);
+      else toast.error(`Failed: ${data?.message || data?.error}`);
+    } catch (e: any) {
+      setStatuses((s) => ({ ...s, [id]: { ok: false, message: e?.message || 'Test failed', at: new Date().toISOString() } }));
+      toast.error(e?.message || 'Test failed');
+    } finally {
+      setTesting((t) => ({ ...t, [id]: false }));
+    }
+  };
+
 
   const [form, setForm] = useState({
     broker_type: 'deriv',
