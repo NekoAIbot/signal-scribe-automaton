@@ -774,6 +774,45 @@ export type Database = {
           },
         ]
       }
+      webhook_events: {
+        Row: {
+          attempts: number
+          created_at: string
+          error: string | null
+          event_type: string | null
+          id: string
+          payload: Json | null
+          signature_valid: boolean | null
+          source: string
+          status: string
+          status_code: number | null
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          error?: string | null
+          event_type?: string | null
+          id?: string
+          payload?: Json | null
+          signature_valid?: boolean | null
+          source: string
+          status: string
+          status_code?: number | null
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          error?: string | null
+          event_type?: string | null
+          id?: string
+          payload?: Json | null
+          signature_valid?: boolean | null
+          source?: string
+          status?: string
+          status_code?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
