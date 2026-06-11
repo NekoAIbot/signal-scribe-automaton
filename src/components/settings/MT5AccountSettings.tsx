@@ -1,14 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Trash2, Plus, Eye, EyeOff, RefreshCw, ExternalLink, CheckCircle2, XCircle, Loader2, HelpCircle } from "lucide-react";
+import { Trash2, Plus, Eye, EyeOff, RefreshCw, ExternalLink, CheckCircle2, XCircle, Loader2, HelpCircle, AlertTriangle, ShieldCheck } from "lucide-react";
 
 interface BrokerCredential {
   id: string;
@@ -21,15 +22,59 @@ interface BrokerCredential {
   account_id: string | null;
   is_active: boolean;
   created_at: string;
+  metadata: any;
 }
 
-const BROKERS = [
-  { value: 'deriv',   label: 'Deriv',        markets: 'Crypto + Synthetics + Forex', needs: ['api_token'], tierMin: 'free',  url: 'https://app.deriv.com/account/api-token' },
-  { value: 'binance', label: 'Binance',      markets: 'Crypto',                       needs: ['api_token','api_secret'], tierMin: 'starter', url: 'https://www.binance.com/en/my/settings/api-management' },
-  { value: 'oanda',   label: 'OANDA',        markets: 'Forex + CFDs',                 needs: ['api_token','account_id'], tierMin: 'pro',     url: 'https://www.oanda.com/account/tpa/personal_token' },
-  { value: 'capital', label: 'Capital.com',  markets: 'Forex + Crypto + Stocks',      needs: ['api_token','account_id','password'], tierMin: 'pro', url: 'https://capital.com/trading/api' },
-  { value: 'mt5',     label: 'MT5 (Legacy)', markets: 'Forex + CFDs via MetaApi',     needs: ['login','password','server'], tierMin: 'enterprise', url: '' },
+interface BrokerDef {
+  value: string;
+  label: string;
+  markets: string;
+  needs: string[];
+  tierMin: string;
+  url: string;
+  requiredScopes: string[];
+  scopeHelp: string;
+}
+
+const BROKERS: BrokerDef[] = [
+  {
+    value: 'deriv', label: 'Deriv', markets: 'Crypto + Synthetics + Forex',
+    needs: ['api_token'], tierMin: 'free',
+    url: 'https://app.deriv.com/account/api-token',
+    requiredScopes: ['Read', 'Trade', 'Trading information', 'Payments'],
+    scopeHelp: 'When creating the Deriv API token, check the "Read", "Trade", "Trading information" and "Payments" scopes — otherwise auto-execute will be rejected.',
+  },
+  {
+    value: 'binance', label: 'Binance', markets: 'Crypto',
+    needs: ['api_token', 'api_secret'], tierMin: 'starter',
+    url: 'https://www.binance.com/en/my/settings/api-management',
+    requiredScopes: ['Enable Reading', 'Enable Spot & Margin Trading'],
+    scopeHelp: 'In Binance API Management, enable "Reading" and "Spot & Margin Trading". Disable withdrawals. If you use IP whitelist, add the server\'s IP or disable the restriction.',
+  },
+  {
+    value: 'oanda', label: 'OANDA', markets: 'Forex + CFDs',
+    needs: ['api_token', 'account_id'], tierMin: 'pro',
+    url: 'https://www.oanda.com/account/tpa/personal_token',
+    requiredScopes: ['Read account', 'Trade'],
+    scopeHelp: 'Generate a personal access token with read + trade permissions and use the matching account ID (e.g. 001-001-12345-001).',
+  },
+  {
+    value: 'capital', label: 'Capital.com', markets: 'Forex + Crypto + Stocks',
+    needs: ['api_token', 'account_id', 'password'], tierMin: 'pro',
+    url: 'https://capital.com/trading/api',
+    requiredScopes: ['Trading API enabled', 'Custom password set'],
+    scopeHelp: 'Enable the Trading API in Capital.com settings and set a separate custom password for API access — your login password will not work.',
+  },
+  {
+    value: 'mt5', label: 'MT5 (Legacy)', markets: 'Forex + CFDs via MetaApi',
+    needs: ['login', 'password', 'server'], tierMin: 'enterprise',
+    url: '',
+    requiredScopes: ['Investor/Master password', 'Trading enabled on account'],
+    scopeHelp: 'MT5 requires a running MetaApi bridge. Use the master password (not investor) if you want trades executed automatically.',
+  },
 ];
+
+const HEALTH_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 export const MT5AccountSettings = () => {
   const { user } = useAuth();
@@ -39,24 +84,27 @@ export const MT5AccountSettings = () => {
   const [showSecret, setShowSecret] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [testing, setTesting] = useState<Record<string, boolean>>({});
-  const [statuses, setStatuses] = useState<Record<string, { ok: boolean; message: string; at: string }>>({});
+  const lastAutoTest = useRef<Record<string, number>>({});
 
-  const testConnection = async (id: string) => {
+  const testConnection = useCallback(async (id: string, silent = false) => {
     setTesting((t) => ({ ...t, [id]: true }));
     try {
       const { data, error } = await supabase.functions.invoke('test-broker-connection', { body: { credentialId: id } });
       if (error) throw error;
-      setStatuses((s) => ({ ...s, [id]: { ok: !!data?.ok, message: data?.message || data?.error || 'Unknown', at: new Date().toISOString() } }));
-      if (data?.ok) toast.success(`Connected: ${data.message}`);
-      else toast.error(`Failed: ${data?.message || data?.error}`);
+      if (!silent) {
+        if (data?.ok) toast.success(`Connected: ${data.message}`);
+        else toast.error(`Failed: ${data?.message || data?.error}`);
+      }
+      // Refresh credentials so persisted metadata (last_test) reloads
+      await fetchCredentials();
     } catch (e: any) {
-      setStatuses((s) => ({ ...s, [id]: { ok: false, message: e?.message || 'Test failed', at: new Date().toISOString() } }));
-      toast.error(e?.message || 'Test failed');
+      if (!silent) toast.error(e?.message || 'Test failed');
     } finally {
       setTesting((t) => ({ ...t, [id]: false }));
+      lastAutoTest.current[id] = Date.now();
     }
-  };
-
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [form, setForm] = useState({
     broker_type: 'deriv',
@@ -79,7 +127,7 @@ export const MT5AccountSettings = () => {
     try {
       const { data, error } = await supabase
         .from('broker_credentials')
-        .select('id, broker_type, account_name, login, server, account_type, environment, account_id, is_active, created_at')
+        .select('id, broker_type, account_name, login, server, account_type, environment, account_id, is_active, created_at, metadata')
         .order('created_at', { ascending: false });
       if (error) throw error;
       setCredentials((data as any) || []);
@@ -91,7 +139,26 @@ export const MT5AccountSettings = () => {
     }
   };
 
-  useEffect(() => { fetchCredentials(); }, [user?.id]);
+  useEffect(() => { fetchCredentials(); /* eslint-disable-next-line */ }, [user?.id]);
+
+  // Periodic background health check — re-test active credentials every 5 min
+  useEffect(() => {
+    if (!credentials.length) return;
+    const tick = () => {
+      const now = Date.now();
+      credentials.filter(c => c.is_active).forEach((c) => {
+        const last = lastAutoTest.current[c.id] || 0;
+        const lastTestedAt = c.metadata?.last_test?.tested_at ? new Date(c.metadata.last_test.tested_at).getTime() : 0;
+        const since = now - Math.max(last, lastTestedAt);
+        if (since > HEALTH_CHECK_INTERVAL_MS && !testing[c.id]) {
+          testConnection(c.id, true);
+        }
+      });
+    };
+    tick();
+    const id = setInterval(tick, 60 * 1000); // check the queue every minute
+    return () => clearInterval(id);
+  }, [credentials, testing, testConnection]);
 
   const handleAdd = async () => {
     if (!user?.id) { toast.error('You must be logged in'); return; }
@@ -152,7 +219,7 @@ export const MT5AccountSettings = () => {
         <div className="flex items-center justify-between">
           <div>
             <CardTitle>Broker Accounts</CardTitle>
-            <CardDescription>Connect a free cloud broker (Deriv, Binance, OANDA, Capital.com) — no MT5 or VPS required</CardDescription>
+            <CardDescription>Connect a free cloud broker — credentials are auto-tested every 5 minutes</CardDescription>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={fetchCredentials}><RefreshCw className="h-4 w-4" /></Button>
@@ -184,6 +251,18 @@ export const MT5AccountSettings = () => {
                 <div className="space-y-2">
                   <Label>Account Name</Label>
                   <Input value={form.account_name} onChange={(e) => setForm({ ...form, account_name: e.target.value })} placeholder="My Trading Account" />
+                </div>
+                <div className="md:col-span-2">
+                  <Alert>
+                    <ShieldCheck className="h-4 w-4" />
+                    <AlertTitle className="text-sm">Required permissions for {broker.label}</AlertTitle>
+                    <AlertDescription className="text-xs space-y-2">
+                      <div className="flex gap-1 flex-wrap pt-1">
+                        {broker.requiredScopes.map(s => <Badge key={s} variant="secondary" className="text-[10px]">{s}</Badge>)}
+                      </div>
+                      <p className="text-muted-foreground">{broker.scopeHelp}</p>
+                    </AlertDescription>
+                  </Alert>
                 </div>
                 <div className="space-y-2">
                   <Label>Environment</Label>
@@ -246,50 +325,87 @@ export const MT5AccountSettings = () => {
         ) : (
           <div className="space-y-3">
             {credentials.map((c) => {
-              const st = statuses[c.id];
+              const def = BROKERS.find(b => b.value === c.broker_type);
+              const lt = c.metadata?.last_test as
+                | { ok: boolean; message: string; missing_scopes?: string[]; required_scopes?: string[]; tested_at: string }
+                | undefined;
               const isTesting = !!testing[c.id];
+              const missing = lt?.missing_scopes || [];
               return (
-              <div key={c.id} className="flex items-center justify-between p-4 rounded-lg border bg-card gap-3 flex-wrap">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium">{c.account_name}</span>
-                    <Badge variant="secondary">{c.broker_type.toUpperCase()}</Badge>
-                    <Badge variant={c.environment === 'live' ? 'default' : 'secondary'}>{c.environment || c.account_type}</Badge>
-                    <Badge variant={c.is_active ? 'success' as any : 'outline'}>{c.is_active ? 'Active' : 'Inactive'}</Badge>
-                    {isTesting ? (
-                      <Badge variant="outline" className="gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Testing</Badge>
-                    ) : st ? (
-                      st.ok
-                        ? <Badge className="gap-1 bg-green-500/20 text-green-400 border-green-500/40"><CheckCircle2 className="h-3 w-3" /> Verified</Badge>
-                        : <Badge className="gap-1 bg-red-500/20 text-red-400 border-red-500/40"><XCircle className="h-3 w-3" /> Invalid</Badge>
-                    ) : (
-                      <Badge variant="outline" className="gap-1 text-muted-foreground"><HelpCircle className="h-3 w-3" /> Untested</Badge>
-                    )}
+                <div key={c.id} className="flex flex-col gap-2 p-4 rounded-lg border bg-card">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium">{c.account_name}</span>
+                        <Badge variant="secondary">{c.broker_type.toUpperCase()}</Badge>
+                        <Badge variant={c.environment === 'live' ? 'default' : 'secondary'}>{c.environment || c.account_type}</Badge>
+                        <Badge variant={c.is_active ? 'default' : 'outline'}>{c.is_active ? 'Active' : 'Inactive'}</Badge>
+                        {isTesting ? (
+                          <Badge variant="outline" className="gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Testing</Badge>
+                        ) : lt ? (
+                          lt.ok
+                            ? <Badge className="gap-1 bg-green-500/20 text-green-400 border-green-500/40"><CheckCircle2 className="h-3 w-3" /> Verified</Badge>
+                            : <Badge className="gap-1 bg-red-500/20 text-red-400 border-red-500/40"><XCircle className="h-3 w-3" /> Invalid</Badge>
+                        ) : (
+                          <Badge variant="outline" className="gap-1 text-muted-foreground"><HelpCircle className="h-3 w-3" /> Untested</Badge>
+                        )}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {c.account_id ? `Account: ${c.account_id}` : (c.login ? `Login: ${c.login}` : '')}
+                        {c.server ? ` • ${c.server}` : ''}
+                        {lt?.tested_at ? ` • last checked ${new Date(lt.tested_at).toLocaleTimeString()}` : ''}
+                      </div>
+                      {lt && (
+                        <div className={`text-xs mt-1 ${lt.ok ? 'text-green-400' : 'text-red-400'}`}>{lt.message}</div>
+                      )}
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <Button variant="outline" size="sm" onClick={() => testConnection(c.id)} disabled={isTesting}>
+                        {isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Test'}
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleToggle(c.id, c.is_active)}>
+                        {c.is_active ? 'Deactivate' : 'Activate'}
+                      </Button>
+                      <Button variant="destructive" size="sm" onClick={() => handleDelete(c.id)}><Trash2 className="h-4 w-4" /></Button>
+                    </div>
                   </div>
-                  <div className="text-sm text-muted-foreground">
-                    {c.account_id ? `Account: ${c.account_id}` : (c.login ? `Login: ${c.login}` : '')}
-                    {c.server ? ` • ${c.server}` : ''}
-                  </div>
-                  {st && (
-                    <div className={`text-xs mt-1 ${st.ok ? 'text-green-400' : 'text-red-400'}`}>{st.message}</div>
+
+                  {lt && !lt.ok && (
+                    <Alert variant="destructive" className="py-2">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTitle className="text-sm">Connection failed</AlertTitle>
+                      <AlertDescription className="text-xs space-y-1">
+                        <div>{lt.message}</div>
+                        {missing.length > 0 && (
+                          <div>
+                            <span className="text-muted-foreground">Missing / required:</span>{' '}
+                            {missing.map(s => <Badge key={s} variant="outline" className="ml-1 text-[10px]">{s}</Badge>)}
+                          </div>
+                        )}
+                        {def?.url && (
+                          <a href={def.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary">
+                            Fix in {def.label} <ExternalLink className="h-3 w-3" />
+                          </a>
+                        )}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {def && (!lt || lt.ok) && (
+                    <div className="text-[11px] text-muted-foreground">
+                      Required scopes: {def.requiredScopes.map(s => (
+                        <Badge key={s} variant="outline" className="ml-1 text-[10px]">{s}</Badge>
+                      ))}
+                    </div>
                   )}
                 </div>
-                <div className="flex gap-2 flex-wrap">
-                  <Button variant="outline" size="sm" onClick={() => testConnection(c.id)} disabled={isTesting}>
-                    {isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Test'}
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => handleToggle(c.id, c.is_active)}>
-                    {c.is_active ? 'Deactivate' : 'Activate'}
-                  </Button>
-                  <Button variant="destructive" size="sm" onClick={() => handleDelete(c.id)}><Trash2 className="h-4 w-4" /></Button>
-                </div>
-              </div>
-            );})}
+              );
+            })}
           </div>
         )}
 
         <div className="text-sm text-muted-foreground mt-4 p-3 bg-muted/50 rounded-lg">
-          <strong>Free Cloud Brokers:</strong> Deriv / Binance / OANDA / Capital.com run server-side, so trades execute 24/7 without you keeping a PC or MT5 open.
+          <strong>Free Cloud Brokers:</strong> Deriv / Binance / OANDA / Capital.com run server-side. Connections are auto-re-tested every 5 minutes so the status badge stays current.
         </div>
       </CardContent>
     </Card>
