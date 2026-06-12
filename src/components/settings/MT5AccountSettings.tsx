@@ -34,6 +34,7 @@ interface BrokerDef {
   url: string;
   requiredScopes: string[];
   scopeHelp: string;
+  disabled?: boolean;
 }
 
 const BROKERS: BrokerDef[] = [
