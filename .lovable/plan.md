@@ -1,100 +1,81 @@
 
+# Plan: Fix Subscribe Error + Remove MetaApi
 
-# Plan: Fix Trade Execution, Real-time Monitoring, and Full Mobile Responsiveness
-
-## Problem Summary
-
-Three categories of issues to address:
-
-1. **Trade execution failures** -- Both automatic (bot) and manual (button click) execution paths have issues with MetaApi authentication, broker credential handling, and signal status tracking.
-2. **Monitoring not showing real-time data** -- The trades table has realtime enabled but the `executeOnBroker` function doesn't properly update signal status on failure, and the `useTradingSignals` hook maps all signals to `status: 'new'` regardless of actual state.
-3. **Mobile usability** -- Several pages (Settings, Admin, Signals, News, Prop Accounts, Monitoring) have hardcoded widths, multi-column tab lists, and non-responsive grids that break at 360-412px viewports.
+Two focused fixes. No new features.
 
 ---
 
-## Step 1: Fix Trade Execution Pipeline
+## 1. Fix the Paystack "2xx edge function" subscribe error
 
-**Edge function `execute-trade`:**
-- Sanitize `METAAPI_TOKEN` (trim whitespace/newlines) before use
-- Add `cloud-g2` to provisioning payload (`provisioningProfileId: 'cloud-g2'`)  
-- Use region-aware trade URL: try `mt-client-api-v1.new-york.agiliumtrade.ai` with fallback to default
-- Add better error logging with token prefix for debugging
-- Handle MetaApi `_id` vs `id` field inconsistency in account objects
+### What's actually happening
+`paystack-create-subscription` returns **HTTP 400** (which `supabase.functions.invoke` reports as the "non-2xx" error you're seeing). The error message is being swallowed by the frontend. Two likely root causes:
 
-**Client-side signal execution (`TradingSignals.tsx`):**
-- After execution, update the signal's `is_active` to `false` in `trading_signals` table so it doesn't show as executable again
-- Show proper error details from the edge function response
+- Paystack rejects `currency: "USD"` because most Nigerian Paystack accounts are NGN-only.
+- The frontend logs `e.message` which becomes the generic "Edge Function returned a non-2xx status code" string instead of the real reason.
 
-**Automatic execution (`unifiedSignalService.ts`):**
-- In `executeOnBroker`, set `signal.status = 'failed'` when all accounts fail (currently only sets `'executed'`)
-- Add the user's auth token check before attempting broker queries (RLS requires auth)
+### Changes
 
-## Step 2: Fix Signal Status Tracking
+**`supabase/functions/paystack-create-subscription/index.ts`**
+- Try `currency: "USD"` first; on Paystack failure that mentions currency, automatically retry with `currency: "NGN"` and amount converted at a configurable rate (default 1600 NGN/USD via new optional secret `USD_NGN_RATE`).
+- Always return errors as **HTTP 200** with `{ success: false, error, paystackResponse }` so the frontend sees the real reason instead of a generic non-2xx error.
+- Add explicit handling for the "free plan" case → return a friendly message, not 400.
 
-**`marketDataService.ts` `useTradingSignals`:**
-- Currently hardcodes `status: 'new'` for all signals. Add a `status` column to `trading_signals` table or track executed state via the `trades` table join.
-- Quick fix: check if a matching trade exists in the `trades` table for the signal; if so, mark as `'executed'`.
+**`src/services/edgeFunctionService.ts`** (already does direct fetch — good)
+- No changes needed; it already extracts `data.error`.
 
-**Database migration:**
-- Add `status` column to `trading_signals` table: `text DEFAULT 'new'` with values `new`, `executing`, `executed`, `failed`
-- Add UPDATE RLS policy for `trading_signals` so users can update their own signals
+**`src/components/settings/SubscriptionPlans.tsx`**
+- Switch from `supabase.functions.invoke` to `invokeEdgeFunction` so the real Paystack message ("Currency not supported", "Invalid plan code", etc.) is shown in the toast.
 
-## Step 3: Real-time Monitoring Improvements
-
-**`useLiveTrades.ts`:**
-- Already correctly subscribes to realtime changes -- this works once trades are actually inserted by the edge function
-- No changes needed here; fixing Step 1 will make trades appear
-
-**`MonitoringPage.tsx`:**
-- Add a connection status indicator showing whether realtime subscription is active
-- Add auto-refresh on page focus
-
-## Step 4: Full Mobile Responsiveness (360px)
-
-Files requiring mobile fixes:
-
-| Page | Issues |
-|------|--------|
-| **SettingsPage** | `grid-cols-4` TabsList overflows at 360px; `max-w-5xl` wastes space on mobile |
-| **AdminPage** | Tab bar overflows; strategy/model cards not stacking; action buttons wrap poorly |
-| **SignalsPage** | Signal cards have fixed-width elements; search bar doesn't resize |
-| **MonitoringPage** | Already mostly responsive but header flex needs `flex-col` on mobile |
-| **ForexNewsPage** | Search input and cards OK but article text may clip |
-| **PropAccountsPage** | Dialog forms need `max-w-[95vw]`; card grid needs single-column on mobile |
-| **AlertsPage** | Form fields may overflow; alert cards need responsive layout |
-| **AnalyticsPage** | Chart containers need `min-h` and `overflow-x-auto`; stat grids need `grid-cols-2` on mobile |
-
-**Specific fixes per page:**
-- **SettingsPage**: Change `grid-cols-4` to `grid-cols-2 sm:grid-cols-4` on TabsList; remove `max-w-5xl` container constraint on mobile
-- **AdminPage**: Make TabsList scrollable horizontally with `overflow-x-auto` or use `grid-cols-2 sm:grid-cols-4`; ensure action button groups use `flex-wrap`
-- **SignalsPage**: Signal detail cards stack vertically; price/action row uses `flex-col` on small screens
-- **PropAccountsPage**: Dialog uses `max-w-[95vw] sm:max-w-lg`; account cards single-column
-- **All pages**: Ensure no horizontal scroll at 360px; headers use `flex-col` with `gap-2` on mobile
-
-## Step 5: Deploy and Verify
-
-- Deploy updated `execute-trade` edge function
-- Run the migration for `trading_signals.status` column
-- Test manual signal execution from Signals page
-- Test automatic execution by starting bot with active broker account
-- Verify trades appear in Monitoring page via realtime subscription
-- Verify all pages render correctly at 360px viewport
+### Result
+You'll either get a working checkout, or a toast that tells you exactly what Paystack is complaining about so we can fix it in one more turn.
 
 ---
 
-## Files to Modify
+## 2. Remove MetaApi entirely from the execution path
 
-1. `supabase/functions/execute-trade/index.ts` -- MetaApi fixes
-2. `src/services/unifiedSignalService.ts` -- Failed status tracking, auth check
-3. `src/components/dashboard/TradingSignals.tsx` -- Post-execution status update
-4. `src/services/marketDataService.ts` -- Signal status from DB
-5. `src/pages/MonitoringPage.tsx` -- Connection indicator
-6. `src/pages/SettingsPage.tsx` -- Mobile tabs
-7. `src/pages/AdminPage.tsx` -- Mobile tabs and cards
-8. `src/pages/SignalsPage.tsx` -- Mobile signal cards
-9. `src/pages/PropAccountsPage.tsx` -- Mobile dialogs
-10. `src/pages/AlertsPage.tsx` -- Mobile form layout
-11. `src/pages/AnalyticsPage.tsx` -- Mobile charts
-12. `src/pages/ForexNewsPage.tsx` -- Mobile text wrapping
-13. New migration: Add `status` column + UPDATE policy to `trading_signals`
+### What's actually happening
+Every trade is failing with MetaApi `403 ForbiddenError: "To allow high reliability please top up your account"`. This is a billing problem on the MetaApi side — no code change fixes it. Per your choice, we drop MetaApi entirely.
 
+### Changes
+
+**`supabase/functions/execute-trade/index.ts`**
+- Delete the `else if (METAAPI_TOKEN)` branch (lines 183–199) and the `executeViaMetaApi` / `normalizeMetaApiToken` / MetaApi provisioning helpers (lines ~372–600).
+- Update the broker-type router so when `broker_type` is `mt4`/`mt5`/`metatrader`, the function now returns a clear `success: false` error:
+  > "MetaTrader execution has been disabled. Add a Deriv, Binance, OANDA, or Capital.com account in Settings → Brokers to continue trading."
+- Keep the MT5 bridge branch as-is (it only runs if `MT5_BRIDGE_URL` is set, which it isn't — harmless).
+- Update the final "no broker route" error message to drop the MetaApi mention.
+
+**`supabase/functions/run-trading-bot/index.ts`**
+- When iterating users, skip (with a logged reason) any user whose only broker account is an MT4/MT5 type. Prevents wasted bot cycles.
+
+**`src/components/settings/MT5AccountSettings.tsx`** (UI hint only)
+- In the broker picker, mark `MT4 / MT5` as "Disabled — choose Deriv/Binance/OANDA/Capital.com" so users can't add a doomed account.
+- Existing MT5 rows show a warning badge: "Not executable — switch to a supported broker."
+
+**Secrets**
+- `METAAPI_TOKEN` is left in place (harmless) — no deletion to avoid breaking anything else that references it. Code paths that read it are removed.
+
+### Result
+Trades now route only through the four direct-API brokers that actually work. MetaApi 403 errors disappear from logs.
+
+---
+
+## Files touched
+
+```text
+supabase/functions/paystack-create-subscription/index.ts   (rewrite error handling + NGN fallback)
+supabase/functions/execute-trade/index.ts                  (remove MetaApi branch + helpers)
+supabase/functions/run-trading-bot/index.ts                (skip MT4/MT5-only users)
+src/components/settings/SubscriptionPlans.tsx              (use invokeEdgeFunction for real errors)
+src/components/settings/MT5AccountSettings.tsx             (disable MT4/MT5 picker, warn existing)
+```
+
+No DB migrations. No new secrets required (USD_NGN_RATE is optional).
+
+---
+
+## What this does NOT do
+
+- Does not build the Telegram copytrader (you chose to skip).
+- Does not delete MetaApi-related DB columns or secrets — purely a code-path removal so it's reversible.
+- Does not change subscription tiers, broker adapters, or webhook handling.
