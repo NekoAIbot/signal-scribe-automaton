@@ -66,11 +66,12 @@ const BROKERS: BrokerDef[] = [
     scopeHelp: 'Enable the Trading API in Capital.com settings and set a separate custom password for API access — your login password will not work.',
   },
   {
-    value: 'mt5', label: 'MT5 (Legacy)', markets: 'Forex + CFDs via MetaApi',
+    value: 'mt5', label: 'MT5 (Disabled)', markets: 'Use Deriv / Binance / OANDA / Capital.com instead',
     needs: ['login', 'password', 'server'], tierMin: 'enterprise',
     url: '',
-    requiredScopes: ['Investor/Master password', 'Trading enabled on account'],
-    scopeHelp: 'MT5 requires a running MetaApi bridge. Use the master password (not investor) if you want trades executed automatically.',
+    requiredScopes: [],
+    scopeHelp: 'MetaTrader execution has been removed. Existing MT5 accounts will not place trades — switch to one of the supported brokers above.',
+    disabled: true,
   },
 ];
 
@@ -238,7 +239,9 @@ export const MT5AccountSettings = () => {
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {BROKERS.map(b => (
-                        <SelectItem key={b.value} value={b.value}>{b.label} — {b.markets}</SelectItem>
+                        <SelectItem key={b.value} value={b.value} disabled={(b as any).disabled}>
+                          {b.label} — {b.markets}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

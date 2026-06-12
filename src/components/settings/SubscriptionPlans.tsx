@@ -5,6 +5,7 @@ import { Check, ArrowRight, Loader2 } from "lucide-react";
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/services/edgeFunctionService';
 
 interface Plan {
   id: string;
@@ -62,12 +63,16 @@ export function SubscriptionPlans() {
     }
     setBusy(planId);
     try {
-      const { data, error } = await supabase.functions.invoke('paystack-create-subscription', { body: { planId } });
-      if (error) throw error;
-      if (data?.authorization_url) {
-        window.location.href = data.authorization_url;
+      const result = await invokeEdgeFunction<{ authorization_url?: string; error?: string; paystackResponse?: unknown }>(
+        'paystack-create-subscription',
+        { planId }
+      );
+      if (result.ok && result.data?.authorization_url) {
+        window.location.href = result.data.authorization_url;
       } else {
-        toast.error(data?.error || 'Failed to start checkout');
+        const msg = result.error || result.data?.error || 'Failed to start checkout';
+        console.error('Subscription error:', msg, result.data?.paystackResponse);
+        toast.error(msg);
       }
     } catch (e: any) {
       console.error('Subscription error:', e);
