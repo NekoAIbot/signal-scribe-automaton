@@ -82,6 +82,21 @@ async function runForUser(client: any, supabaseUrl: string, anonKey: string, ser
       return { userId, generated: 0, executed: 0, telegramSent: 0, tier, timeline };
     }
 
+    // Skip users whose only broker accounts are MT4/MT5 (no longer supported).
+    if (setting.bot_enabled && autoExecuteAllowed) {
+      const { data: brokers } = await client
+        .from('broker_credentials')
+        .select('broker_type')
+        .eq('user_id', userId)
+        .eq('is_active', true);
+      const supported = ['deriv', 'binance', 'oanda', 'capital'];
+      const hasSupported = (brokers || []).some((b: any) => supported.includes(String(b.broker_type || '').toLowerCase()));
+      if (!hasSupported) {
+        timeline.push({ stage: 'broker_check', status: 'skipped', at: nowIso(), message: 'No supported broker connected (Deriv/Binance/OANDA/Capital). MT4/MT5 is disabled.' });
+        return { userId, generated: 0, executed: 0, telegramSent: 0, tier, timeline };
+      }
+    }
+
     const signals = (await generateSignalsForUser(client, supabaseUrl, anonKey, userId, timeline))
       .filter((s: any) => allowedMarkets.includes(classifyAsset(s.symbol)));
 

@@ -102,14 +102,9 @@ serve(async (req) => {
     const forceMain = requestData.forceMainBroker === true;
     if (forceMain) requestData.brokerAccountId = null;
 
-    const METAAPI_TOKEN = normalizeMetaApiToken(Deno.env.get('METAAPI_TOKEN') || '');
     const PAPER_MODE = (Deno.env.get('TRADING_PAPER_MODE') || '').toLowerCase() === 'true';
     const MT5_BRIDGE_URL = Deno.env.get('MT5_BRIDGE_URL');
     const MT5_BRIDGE_API_KEY = Deno.env.get('MT5_BRIDGE_API_KEY');
-
-    if (METAAPI_TOKEN) {
-      console.log(`MetaApi token present, length: ${METAAPI_TOKEN.length}`);
-    }
 
     mainBrokerAccount = await resolveMainBrokerAccount(serviceClient, userId, requestData.brokerAccountId);
     if (!mainBrokerAccount) {
@@ -161,7 +156,7 @@ serve(async (req) => {
         timeline: timeline.events,
       }, corsHeaders);
     }
-    const brokerType = String(mainBrokerAccount.broker_type || 'mt5').toLowerCase();
+    const brokerType = String(mainBrokerAccount.broker_type || '').toLowerCase();
     if (tierInfo.allowed_brokers.length && !tierInfo.allowed_brokers.includes(brokerType)) {
       timeline.push('tier_check', 'failed', `Broker ${brokerType} not allowed on ${tierInfo.tier}`);
       return jsonResponse({
@@ -174,29 +169,21 @@ serve(async (req) => {
 
     let executionResult: { ticketNumber: string; volume: number; mode: string };
 
-    // Route by broker_type: free cloud-native brokers first
+    // Route by broker_type: only direct-API brokers are supported.
     if (['deriv','binance','oanda','capital'].includes(brokerType)) {
       timeline.push('order', 'started', `Sending to ${brokerType.toUpperCase()} API`);
       executionResult = await executeViaBrokerApi(brokerType, mainBrokerAccount, requestData);
       timeline.push('order', 'success', `${brokerType} ticket ${executionResult.ticketNumber}`);
       timeline.push('filled', 'success');
-    } else if (METAAPI_TOKEN) {
-      try {
-        executionResult = await executeViaMetaApi(METAAPI_TOKEN, mainBrokerAccount, requestData, timeline);
-      } catch (metaApiError) {
-        const message = metaApiError instanceof Error ? metaApiError.message : String(metaApiError);
-        console.error('MetaApi execution failed:', message);
-        timeline.push('order', 'failed', message);
-        if (MT5_BRIDGE_URL) {
-          timeline.push('order', 'started', 'Falling back to MT5 bridge');
-          executionResult = await executeViaBridge(MT5_BRIDGE_URL, MT5_BRIDGE_API_KEY || '', requestData);
-          timeline.push('order', 'success', `Bridge ticket ${executionResult.ticketNumber}`);
-          timeline.push('filled', 'success');
-        } else {
-          await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'metaapi_failed');
-          throw metaApiError;
-        }
-      }
+    } else if (['mt4', 'mt5', 'metatrader'].includes(brokerType)) {
+      const msg = 'MetaTrader execution has been disabled. Add a Deriv, Binance, OANDA, or Capital.com account in Settings → Brokers to continue trading.';
+      timeline.push('order', 'failed', msg);
+      await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'metatrader_disabled');
+      await writeAuditLog(serviceClient, {
+        userId, requestData, timeline: timeline.events, success: false,
+        status: 'metatrader_disabled', error: msg, retryOf, brokerAccount: mainBrokerAccount,
+      });
+      return jsonResponse({ success: false, error: msg, timeline: timeline.events }, corsHeaders);
     } else if (PAPER_MODE && requestData.allowPaperMode === true) {
       timeline.push('order', 'started', 'Paper-mode (no broker call)');
       executionResult = { ticketNumber: `PAPER-${Date.now()}`, volume: requestData.lotSize || 0.01, mode: 'paper' };
@@ -208,17 +195,14 @@ serve(async (req) => {
       timeline.push('order', 'success', `Bridge ticket ${executionResult.ticketNumber}`);
       timeline.push('filled', 'success');
     } else {
-      timeline.push('order', 'failed', 'No broker route configured');
-      await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'no_bridge');
+      const msg = `Broker type "${brokerType}" is not supported. Add a Deriv, Binance, OANDA, or Capital.com account in Settings → Brokers.`;
+      timeline.push('order', 'failed', msg);
+      await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'unsupported_broker');
       await writeAuditLog(serviceClient, {
         userId, requestData, timeline: timeline.events, success: false,
-        status: 'no_bridge', error: 'No broker route configured', retryOf, brokerAccount: mainBrokerAccount,
+        status: 'unsupported_broker', error: msg, retryOf, brokerAccount: mainBrokerAccount,
       });
-      return jsonResponse({
-        success: false,
-        error: 'No broker route configured. Add a Deriv/Binance/OANDA API token in Settings, or set METAAPI_TOKEN / MT5_BRIDGE_URL.',
-        timeline: timeline.events,
-      }, corsHeaders);
+      return jsonResponse({ success: false, error: msg, timeline: timeline.events }, corsHeaders);
     }
 
     // Record trade with full timeline
@@ -369,9 +353,6 @@ function decodeStoredPassword(password: string) {
   try { return atob(password); } catch { return password; }
 }
 
-function normalizeMetaApiToken(rawToken: string) {
-  return rawToken.trim().replace(/[\r\n]/g, '').replace(/^Bearer\s+/i, '').replace(/^"|"$/g, '');
-}
 
 async function resolveMainBrokerAccount(client: ReturnType<typeof createClient>, userId: string, requestedAccountId?: string | null) {
   const selectColumns = 'id, user_id, account_name, login, encrypted_password, server, broker_type, account_type, is_active, created_at';
@@ -413,191 +394,6 @@ async function resolveMainBrokerAccount(client: ReturnType<typeof createClient>,
     ?.account || null;
 }
 
-// MetaApi provisioning hosts. Bare "mt-provisioning-api-v1.agiliumtrade.ai" does NOT resolve via DNS.
-const METAAPI_PROVISIONING_HOSTS = [
-  'mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai',
-  'mt-provisioning-api-v1.new-york.agiliumtrade.ai',
-  'mt-provisioning-api-v1.london.agiliumtrade.ai',
-  'mt-provisioning-api-v1.singapore.agiliumtrade.ai',
-];
-const METAAPI_REGIONS = ['new-york', 'london', 'singapore', ''];
-
-async function metaApiFetch(path: string, init: RequestInit): Promise<Response> {
-  let lastError: any = null;
-  for (const host of METAAPI_PROVISIONING_HOSTS) {
-    const url = `https://${host}${path}`;
-    try {
-      return await fetch(url, init);
-    } catch (err) {
-      lastError = err;
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`MetaApi host ${host} failed: ${msg}`);
-    }
-  }
-  throw lastError ?? new Error('All MetaApi provisioning hosts unreachable');
-}
-
-async function executeViaMetaApi(token: string, creds: any, data: any, timeline: Timeline) {
-  const decodedPassword = decodeStoredPassword(creds.encrypted_password);
-  const platform = String(creds.broker_type || 'mt5').toLowerCase() === 'mt4' ? 'mt4' : 'mt5';
-  const provisioningProfileId = Deno.env.get('METAAPI_PROVISIONING_PROFILE_ID');
-
-  timeline.push('provisioning', 'started', 'Listing MetaApi accounts');
-  const listRes = await metaApiFetch(`/users/current/accounts`, { headers: { 'auth-token': token } });
-
-  if (!listRes.ok) {
-    const errBody = await listRes.text();
-    console.error(`MetaApi list accounts failed [${listRes.status}]: ${errBody}`);
-    timeline.push('provisioning', 'failed', `${listRes.status}: ${errBody.slice(0, 200)}`);
-    if (listRes.status === 401) {
-      throw new Error('MetaApi authentication failed (401). Check METAAPI_TOKEN in Supabase secrets (no Bearer prefix, no quotes/newlines).');
-    }
-    throw new Error(`MetaApi list accounts failed: ${listRes.status}`);
-  }
-
-  const accounts = await listRes.json();
-  if (!Array.isArray(accounts)) throw new Error('MetaApi returned unexpected account list format');
-
-  let metaApiAccount = accounts.find((a: any) =>
-    String(a.login) === String(creds.login) &&
-    String(a.server || '').toLowerCase() === String(creds.server || '').toLowerCase() &&
-    String(a.platform || '').toLowerCase() === platform
-  );
-
-  if (!metaApiAccount) {
-    const provisionWith = async (serverName: string) => {
-      timeline.push('provisioning', 'started', `Provisioning new account (login ${creds.login}, server ${serverName})`);
-      const body: any = {
-        name: creds.account_name || `Account ${creds.login}`,
-        type: 'cloud-g2',
-        login: String(creds.login),
-        password: decodedPassword,
-        server: serverName,
-        platform,
-        application: 'MetaApi',
-        magic: 234000,
-      };
-      if (provisioningProfileId) body.provisioningProfileId = provisioningProfileId;
-      return metaApiFetch(`/users/current/accounts`, {
-        method: 'POST',
-        headers: { 'auth-token': token, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-    };
-
-    let provisionRes = await provisionWith(creds.server);
-
-    if (!provisionRes.ok) {
-      const errText = await provisionRes.text();
-      console.warn(`MetaApi provision attempt 1 failed [${provisionRes.status}]: ${errText}`);
-      timeline.push('provisioning', 'failed', `${provisionRes.status}: ${errText.slice(0, 200)}`);
-
-      // Auto-correct: MetaApi error often returns "Suggested server names: X, Y"
-      const suggestedMatch = errText.match(/Suggested server names?:\s*([^"\\}]+)/i);
-      const suggestions = suggestedMatch
-        ? suggestedMatch[1].split(/[,\s]+/).map(s => s.trim()).filter(Boolean)
-        : [];
-
-      // Also try common typo fixes (Derive -> Deriv etc.)
-      const typoFixed = String(creds.server || '').replace(/Derive/gi, 'Deriv');
-      if (typoFixed && typoFixed !== creds.server && !suggestions.includes(typoFixed)) {
-        suggestions.unshift(typoFixed);
-      }
-
-      let resolved = false;
-      for (const candidate of suggestions.slice(0, 3)) {
-        timeline.push('provisioning', 'started', `Retrying with corrected server "${candidate}"`);
-        const retryRes = await provisionWith(candidate);
-        if (retryRes.ok) {
-          metaApiAccount = await retryRes.json();
-          // Persist the corrected server back to broker_credentials
-          try {
-            const sb = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
-            await sb.from('broker_credentials').update({ server: candidate }).eq('id', creds.id);
-            timeline.push('provisioning', 'success', `Server name corrected to "${candidate}"`);
-          } catch {}
-          resolved = true;
-          break;
-        }
-        const retryErr = await retryRes.text();
-        timeline.push('provisioning', 'failed', `${retryRes.status}: ${retryErr.slice(0, 200)}`);
-      }
-
-      if (!resolved) {
-        if (errText.toLowerCase().includes('provisioning profile') && !provisioningProfileId) {
-          throw new Error('MetaApi provisioning requires a profile for this broker server. Set METAAPI_PROVISIONING_PROFILE_ID in Supabase secrets.');
-        }
-        throw new Error(`MetaApi provision failed: ${provisionRes.status} ${errText}`);
-      }
-    } else {
-      metaApiAccount = await provisionRes.json();
-    }
-  }
-
-  const accountId = metaApiAccount.id || metaApiAccount._id;
-  if (!accountId) throw new Error('MetaApi account missing ID field');
-  timeline.push('provisioning', 'success', `Account ${accountId}`);
-
-  if (metaApiAccount.state !== 'DEPLOYED') {
-    timeline.push('deploying', 'started');
-    await metaApiFetch(`/users/current/accounts/${accountId}/deploy`, {
-      method: 'POST', headers: { 'auth-token': token }
-    });
-    let deployedOk = false;
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 2000));
-      const checkRes = await metaApiFetch(`/users/current/accounts/${accountId}`, { headers: { 'auth-token': token } });
-      const acc = await checkRes.json();
-      if (acc.state === 'DEPLOYED' && acc.connectionStatus === 'CONNECTED') { deployedOk = true; break; }
-    }
-    timeline.push('deploying', deployedOk ? 'success' : 'failed', deployedOk ? 'Account deployed & connected' : 'Deployment timeout (60s)');
-  } else {
-    timeline.push('deploying', 'success', 'Already deployed');
-  }
-
-  const symbol = data.symbol?.replace('/', '') || data.symbol;
-  const tradePayload: any = {
-    actionType: data.type === 'BUY' ? 'ORDER_TYPE_BUY' : 'ORDER_TYPE_SELL',
-    symbol,
-    volume: data.lotSize || 0.01,
-  };
-  if (data.stopLoss) tradePayload.stopLoss = data.stopLoss;
-  if (data.takeProfit) tradePayload.takeProfit = data.takeProfit;
-
-  timeline.push('order', 'started', `Placing ${data.type} ${symbol}`);
-  let lastError = '';
-  for (const region of METAAPI_REGIONS) {
-    const host = region ? `mt-client-api-v1.${region}.agiliumtrade.ai` : 'mt-client-api-v1.agiliumtrade.ai';
-    const tradeUrl = `https://${host}/users/current/accounts/${accountId}/trade`;
-
-    try {
-      const tradeRes = await fetch(tradeUrl, {
-        method: 'POST',
-        headers: { 'auth-token': token, 'Content-Type': 'application/json' },
-        body: JSON.stringify(tradePayload)
-      });
-
-      if (tradeRes.ok) {
-        const result = await tradeRes.json();
-        const ticket = result.orderId || result.positionId || String(Date.now());
-        timeline.push('order', 'success', `Order placed via ${region || 'default'} (ticket ${ticket})`);
-        timeline.push('filled', 'success');
-        return { ticketNumber: ticket, volume: data.lotSize || 0.01, mode: 'metaapi' };
-      }
-
-      lastError = await tradeRes.text();
-      console.warn(`Trade failed on ${region || 'default'} [${tradeRes.status}]: ${lastError}`);
-      if (tradeRes.status === 401 || tradeRes.status === 403) {
-        throw new Error(`MetaApi auth error: ${tradeRes.status} ${lastError}`);
-      }
-    } catch (e: any) {
-      if (e.message?.includes('MetaApi auth error')) throw e;
-      lastError = e.message;
-    }
-  }
-
-  throw new Error(`MetaApi trade failed on all regions. Last error: ${lastError}`);
-}
 
 async function executeViaBridge(bridgeUrl: string, apiKey: string, data: any) {
   const response = await fetch(`${bridgeUrl}/trade`, {
