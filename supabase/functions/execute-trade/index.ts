@@ -353,9 +353,6 @@ function decodeStoredPassword(password: string) {
   try { return atob(password); } catch { return password; }
 }
 
-function normalizeMetaApiToken(rawToken: string) {
-  return rawToken.trim().replace(/[\r\n]/g, '').replace(/^Bearer\s+/i, '').replace(/^"|"$/g, '');
-}
 
 async function resolveMainBrokerAccount(client: ReturnType<typeof createClient>, userId: string, requestedAccountId?: string | null) {
   const selectColumns = 'id, user_id, account_name, login, encrypted_password, server, broker_type, account_type, is_active, created_at';
