@@ -102,14 +102,9 @@ serve(async (req) => {
     const forceMain = requestData.forceMainBroker === true;
     if (forceMain) requestData.brokerAccountId = null;
 
-    const METAAPI_TOKEN = normalizeMetaApiToken(Deno.env.get('METAAPI_TOKEN') || '');
     const PAPER_MODE = (Deno.env.get('TRADING_PAPER_MODE') || '').toLowerCase() === 'true';
     const MT5_BRIDGE_URL = Deno.env.get('MT5_BRIDGE_URL');
     const MT5_BRIDGE_API_KEY = Deno.env.get('MT5_BRIDGE_API_KEY');
-
-    if (METAAPI_TOKEN) {
-      console.log(`MetaApi token present, length: ${METAAPI_TOKEN.length}`);
-    }
 
     mainBrokerAccount = await resolveMainBrokerAccount(serviceClient, userId, requestData.brokerAccountId);
     if (!mainBrokerAccount) {
@@ -161,7 +156,7 @@ serve(async (req) => {
         timeline: timeline.events,
       }, corsHeaders);
     }
-    const brokerType = String(mainBrokerAccount.broker_type || 'mt5').toLowerCase();
+    const brokerType = String(mainBrokerAccount.broker_type || '').toLowerCase();
     if (tierInfo.allowed_brokers.length && !tierInfo.allowed_brokers.includes(brokerType)) {
       timeline.push('tier_check', 'failed', `Broker ${brokerType} not allowed on ${tierInfo.tier}`);
       return jsonResponse({
@@ -174,29 +169,21 @@ serve(async (req) => {
 
     let executionResult: { ticketNumber: string; volume: number; mode: string };
 
-    // Route by broker_type: free cloud-native brokers first
+    // Route by broker_type: only direct-API brokers are supported.
     if (['deriv','binance','oanda','capital'].includes(brokerType)) {
       timeline.push('order', 'started', `Sending to ${brokerType.toUpperCase()} API`);
       executionResult = await executeViaBrokerApi(brokerType, mainBrokerAccount, requestData);
       timeline.push('order', 'success', `${brokerType} ticket ${executionResult.ticketNumber}`);
       timeline.push('filled', 'success');
-    } else if (METAAPI_TOKEN) {
-      try {
-        executionResult = await executeViaMetaApi(METAAPI_TOKEN, mainBrokerAccount, requestData, timeline);
-      } catch (metaApiError) {
-        const message = metaApiError instanceof Error ? metaApiError.message : String(metaApiError);
-        console.error('MetaApi execution failed:', message);
-        timeline.push('order', 'failed', message);
-        if (MT5_BRIDGE_URL) {
-          timeline.push('order', 'started', 'Falling back to MT5 bridge');
-          executionResult = await executeViaBridge(MT5_BRIDGE_URL, MT5_BRIDGE_API_KEY || '', requestData);
-          timeline.push('order', 'success', `Bridge ticket ${executionResult.ticketNumber}`);
-          timeline.push('filled', 'success');
-        } else {
-          await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'metaapi_failed');
-          throw metaApiError;
-        }
-      }
+    } else if (['mt4', 'mt5', 'metatrader'].includes(brokerType)) {
+      const msg = 'MetaTrader execution has been disabled. Add a Deriv, Binance, OANDA, or Capital.com account in Settings → Brokers to continue trading.';
+      timeline.push('order', 'failed', msg);
+      await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'metatrader_disabled');
+      await writeAuditLog(serviceClient, {
+        userId, requestData, timeline: timeline.events, success: false,
+        status: 'metatrader_disabled', error: msg, retryOf, brokerAccount: mainBrokerAccount,
+      });
+      return jsonResponse({ success: false, error: msg, timeline: timeline.events }, corsHeaders);
     } else if (PAPER_MODE && requestData.allowPaperMode === true) {
       timeline.push('order', 'started', 'Paper-mode (no broker call)');
       executionResult = { ticketNumber: `PAPER-${Date.now()}`, volume: requestData.lotSize || 0.01, mode: 'paper' };
@@ -208,17 +195,14 @@ serve(async (req) => {
       timeline.push('order', 'success', `Bridge ticket ${executionResult.ticketNumber}`);
       timeline.push('filled', 'success');
     } else {
-      timeline.push('order', 'failed', 'No broker route configured');
-      await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'no_bridge');
+      const msg = `Broker type "${brokerType}" is not supported. Add a Deriv, Binance, OANDA, or Capital.com account in Settings → Brokers.`;
+      timeline.push('order', 'failed', msg);
+      await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'unsupported_broker');
       await writeAuditLog(serviceClient, {
         userId, requestData, timeline: timeline.events, success: false,
-        status: 'no_bridge', error: 'No broker route configured', retryOf, brokerAccount: mainBrokerAccount,
+        status: 'unsupported_broker', error: msg, retryOf, brokerAccount: mainBrokerAccount,
       });
-      return jsonResponse({
-        success: false,
-        error: 'No broker route configured. Add a Deriv/Binance/OANDA API token in Settings, or set METAAPI_TOKEN / MT5_BRIDGE_URL.',
-        timeline: timeline.events,
-      }, corsHeaders);
+      return jsonResponse({ success: false, error: msg, timeline: timeline.events }, corsHeaders);
     }
 
     // Record trade with full timeline
