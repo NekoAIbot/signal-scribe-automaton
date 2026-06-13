@@ -49,8 +49,8 @@ const BROKERS: BrokerDef[] = [
     value: 'binance', label: 'Binance', markets: 'Crypto',
     needs: ['api_token', 'api_secret'], tierMin: 'starter',
     url: 'https://www.binance.com/en/my/settings/api-management',
-    requiredScopes: ['Enable Reading', 'Enable Spot & Margin Trading'],
-    scopeHelp: 'In Binance API Management, enable "Reading" and "Spot & Margin Trading". Disable withdrawals. If you use IP whitelist, add the server\'s IP or disable the restriction.',
+    requiredScopes: ['Enable Reading', 'Enable Spot & Margin & Stock Trading'],
+    scopeHelp: 'Binance.com API keys must use Live environment. In Binance API Management, enable "Reading" and "Spot & Margin & Stock Trading". Disable withdrawals. If you use IP whitelist, add the server IP shown after a failed test, or disable the restriction.',
   },
   {
     value: 'oanda', label: 'OANDA', markets: 'Forex + CFDs',
@@ -236,7 +236,7 @@ export const MT5AccountSettings = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Broker</Label>
-                  <Select value={form.broker_type} onValueChange={(v) => setForm({ ...form, broker_type: v })}>
+                  <Select value={form.broker_type} onValueChange={(v) => setForm({ ...form, broker_type: v, environment: v === 'binance' ? 'live' : form.environment, account_type: v === 'binance' ? 'live' : form.account_type })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {BROKERS.map(b => (
@@ -273,7 +273,7 @@ export const MT5AccountSettings = () => {
                   <Select value={form.environment} onValueChange={(v) => setForm({ ...form, environment: v, account_type: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="demo">Demo / Practice</SelectItem>
+                      <SelectItem value="demo">Demo / Practice / Testnet</SelectItem>
                       <SelectItem value="live">Live</SelectItem>
                     </SelectContent>
                   </Select>
