@@ -498,6 +498,7 @@ async function executeBinance(creds: any, data: any) {
   const apiSecret = decodeStoredPassword(creds.api_secret || creds.encrypted_password || '');
   if (!apiKey || !apiSecret) throw new Error('Binance requires api_token (API key) and api_secret');
   const base = (creds.environment === 'live') ? 'https://api.binance.com' : 'https://testnet.binance.vision';
+  const environmentLabel = creds.environment === 'live' ? 'Binance.com Live' : 'Binance Spot Testnet';
   const symbol = data.symbol.replace('/', '').toUpperCase().replace('USD', 'USDT');
   const side = data.type === 'BUY' ? 'BUY' : 'SELL';
   const qty = data.lotSize || 0.001;
@@ -507,7 +508,13 @@ async function executeBinance(creds: any, data: any) {
   const res = await fetch(`${base}/api/v3/order?${query}&signature=${sig}`, {
     method: 'POST', headers: { 'X-MBX-APIKEY': apiKey }
   });
-  if (!res.ok) throw new Error(`Binance error ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    const body = await res.text();
+    const hint = body.includes('-2015') && creds.environment !== 'live'
+      ? ' This looks like a Binance.com live API key saved as Demo/Testnet. Set this broker account environment to Live, or create a separate Spot Testnet key at testnet.binance.vision.'
+      : '';
+    throw new Error(`Binance error ${res.status} on ${environmentLabel}: ${body}${hint}`);
+  }
   const j = await res.json();
   return { ticketNumber: String(j.orderId), volume: qty, mode: 'binance' };
 }

@@ -8,7 +8,7 @@ const corsHeaders = {
 
 const REQUIRED_SCOPES: Record<string, string[]> = {
   deriv:   ["read", "trade", "trading_information", "payments"],
-  binance: ["Enable Reading", "Enable Spot & Margin Trading"],
+  binance: ["Enable Reading", "Enable Spot & Margin & Stock Trading"],
   oanda:   ["Read account", "Trade"],
   capital: ["Trading API enabled", "Custom password set"],
   mt5:     ["Investor / Master password", "Trading enabled"],
@@ -46,10 +46,17 @@ serve(async (req) => {
       },
     };
 
-    await service.from("broker_credentials").update({
+    const updatePayload: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
       metadata: mergedMeta,
-    }).eq("id", credentialId);
+    };
+
+    if (result.detectedEnvironment && result.detectedEnvironment !== cred.environment) {
+      updatePayload.environment = result.detectedEnvironment;
+      updatePayload.account_type = result.detectedEnvironment;
+    }
+
+    await service.from("broker_credentials").update(updatePayload).eq("id", credentialId);
 
     return json({
       ok: result.ok,
@@ -84,7 +91,7 @@ function inferMissingScopes(broker: string, message: string | undefined, ok: boo
   return Array.from(new Set(out));
 }
 
-async function testBroker(cred: any): Promise<{ ok: boolean; message: string; details?: any; missingScopes?: string[] }> {
+async function testBroker(cred: any): Promise<{ ok: boolean; message: string; details?: any; missingScopes?: string[]; detectedEnvironment?: string }> {
   const token = cred.api_token;
   const env = cred.environment || "demo";
   try {
@@ -119,22 +126,27 @@ async function testBroker(cred: any): Promise<{ ok: boolean; message: string; de
       }
       case "binance": {
         if (!token || !cred.api_secret) return { ok: false, message: "API key/secret missing", missingScopes: ["Enable Reading"] };
-        const base = env === "live" ? "https://api.binance.com" : "https://testnet.binance.vision";
         const secret = atob(cred.api_secret);
-        const ts = Date.now();
-        const query = `timestamp=${ts}`;
-        const sig = await hmacSha256Hex(secret, query);
-        const r = await fetch(`${base}/api/v3/account?${query}&signature=${sig}`, { headers: { "X-MBX-APIKEY": token } });
-        const j = await r.json();
-        if (!r.ok) return { ok: false, message: j.msg || `HTTP ${r.status}` };
-        const missing: string[] = [];
-        if (!j.canTrade) missing.push("Enable Spot & Margin Trading");
-        return {
-          ok: missing.length === 0,
-          message: missing.length === 0 ? "Connected" : "Missing trading permission",
-          details: { canTrade: j.canTrade, balances: (j.balances || []).filter((b: any) => parseFloat(b.free) > 0).slice(0, 5) },
-          missingScopes: missing,
-        };
+        const primaryEnv = env === "live" ? "live" : "demo";
+        const primary = await testBinanceAccount(token, secret, primaryEnv);
+        if (primary.ok) return primary;
+
+        if (primaryEnv !== "live" && isBinanceRejectedKey(primary.message)) {
+          const live = await testBinanceAccount(token, secret, "live");
+          if (live.ok) {
+            return {
+              ...live,
+              detectedEnvironment: "live",
+              message: `${live.message} — detected as Binance.com live API key and updated from Demo/Testnet to Live.`,
+            };
+          }
+          return {
+            ...live,
+            message: `${primary.message}. Binance.com API keys must be saved as Live; Demo/Testnet requires a separate key from testnet.binance.vision. Live check also failed: ${live.message}`,
+          };
+        }
+
+        return primary;
       }
       case "oanda": {
         if (!token || !cred.account_id) return { ok: false, message: "Token/account_id missing", missingScopes: ["Read account"] };
@@ -172,6 +184,36 @@ async function hmacSha256Hex(secret: string, payload: string) {
   const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const sig = await crypto.subtle.sign("HMAC", key, enc.encode(payload));
   return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function testBinanceAccount(token: string, secret: string, environment: "demo" | "live") {
+  const base = environment === "live" ? "https://api.binance.com" : "https://testnet.binance.vision";
+  const ts = Date.now();
+  const query = `timestamp=${ts}`;
+  const sig = await hmacSha256Hex(secret, query);
+  const r = await fetch(`${base}/api/v3/account?${query}&signature=${sig}`, { headers: { "X-MBX-APIKEY": token } });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const rawMessage = j.msg || `HTTP ${r.status}`;
+    const message = r.status === 401 && isBinanceRejectedKey(rawMessage)
+      ? `${rawMessage} (${environment === "live" ? "Binance.com Live" : "Binance Spot Testnet"})`
+      : rawMessage;
+    return { ok: false, message };
+  }
+  const missing: string[] = [];
+  if (!j.canTrade) missing.push("Enable Spot & Margin & Stock Trading");
+  return {
+    ok: missing.length === 0,
+    message: missing.length === 0 ? `Connected to ${environment === "live" ? "Binance.com Live" : "Binance Spot Testnet"}` : "Missing trading permission",
+    details: { environment, canTrade: j.canTrade, balances: (j.balances || []).filter((b: any) => parseFloat(b.free) > 0).slice(0, 5) },
+    missingScopes: missing,
+    detectedEnvironment: environment,
+  };
+}
+
+function isBinanceRejectedKey(message: string) {
+  const m = String(message || "").toLowerCase();
+  return m.includes("invalid api-key") || m.includes("invalid api key") || m.includes("-2015");
 }
 
 function json(payload: unknown, status = 200) {
