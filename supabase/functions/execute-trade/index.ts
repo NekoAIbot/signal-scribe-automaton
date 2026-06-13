@@ -355,7 +355,7 @@ function decodeStoredPassword(password: string) {
 
 
 async function resolveMainBrokerAccount(client: ReturnType<typeof createClient>, userId: string, requestedAccountId?: string | null) {
-  const selectColumns = 'id, user_id, account_name, login, encrypted_password, server, broker_type, account_type, is_active, created_at';
+  const selectColumns = 'id, user_id, account_name, login, encrypted_password, api_token, api_secret, account_id, environment, server, broker_type, account_type, is_active, created_at';
 
   if (requestedAccountId) {
     const { data: requestedAccount } = await client
