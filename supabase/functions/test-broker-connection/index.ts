@@ -186,6 +186,36 @@ async function hmacSha256Hex(secret: string, payload: string) {
   return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
+async function testBinanceAccount(token: string, secret: string, environment: "demo" | "live") {
+  const base = environment === "live" ? "https://api.binance.com" : "https://testnet.binance.vision";
+  const ts = Date.now();
+  const query = `timestamp=${ts}`;
+  const sig = await hmacSha256Hex(secret, query);
+  const r = await fetch(`${base}/api/v3/account?${query}&signature=${sig}`, { headers: { "X-MBX-APIKEY": token } });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const rawMessage = j.msg || `HTTP ${r.status}`;
+    const message = r.status === 401 && isBinanceRejectedKey(rawMessage)
+      ? `${rawMessage} (${environment === "live" ? "Binance.com Live" : "Binance Spot Testnet"})`
+      : rawMessage;
+    return { ok: false, message };
+  }
+  const missing: string[] = [];
+  if (!j.canTrade) missing.push("Enable Spot & Margin & Stock Trading");
+  return {
+    ok: missing.length === 0,
+    message: missing.length === 0 ? `Connected to ${environment === "live" ? "Binance.com Live" : "Binance Spot Testnet"}` : "Missing trading permission",
+    details: { environment, canTrade: j.canTrade, balances: (j.balances || []).filter((b: any) => parseFloat(b.free) > 0).slice(0, 5) },
+    missingScopes: missing,
+    detectedEnvironment: environment,
+  };
+}
+
+function isBinanceRejectedKey(message: string) {
+  const m = String(message || "").toLowerCase();
+  return m.includes("invalid api-key") || m.includes("invalid api key") || m.includes("-2015");
+}
+
 function json(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
