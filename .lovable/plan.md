@@ -1,81 +1,86 @@
+# Unified AI Trading Enhancement Roadmap
 
-# Plan: Fix Subscribe Error + Remove MetaApi
+This roadmap extends the existing Signal Scribe Automaton in place. Every item builds on current tables, edge functions, and services — nothing is rewritten from scratch and existing behavior stays working after each phase.
 
-Two focused fixes. No new features.
-
----
-
-## 1. Fix the Paystack "2xx edge function" subscribe error
-
-### What's actually happening
-`paystack-create-subscription` returns **HTTP 400** (which `supabase.functions.invoke` reports as the "non-2xx" error you're seeing). The error message is being swallowed by the frontend. Two likely root causes:
-
-- Paystack rejects `currency: "USD"` because most Nigerian Paystack accounts are NGN-only.
-- The frontend logs `e.message` which becomes the generic "Edge Function returned a non-2xx status code" string instead of the real reason.
-
-### Changes
-
-**`supabase/functions/paystack-create-subscription/index.ts`**
-- Try `currency: "USD"` first; on Paystack failure that mentions currency, automatically retry with `currency: "NGN"` and amount converted at a configurable rate (default 1600 NGN/USD via new optional secret `USD_NGN_RATE`).
-- Always return errors as **HTTP 200** with `{ success: false, error, paystackResponse }` so the frontend sees the real reason instead of a generic non-2xx error.
-- Add explicit handling for the "free plan" case → return a friendly message, not 400.
-
-**`src/services/edgeFunctionService.ts`** (already does direct fetch — good)
-- No changes needed; it already extracts `data.error`.
-
-**`src/components/settings/SubscriptionPlans.tsx`**
-- Switch from `supabase.functions.invoke` to `invokeEdgeFunction` so the real Paystack message ("Currency not supported", "Invalid plan code", etc.) is shown in the toast.
-
-### Result
-You'll either get a working checkout, or a toast that tells you exactly what Paystack is complaining about so we can fix it in one more turn.
+Because the scope is enormous (~20 major subsystems), I'm proposing 6 sequential phases. Each phase ends in a shippable, testable state. I'll pause for your go-ahead between phases so you can validate on live data before I move on.
 
 ---
 
-## 2. Remove MetaApi entirely from the execution path
+## Phase 1 — Foundations: Workspaces, Signal Hub, Explainability schema
 
-### What's actually happening
-Every trade is failing with MetaApi `403 ForbiddenError: "To allow high reliability please top up your account"`. This is a billing problem on the MetaApi side — no code change fixes it. Per your choice, we drop MetaApi entirely.
+Goal: Put the data model in place that every later phase depends on. No user-visible feature loss.
 
-### Changes
+- Add `trading_workspaces` table (id, user_id, broker_credential_id, name, mode: demo|live, ai_config jsonb, risk_config jsonb, is_active). Backfill one workspace per existing `broker_credentials` row.
+- Add `workspace_id` (nullable, backfilled) to `trades`, `trading_signals`, `execution_audit_log`, `model_versions`.
+- Add `signal_reasoning` table (signal_id, market_regime, strategy_chosen, why_entry, why_sl, why_tp, confidence_breakdown jsonb, features jsonb).
+- Add `signal_events` table = the Universal Signal Hub bus (signal_id, workspace_id, event_type, payload, created_at) with Realtime enabled — every module (dashboard, telegram, monitoring, learning) subscribes here instead of duplicating fan-out.
+- Add `shadow_trades` table mirroring `trades` shape for virtual execution of every generated signal.
+- RLS + GRANTs on all new tables per project rules.
 
-**`supabase/functions/execute-trade/index.ts`**
-- Delete the `else if (METAAPI_TOKEN)` branch (lines 183–199) and the `executeViaMetaApi` / `normalizeMetaApiToken` / MetaApi provisioning helpers (lines ~372–600).
-- Update the broker-type router so when `broker_type` is `mt4`/`mt5`/`metatrader`, the function now returns a clear `success: false` error:
-  > "MetaTrader execution has been disabled. Add a Deriv, Binance, OANDA, or Capital.com account in Settings → Brokers to continue trading."
-- Keep the MT5 bridge branch as-is (it only runs if `MT5_BRIDGE_URL` is set, which it isn't — harmless).
-- Update the final "no broker route" error message to drop the MetaApi mention.
+UI: A workspace switcher pill in the header (reuses `useBrokerAccounts`), demo/live badge everywhere trades render. No workflow change if user only has one workspace.
 
-**`supabase/functions/run-trading-bot/index.ts`**
-- When iterating users, skip (with a logged reason) any user whose only broker account is an MT4/MT5 type. Prevents wasted bot cycles.
+## Phase 2 — Multi-Asset Engine & Market Regime Detection
 
-**`src/components/settings/MT5AccountSettings.tsx`** (UI hint only)
-- In the broker picker, mark `MT4 / MT5` as "Disabled — choose Deriv/Binance/OANDA/Capital.com" so users can't add a doomed account.
-- Existing MT5 rows show a warning badge: "Not executable — switch to a supported broker."
+Goal: Broaden asset coverage and make strategy selection regime-aware.
 
-**Secrets**
-- `METAAPI_TOKEN` is left in place (harmless) — no deletion to avoid breaking anything else that references it. Code paths that read it are removed.
+- Extend `fetch-market-quotes` with asset-class routing (fx, crypto, metals, energy, indices, stocks, ETFs, agri) using existing providers (Yahoo, Binance, Frankfurter, TrueFX) + graceful "unsupported on this broker" fallback.
+- Add `asset_universe` seed table listing symbols, class, session, typical spread, min lot — drives the scanner.
+- New edge function `market-regime-detector` (Lovable AI + indicators) returning `{regime, volatility, liquidity, session_quality, news_risk}`, cached per symbol/timeframe.
+- Rewrite the scan loop in `unifiedSignalService` + `run-trading-bot` to:
+  1. Iterate `asset_universe` filtered by workspace preferences.
+  2. Call regime detector.
+  3. Rank candidates by confidence × R:R × regime-strategy fit.
+  4. Emit only top-N above threshold — quality over quantity.
 
-### Result
-Trades now route only through the four direct-API brokers that actually work. MetaApi 403 errors disappear from logs.
+## Phase 3 — Intelligent Strategy Engine + Dynamic Risk
+
+Goal: Modular strategies + adaptive trade management.
+
+- `strategies/` module in `supabase/functions/_shared/strategies/` with one file per strategy (trend, reversal, breakout, scalp, swing, SMC, ICT, momentum, mean-reversion, S/R, liquidity, session, MTF). Each exports `evaluate(candles, regime) → { signal, confidence, reasoning }`.
+- Strategy selector picks/combines strategies based on regime + historical performance from `execution_audit_log`.
+- Dynamic risk module computes lot, SL, TP1/2/3, runner, BE trigger, trailing rules from balance, volatility (ATR), asset class, prop-firm constraints.
+- New `manage-open-trades` edge function on cron: pulls open trades, applies BE/trailing/partial closes/dynamic TP extension/early exit through the appropriate broker adapter.
+
+## Phase 4 — Safety Layer, Portfolio Risk, News Gate
+
+Goal: Pre-trade validation and account-level guardrails.
+
+- Pre-trade `safety-check` shared module called by `execute-trade`: risk limits, spread, liquidity, margin, broker health, session, news window, strategy confirmation, AI confidence. Rejections logged with reasons.
+- Portfolio risk config per workspace: max daily/weekly/monthly loss, exposure, correlated positions, per-asset/per-strategy caps, emergency pause switch, prop-firm profile.
+- News gate uses existing `fetch-news` + economic calendar to auto-delay/reduce/pause around high-impact events, auto-resume after.
+
+## Phase 5 — Execution Modes, Telegram Copy, MT5 Copier EA
+
+Goal: Decouple decision from delivery.
+
+- Add `execution_mode` on workspace: analysis | signal | manual_confirm | semi_auto | full_auto | telegram_copy | mt5_copier | native.
+- Telegram Copy Trading: extend the existing bot with structured signal messages (entry/SL/TPs/updates) that a downstream copier can parse; sync modifications through `signal_events`.
+- MT5 Copier EA: publish a compact JSON feed endpoint (`copier-feed` edge function) + provide a downloadable EA template in `/public/copier/` (docs only in this phase; EA source in a follow-up).
+- Two Telegram audiences: user bot (trade info) vs admin bot (reasoning, regime, retraining hints) — controlled via existing `TELEGRAM_*` secrets + admin chat id.
+
+## Phase 6 — Learning, Shadow Trading, Analytics, Hardening
+
+Goal: Close the loop and productionize.
+
+- Trade lifecycle tracker records MFE/MAE, duration, entry/exit quality on close (real + shadow).
+- Explainable AI panel on Monitoring/Admin: signal reasoning, confidence breakdown, post-mortem.
+- Analytics page rebuilt on real aggregates (asset, strategy, session, regime, confidence buckets, profit factor, drawdown). Removes remaining mock data.
+- Continuous learning: `run-retraining` extended to use validated dataset from `signal_reasoning` + closed trades; new model versions require backtest pass before `is_active=true`.
+- Hardening pass: move broker API secrets to Supabase Vault, scope CORS to known origins, shared `_shared/brokers/` adapter interface, rate limits on public edge functions, Vitest coverage for execute-trade, safety-check, strategy selector.
 
 ---
 
-## Files touched
+## Technical notes
 
-```text
-supabase/functions/paystack-create-subscription/index.ts   (rewrite error handling + NGN fallback)
-supabase/functions/execute-trade/index.ts                  (remove MetaApi branch + helpers)
-supabase/functions/run-trading-bot/index.ts                (skip MT4/MT5-only users)
-src/components/settings/SubscriptionPlans.tsx              (use invokeEdgeFunction for real errors)
-src/components/settings/MT5AccountSettings.tsx             (disable MT4/MT5 picker, warn existing)
-```
-
-No DB migrations. No new secrets required (USD_NGN_RATE is optional).
+- All new edge functions follow existing CORS + `verify_jwt=false` pattern with in-code JWT validation.
+- No breaking schema changes — new columns are nullable with backfill; existing pages keep working throughout.
+- `unifiedSignalService` stays the single client entry point; new logic slots into its existing loop.
+- Existing UI (Dashboard = TradingView + TradingBot only, Monitoring, Signals, Audit Log, Settings) stays; new surfaces are additive tabs/panels.
 
 ---
 
-## What this does NOT do
+## What I need from you before I start
 
-- Does not build the Telegram copytrader (you chose to skip).
-- Does not delete MetaApi-related DB columns or secrets — purely a code-path removal so it's reversible.
-- Does not change subscription tiers, broker adapters, or webhook handling.
+1. Confirm the 6-phase order or tell me to reprioritize (e.g. Telegram Copy earlier).
+2. Confirm I should ship each phase and pause for your validation, not batch everything into one giant build.
+3. For Phase 2's asset universe — should I enable all classes by default per workspace, or start with FX + Crypto + Metals + Indices (what your current adapters already handle well) and add the rest as brokers support them?
