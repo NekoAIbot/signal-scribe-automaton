@@ -353,6 +353,20 @@ function decodeStoredPassword(password: string) {
   try { return atob(password); } catch { return password; }
 }
 
+// Binance secrets are 64-char alphanumeric which are valid base64 chars,
+// so atob() never throws even on raw plaintext secrets — it just yields garbage.
+// Return both candidates so callers can retry with the raw value on signature errors.
+function decodeSecretCandidates(stored: string): string[] {
+  const raw = String(stored || "").trim();
+  const out: string[] = [];
+  try {
+    const decoded = atob(raw);
+    if (decoded && /^[\x20-\x7E]+$/.test(decoded)) out.push(decoded);
+  } catch (_) { /* not base64 */ }
+  if (!out.includes(raw)) out.push(raw);
+  return out;
+}
+
 
 async function resolveMainBrokerAccount(client: ReturnType<typeof createClient>, userId: string, requestedAccountId?: string | null) {
   const selectColumns = 'id, user_id, account_name, login, encrypted_password, api_token, api_secret, account_id, environment, server, broker_type, account_type, is_active, created_at';
