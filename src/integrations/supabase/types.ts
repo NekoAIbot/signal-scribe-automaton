@@ -58,6 +58,60 @@ export type Database = {
           },
         ]
       }
+      asset_universe: {
+        Row: {
+          asset_class: string
+          contract_size: number | null
+          created_at: string
+          display_name: string
+          id: string
+          is_enabled: boolean
+          metadata: Json
+          pip_value: number | null
+          priority: number
+          provider_hints: Json
+          quote_currency: string | null
+          session: string | null
+          symbol: string
+          tick_size: number | null
+          updated_at: string
+        }
+        Insert: {
+          asset_class: string
+          contract_size?: number | null
+          created_at?: string
+          display_name: string
+          id?: string
+          is_enabled?: boolean
+          metadata?: Json
+          pip_value?: number | null
+          priority?: number
+          provider_hints?: Json
+          quote_currency?: string | null
+          session?: string | null
+          symbol: string
+          tick_size?: number | null
+          updated_at?: string
+        }
+        Update: {
+          asset_class?: string
+          contract_size?: number | null
+          created_at?: string
+          display_name?: string
+          id?: string
+          is_enabled?: boolean
+          metadata?: Json
+          pip_value?: number | null
+          priority?: number
+          provider_hints?: Json
+          quote_currency?: string | null
+          session?: string | null
+          symbol?: string
+          tick_size?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       broker_credentials: {
         Row: {
           account_id: string | null
