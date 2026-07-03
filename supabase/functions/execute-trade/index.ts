@@ -508,29 +508,37 @@ async function executeViaBrokerApi(brokerType: string, creds: any, data: any): P
 }
 
 async function executeBinance(creds: any, data: any) {
-  const apiKey = creds.api_token;
-  const apiSecret = decodeStoredPassword(creds.api_secret || creds.encrypted_password || '');
-  if (!apiKey || !apiSecret) throw new Error('Binance requires api_token (API key) and api_secret');
+  const apiKey = String(creds.api_token || '').trim();
+  const secretCandidates = decodeSecretCandidates(creds.api_secret || creds.encrypted_password || '');
+  if (!apiKey || secretCandidates.length === 0) throw new Error('Binance requires api_token (API key) and api_secret');
   const base = (creds.environment === 'live') ? 'https://api.binance.com' : 'https://testnet.binance.vision';
   const environmentLabel = creds.environment === 'live' ? 'Binance.com Live' : 'Binance Spot Testnet';
   const symbol = data.symbol.replace('/', '').toUpperCase().replace('USD', 'USDT');
   const side = data.type === 'BUY' ? 'BUY' : 'SELL';
   const qty = data.lotSize || 0.001;
-  const timestamp = Date.now();
-  const query = `symbol=${symbol}&side=${side}&type=MARKET&quantity=${qty}&timestamp=${timestamp}`;
-  const sig = await hmacSha256(apiSecret, query);
-  const res = await fetch(`${base}/api/v3/order?${query}&signature=${sig}`, {
-    method: 'POST', headers: { 'X-MBX-APIKEY': apiKey }
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    const hint = body.includes('-2015') && creds.environment !== 'live'
-      ? ' This looks like a Binance.com live API key saved as Demo/Testnet. Set this broker account environment to Live, or create a separate Spot Testnet key at testnet.binance.vision.'
-      : '';
-    throw new Error(`Binance error ${res.status} on ${environmentLabel}: ${body}${hint}`);
+
+  let lastBody = '';
+  let lastStatus = 0;
+  for (const apiSecret of secretCandidates) {
+    const timestamp = Date.now();
+    const query = `symbol=${symbol}&side=${side}&type=MARKET&quantity=${qty}&timestamp=${timestamp}`;
+    const sig = await hmacSha256(apiSecret, query);
+    const res = await fetch(`${base}/api/v3/order?${query}&signature=${sig}`, {
+      method: 'POST', headers: { 'X-MBX-APIKEY': apiKey }
+    });
+    if (res.ok) {
+      const j = await res.json();
+      return { ticketNumber: String(j.orderId), volume: qty, mode: 'binance' };
+    }
+    lastBody = await res.text();
+    lastStatus = res.status;
+    // Only retry on signature/key errors
+    if (!/-1022|-2014|-2015|signature|invalid api/i.test(lastBody)) break;
   }
-  const j = await res.json();
-  return { ticketNumber: String(j.orderId), volume: qty, mode: 'binance' };
+  const hint = lastBody.includes('-2015') && creds.environment !== 'live'
+    ? ' This looks like a Binance.com live API key saved as Demo/Testnet. Set this broker account environment to Live, or create a separate Spot Testnet key at testnet.binance.vision.'
+    : '';
+  throw new Error(`Binance error ${lastStatus} on ${environmentLabel}: ${lastBody}${hint}`);
 }
 
 async function executeDeriv(creds: any, data: any) {
