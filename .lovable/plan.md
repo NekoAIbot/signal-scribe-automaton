@@ -84,3 +84,9 @@ Goal: Close the loop and productionize.
 1. Confirm the 6-phase order or tell me to reprioritize (e.g. Telegram Copy earlier).
 2. Confirm I should ship each phase and pause for your validation, not batch everything into one giant build.
 3. For Phase 2's asset universe — should I enable all classes by default per workspace, or start with FX + Crypto + Metals + Indices (what your current adapters already handle well) and add the rest as brokers support them?
+
+## Phase 2 — Multi-Asset Engine (in progress)
+- ✅ `asset_universe` table + seed (FX majors, top crypto, XAU/XAG, major indices enabled; energy/stocks/etfs/agri seeded but disabled).
+- ✅ `market-regime-detector` edge function: returns regime / volatility / liquidity / session_quality / news_risk from live candles (via fetch-market-quotes) with adx-slope-compression features.
+- ✅ Fixed Binance "invalid API key" — both `test-broker-connection` and `execute-trade` now try base64-decoded AND raw secret and retry on signature/key errors so legacy plaintext-saved secrets work.
+- Next: wire regime output into `unifiedSignalService` scan loop for confidence × R:R × regime-fit ranking, and expose `asset_class` filter in `fetch-market-quotes`.

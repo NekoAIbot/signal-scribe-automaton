@@ -126,13 +126,26 @@ async function testBroker(cred: any): Promise<{ ok: boolean; message: string; de
       }
       case "binance": {
         if (!token || !cred.api_secret) return { ok: false, message: "API key/secret missing", missingScopes: ["Enable Reading"] };
-        const secret = atob(cred.api_secret);
+        const secretCandidates = decodeSecretCandidates(cred.api_secret);
+        const cleanToken = String(token).trim();
         const primaryEnv = env === "live" ? "live" : "demo";
-        const primary = await testBinanceAccount(token, secret, primaryEnv);
+
+        const tryAll = async (envToTest: "demo" | "live") => {
+          let last: any = null;
+          for (const s of secretCandidates) {
+            const r = await testBinanceAccount(cleanToken, s, envToTest);
+            if (r.ok) return r;
+            last = r;
+            if (!isBinanceRejectedKey(r.message) && !isBinanceSignatureError(r.message)) return r;
+          }
+          return last;
+        };
+
+        const primary = await tryAll(primaryEnv);
         if (primary.ok) return primary;
 
         if (primaryEnv !== "live" && isBinanceRejectedKey(primary.message)) {
-          const live = await testBinanceAccount(token, secret, "live");
+          const live = await tryAll("live");
           if (live.ok) {
             return {
               ...live,
@@ -213,7 +226,25 @@ async function testBinanceAccount(token: string, secret: string, environment: "d
 
 function isBinanceRejectedKey(message: string) {
   const m = String(message || "").toLowerCase();
-  return m.includes("invalid api-key") || m.includes("invalid api key") || m.includes("-2015");
+  return m.includes("invalid api-key") || m.includes("invalid api key") || m.includes("-2015") || m.includes("-2014");
+}
+
+function isBinanceSignatureError(message: string) {
+  const m = String(message || "").toLowerCase();
+  return m.includes("signature") || m.includes("-1022") || m.includes("-1021");
+}
+
+function decodeSecretCandidates(stored: string): string[] {
+  const raw = String(stored || "").trim();
+  const out: string[] = [];
+  // Try base64 decode first (new format)
+  try {
+    const decoded = atob(raw);
+    if (decoded && /^[\x20-\x7E]+$/.test(decoded)) out.push(decoded);
+  } catch (_) { /* not base64 */ }
+  // Fall back to raw (legacy plaintext saves)
+  if (!out.includes(raw)) out.push(raw);
+  return out;
 }
 
 function json(payload: unknown, status = 200) {

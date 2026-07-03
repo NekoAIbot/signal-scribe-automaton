@@ -58,6 +58,60 @@ export type Database = {
           },
         ]
       }
+      asset_universe: {
+        Row: {
+          asset_class: string
+          contract_size: number | null
+          created_at: string
+          display_name: string
+          id: string
+          is_enabled: boolean
+          metadata: Json
+          pip_value: number | null
+          priority: number
+          provider_hints: Json
+          quote_currency: string | null
+          session: string | null
+          symbol: string
+          tick_size: number | null
+          updated_at: string
+        }
+        Insert: {
+          asset_class: string
+          contract_size?: number | null
+          created_at?: string
+          display_name: string
+          id?: string
+          is_enabled?: boolean
+          metadata?: Json
+          pip_value?: number | null
+          priority?: number
+          provider_hints?: Json
+          quote_currency?: string | null
+          session?: string | null
+          symbol: string
+          tick_size?: number | null
+          updated_at?: string
+        }
+        Update: {
+          asset_class?: string
+          contract_size?: number | null
+          created_at?: string
+          display_name?: string
+          id?: string
+          is_enabled?: boolean
+          metadata?: Json
+          pip_value?: number | null
+          priority?: number
+          provider_hints?: Json
+          quote_currency?: string | null
+          session?: string | null
+          symbol?: string
+          tick_size?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       broker_credentials: {
         Row: {
           account_id: string | null
@@ -139,6 +193,7 @@ export type Database = {
           trade_id: string | null
           trade_type: string | null
           user_id: string
+          workspace_id: string | null
         }
         Insert: {
           broker_account_id?: string | null
@@ -163,6 +218,7 @@ export type Database = {
           trade_id?: string | null
           trade_type?: string | null
           user_id: string
+          workspace_id?: string | null
         }
         Update: {
           broker_account_id?: string | null
@@ -187,8 +243,17 @@ export type Database = {
           trade_id?: string | null
           trade_type?: string | null
           user_id?: string
+          workspace_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "execution_audit_log_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "trading_workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ml_models: {
         Row: {
@@ -305,6 +370,7 @@ export type Database = {
           trigger_reason: string
           user_id: string
           version: string
+          workspace_id: string | null
         }
         Insert: {
           activated_for_signals_at?: string
@@ -321,6 +387,7 @@ export type Database = {
           trigger_reason?: string
           user_id: string
           version: string
+          workspace_id?: string | null
         }
         Update: {
           activated_for_signals_at?: string
@@ -337,8 +404,17 @@ export type Database = {
           trigger_reason?: string
           user_id?: string
           version?: string
+          workspace_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "model_versions_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "trading_workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       price_alerts: {
         Row: {
@@ -408,6 +484,189 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      shadow_trades: {
+        Row: {
+          closed_at: string | null
+          created_at: string
+          current_price: number | null
+          entry_price: number
+          entry_quality: number | null
+          exit_quality: number | null
+          id: string
+          lot_size: number
+          mae: number | null
+          metadata: Json
+          mfe: number | null
+          opened_at: string
+          profit: number | null
+          signal_id: string
+          status: string
+          stop_loss: number | null
+          symbol: string
+          take_profit: number | null
+          trade_type: string
+          updated_at: string
+          user_id: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          closed_at?: string | null
+          created_at?: string
+          current_price?: number | null
+          entry_price: number
+          entry_quality?: number | null
+          exit_quality?: number | null
+          id?: string
+          lot_size?: number
+          mae?: number | null
+          metadata?: Json
+          mfe?: number | null
+          opened_at?: string
+          profit?: number | null
+          signal_id: string
+          status?: string
+          stop_loss?: number | null
+          symbol: string
+          take_profit?: number | null
+          trade_type: string
+          updated_at?: string
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          closed_at?: string | null
+          created_at?: string
+          current_price?: number | null
+          entry_price?: number
+          entry_quality?: number | null
+          exit_quality?: number | null
+          id?: string
+          lot_size?: number
+          mae?: number | null
+          metadata?: Json
+          mfe?: number | null
+          opened_at?: string
+          profit?: number | null
+          signal_id?: string
+          status?: string
+          stop_loss?: number | null
+          symbol?: string
+          take_profit?: number | null
+          trade_type?: string
+          updated_at?: string
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shadow_trades_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "trading_workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      signal_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          payload: Json
+          signal_id: string | null
+          user_id: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          payload?: Json
+          signal_id?: string | null
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          payload?: Json
+          signal_id?: string | null
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signal_events_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "trading_workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      signal_reasoning: {
+        Row: {
+          confidence_breakdown: Json
+          created_at: string
+          features: Json
+          id: string
+          market_regime: string | null
+          post_mortem: string | null
+          signal_id: string
+          strategy_chosen: string | null
+          updated_at: string
+          user_id: string | null
+          why_entry: string | null
+          why_modified: string | null
+          why_sl: string | null
+          why_tp: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          confidence_breakdown?: Json
+          created_at?: string
+          features?: Json
+          id?: string
+          market_regime?: string | null
+          post_mortem?: string | null
+          signal_id: string
+          strategy_chosen?: string | null
+          updated_at?: string
+          user_id?: string | null
+          why_entry?: string | null
+          why_modified?: string | null
+          why_sl?: string | null
+          why_tp?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          confidence_breakdown?: Json
+          created_at?: string
+          features?: Json
+          id?: string
+          market_regime?: string | null
+          post_mortem?: string | null
+          signal_id?: string
+          strategy_chosen?: string | null
+          updated_at?: string
+          user_id?: string | null
+          why_entry?: string | null
+          why_modified?: string | null
+          why_sl?: string | null
+          why_tp?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signal_reasoning_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "trading_workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       subscription_plans: {
         Row: {
@@ -484,6 +743,7 @@ export type Database = {
           trade_type: string
           updated_at: string
           user_id: string
+          workspace_id: string | null
         }
         Insert: {
           broker_account_id?: string | null
@@ -511,6 +771,7 @@ export type Database = {
           trade_type: string
           updated_at?: string
           user_id: string
+          workspace_id?: string | null
         }
         Update: {
           broker_account_id?: string | null
@@ -538,8 +799,17 @@ export type Database = {
           trade_type?: string
           updated_at?: string
           user_id?: string
+          workspace_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "trades_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "trading_workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       trading_bot_settings: {
         Row: {
@@ -586,6 +856,7 @@ export type Database = {
           target_price: number | null
           timeframe: string | null
           user_id: string | null
+          workspace_id: string | null
         }
         Insert: {
           confidence?: number | null
@@ -604,6 +875,7 @@ export type Database = {
           target_price?: number | null
           timeframe?: string | null
           user_id?: string | null
+          workspace_id?: string | null
         }
         Update: {
           confidence?: number | null
@@ -622,6 +894,7 @@ export type Database = {
           target_price?: number | null
           timeframe?: string | null
           user_id?: string | null
+          workspace_id?: string | null
         }
         Relationships: [
           {
@@ -636,6 +909,13 @@ export type Database = {
             columns: ["strategy_id"]
             isOneToOne: false
             referencedRelation: "trading_strategies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trading_signals_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "trading_workspaces"
             referencedColumns: ["id"]
           },
         ]
@@ -699,6 +979,65 @@ export type Database = {
           win_rate?: number | null
         }
         Relationships: []
+      }
+      trading_workspaces: {
+        Row: {
+          ai_config: Json
+          asset_prefs: Json
+          broker_credential_id: string | null
+          created_at: string
+          execution_mode: string
+          id: string
+          is_active: boolean
+          is_default: boolean
+          mode: string
+          name: string
+          risk_config: Json
+          strategy_prefs: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ai_config?: Json
+          asset_prefs?: Json
+          broker_credential_id?: string | null
+          created_at?: string
+          execution_mode?: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          mode?: string
+          name: string
+          risk_config?: Json
+          strategy_prefs?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ai_config?: Json
+          asset_prefs?: Json
+          broker_credential_id?: string | null
+          created_at?: string
+          execution_mode?: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          mode?: string
+          name?: string
+          risk_config?: Json
+          strategy_prefs?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trading_workspaces_broker_credential_id_fkey"
+            columns: ["broker_credential_id"]
+            isOneToOne: false
+            referencedRelation: "broker_credentials"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
