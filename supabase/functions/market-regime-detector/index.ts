@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+// Uses built-in Deno.serve — no remote imports required.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
