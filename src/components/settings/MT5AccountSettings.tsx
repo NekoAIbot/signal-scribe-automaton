@@ -86,6 +86,7 @@ export const MT5AccountSettings = () => {
   const [showSecret, setShowSecret] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [testing, setTesting] = useState<Record<string, boolean>>({});
+  const [editingId, setEditingId] = useState<string | null>(null);
   const lastAutoTest = useRef<Record<string, number>>({});
 
   const testConnection = useCallback(async (id: string, silent = false) => {
