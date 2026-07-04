@@ -413,6 +413,7 @@ export const MT5AccountSettings = () => {
                     <div className="flex gap-2 flex-wrap">
                       <Button variant="outline" size="sm" onClick={() => testConnection(c.id)} disabled={isTesting}>
                         {isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Test'}
+                      </Button>
                       <Button variant="outline" size="sm" onClick={() => handleEdit(c)}><Pencil className="h-4 w-4 mr-1" />Edit</Button>
                       <Button variant="outline" size="sm" onClick={() => handleToggle(c.id, c.is_active)}>
                         {c.is_active ? 'Deactivate' : 'Activate'}
