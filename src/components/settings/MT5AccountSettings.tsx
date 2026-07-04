@@ -333,8 +333,8 @@ export const MT5AccountSettings = () => {
                 )}
                 {broker.needs.includes('api_token') && (
                   <div className="space-y-2 md:col-span-2">
-                    <Label>API Token / Key</Label>
-                    <Input value={form.api_token} onChange={(e) => setForm({ ...form, api_token: e.target.value })} placeholder="Paste your token" type={showSecret ? 'text' : 'password'} />
+                    <Label>API Token / Key{editingId ? ' (leave blank to keep current)' : ''}</Label>
+                    <Input value={form.api_token} onChange={(e) => setForm({ ...form, api_token: e.target.value })} placeholder={editingId ? '••••••• (unchanged)' : 'Paste your token'} type={showSecret ? 'text' : 'password'} />
                   </div>
                 )}
                 {broker.needs.includes('api_secret') && (
