@@ -339,9 +339,9 @@ export const MT5AccountSettings = () => {
                 )}
                 {broker.needs.includes('api_secret') && (
                   <div className="space-y-2 md:col-span-2">
-                    <Label>API Secret</Label>
+                    <Label>API Secret{editingId ? ' (leave blank to keep current)' : ''}</Label>
                     <div className="relative">
-                      <Input value={form.api_secret} onChange={(e) => setForm({ ...form, api_secret: e.target.value })} type={showSecret ? 'text' : 'password'} />
+                      <Input value={form.api_secret} onChange={(e) => setForm({ ...form, api_secret: e.target.value })} type={showSecret ? 'text' : 'password'} placeholder={editingId ? '••••••• (unchanged)' : ''} />
                       <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-0 h-full px-3" onClick={() => setShowSecret(!showSecret)}>
                         {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
