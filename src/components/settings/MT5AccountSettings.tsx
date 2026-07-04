@@ -282,7 +282,7 @@ export const MT5AccountSettings = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Broker</Label>
-                  <Select value={form.broker_type} onValueChange={(v) => setForm({ ...form, broker_type: v, environment: v === 'binance' ? 'live' : form.environment, account_type: v === 'binance' ? 'live' : form.account_type })}>
+                  <Select value={form.broker_type} disabled={!!editingId} onValueChange={(v) => setForm({ ...form, broker_type: v, environment: v === 'binance' ? 'live' : form.environment, account_type: v === 'binance' ? 'live' : form.account_type })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {BROKERS.map(b => (
@@ -297,6 +297,7 @@ export const MT5AccountSettings = () => {
                       Get {broker.label} API token <ExternalLink className="h-3 w-3" />
                     </a>
                   )}
+                  {editingId && <p className="text-[11px] text-muted-foreground">Leave token / secret / password blank to keep the existing saved value.</p>}
                 </div>
                 <div className="space-y-2">
                   <Label>Account Name</Label>
