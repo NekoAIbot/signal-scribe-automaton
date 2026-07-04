@@ -501,6 +501,22 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
           confidence = Math.min(0.99, confidence * 0.6 + Number(bestModel.accuracy) * 0.4);
         }
 
+        // Phase 2: local market-regime classification + fit multiplier
+        const volatility = atr / Math.max(mid, 1e-9);
+        const regime =
+          adx >= 25 ? (emaShort > emaLong ? 'trending_up' : 'trending_down')
+          : adx < 15 ? 'ranging'
+          : volatility > 0.01 ? 'breakout' : 'choppy';
+        const strategyKind = String(chosenStrategy.name || '').toLowerCase();
+        const isTrendStrat = /trend|momentum|breakout|smc|ict/.test(strategyKind);
+        const isRangeStrat = /reversal|mean|range|scalp|s\/r|support/.test(strategyKind);
+        let regimeFit = 1.0;
+        if ((regime.startsWith('trending') && isTrendStrat) || (regime === 'ranging' && isRangeStrat)) regimeFit = 1.10;
+        else if ((regime.startsWith('trending') && isRangeStrat) || (regime === 'ranging' && isTrendStrat)) regimeFit = 0.85;
+        else if (regime === 'choppy') regimeFit = 0.9;
+        confidence = Math.min(0.99, confidence * regimeFit);
+        if (confidence < 0.6) continue;
+
         // Determine asset class
         let assetClass = 'forex';
         if (['BTC/USD', 'ETH/USD', 'BTCUSD', 'ETHUSD'].includes(symbol)) assetClass = 'crypto';
