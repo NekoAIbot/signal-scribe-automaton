@@ -507,13 +507,27 @@ async function executeViaBrokerApi(brokerType: string, creds: any, data: any): P
   }
 }
 
+function toBinanceSymbol(raw: string): string {
+  const s = String(raw || '').replace(/[\/\-_]/g, '').toUpperCase();
+  // Common non-crypto symbols not tradable on Binance spot
+  const forexOrMetal = /^(EUR|GBP|AUD|NZD|CAD|CHF|JPY|XAU|XAG|USOIL|WTI|BRENT|US30|US500|NAS100|SPX|NDX|DJI)/.test(s);
+  if (forexOrMetal && !s.startsWith('BTC') && !s.startsWith('ETH')) {
+    throw new Error(`Symbol ${raw} is not tradable on Binance Spot. Use a crypto pair like BTCUSDT.`);
+  }
+  // Already a valid Binance quote suffix
+  if (/(USDT|BUSD|USDC|BTC|ETH|BNB|FDUSD|TUSD|DAI)$/.test(s)) return s;
+  // Convert *USD → *USDT (only when USD is the quote, i.e. suffix)
+  if (s.endsWith('USD')) return s.slice(0, -3) + 'USDT';
+  return s;
+}
+
 async function executeBinance(creds: any, data: any) {
   const apiKey = String(creds.api_token || '').trim();
   const secretCandidates = decodeSecretCandidates(creds.api_secret || creds.encrypted_password || '');
   if (!apiKey || secretCandidates.length === 0) throw new Error('Binance requires api_token (API key) and api_secret');
   const base = (creds.environment === 'live') ? 'https://api.binance.com' : 'https://testnet.binance.vision';
   const environmentLabel = creds.environment === 'live' ? 'Binance.com Live' : 'Binance Spot Testnet';
-  const symbol = data.symbol.replace('/', '').toUpperCase().replace('USD', 'USDT');
+  const symbol = toBinanceSymbol(data.symbol);
   const side = data.type === 'BUY' ? 'BUY' : 'SELL';
   const qty = data.lotSize || 0.001;
 

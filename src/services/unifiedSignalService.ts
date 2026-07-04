@@ -501,6 +501,22 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
           confidence = Math.min(0.99, confidence * 0.6 + Number(bestModel.accuracy) * 0.4);
         }
 
+        // Phase 2: local market-regime classification + fit multiplier
+        const volatility = atr / Math.max(mid, 1e-9);
+        const regime =
+          adx >= 25 ? (emaShort > emaLong ? 'trending_up' : 'trending_down')
+          : adx < 15 ? 'ranging'
+          : volatility > 0.01 ? 'breakout' : 'choppy';
+        const strategyKind = String(chosenStrategy.name || '').toLowerCase();
+        const isTrendStrat = /trend|momentum|breakout|smc|ict/.test(strategyKind);
+        const isRangeStrat = /reversal|mean|range|scalp|s\/r|support/.test(strategyKind);
+        let regimeFit = 1.0;
+        if ((regime.startsWith('trending') && isTrendStrat) || (regime === 'ranging' && isRangeStrat)) regimeFit = 1.10;
+        else if ((regime.startsWith('trending') && isRangeStrat) || (regime === 'ranging' && isTrendStrat)) regimeFit = 0.85;
+        else if (regime === 'choppy') regimeFit = 0.9;
+        confidence = Math.min(0.99, confidence * regimeFit);
+        if (confidence < 0.6) continue;
+
         // Determine asset class
         let assetClass = 'forex';
         if (['BTC/USD', 'ETH/USD', 'BTCUSD', 'ETHUSD'].includes(symbol)) assetClass = 'crypto';
@@ -543,10 +559,24 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
             model_edge: modelVote?.rawScore,
           }
         });
+
+        // Phase 1/2: Explainable-AI reasoning log (fire-and-forget)
+        const lastSignal = signals[signals.length - 1];
+        supabase.from('signal_reasoning').insert({
+          signal_id: lastSignal.id,
+          market_regime: regime,
+          strategy_chosen: chosenStrategy.name,
+          why_entry: `${type} on ${displaySymbol}: ${modelVote?.shouldSignal ? 'model vote' : chosenStrategy.ai_auto_select && aiPred ? 'AI predictor' : `${Math.max(bullishVotes, bearishVotes)}/${enabledConditions} indicator votes`}, ADX ${adx.toFixed(1)}, regime ${regime} (fit ×${regimeFit.toFixed(2)})`,
+          why_sl: `1.5×ATR (${slPips.toFixed(5)})`,
+          why_tp: `2.5×ATR (${tpPips.toFixed(5)}), RR ${(tpPips/slPips).toFixed(2)}`,
+          confidence_breakdown: { base: confidence / regimeFit, regime_fit: regimeFit, final: confidence, model_accuracy: bestModel?.accuracy ?? null },
+          features: { rsi, adx, atr, volatility, ema_short: emaShort, ema_long: emaLong, macd: macdValue, macd_signal: macdSignal, stoch_k: stochK, stoch_d: stochD },
+        } as any).then(({ error }) => { if (error) console.warn('signal_reasoning insert failed', error.message); });
       }
     }
 
-    return signals.slice(0, 5); // Max 5 signals per cycle
+    // Rank by confidence and return top-N (quality over quantity)
+    return signals.sort((a, b) => b.confidence - a.confidence).slice(0, 5);
   } catch (error) {
     console.error('Error generating AI signals:', error);
     return [];
