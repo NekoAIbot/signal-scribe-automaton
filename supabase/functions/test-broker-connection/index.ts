@@ -97,17 +97,29 @@ async function testBroker(cred: any): Promise<{ ok: boolean; message: string; de
   try {
     switch (cred.broker_type) {
       case "deriv": {
-        if (!token) return { ok: false, message: "API token missing", missingScopes: ["read", "trade"] };
-        const ws = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=1089`);
+        const cleanToken = String(token || "").trim();
+        if (!cleanToken) return { ok: false, message: "API token missing", missingScopes: ["read", "trade"] };
+        const appId = Deno.env.get("DERIV_APP_ID") || "1089";
+        const url = `wss://ws.derivws.com/websockets/v3?app_id=${appId}`;
         return await new Promise((resolve) => {
-          const timer = setTimeout(() => { ws.close(); resolve({ ok: false, message: "Timeout connecting to Deriv" }); }, 8000);
-          ws.onopen = () => ws.send(JSON.stringify({ authorize: token }));
+          let ws: WebSocket;
+          try { ws = new WebSocket(url); }
+          catch (err) { return resolve({ ok: false, message: `Deriv WS init failed: ${(err as Error).message}` }); }
+          const timer = setTimeout(() => { try { ws.close(); } catch {} resolve({ ok: false, message: "Timeout connecting to Deriv (15s)" }); }, 15000);
+          ws.onopen = () => { try { ws.send(JSON.stringify({ authorize: cleanToken })); } catch (err) { clearTimeout(timer); resolve({ ok: false, message: `Deriv send failed: ${(err as Error).message}` }); } };
           ws.onmessage = (e) => {
             clearTimeout(timer);
-            const data = JSON.parse(e.data);
-            ws.close();
-            if (data.error) resolve({ ok: false, message: data.error.message });
-            else {
+            let data: any = {};
+            try { data = JSON.parse(e.data); } catch { data = { error: { message: "Invalid Deriv response" } }; }
+            try { ws.close(); } catch {}
+            if (data.error) {
+              const code = data.error.code || "";
+              const msg = data.error.message || "Deriv rejected token";
+              const missing: string[] = [];
+              if (/InvalidToken|AuthorizationRequired/i.test(code)) missing.push("read", "trade");
+              if (/PermissionDenied|scope/i.test(code + msg)) missing.push("trade", "payments");
+              resolve({ ok: false, message: `${msg}${code ? ` [${code}]` : ""}`, missingScopes: missing });
+            } else {
               const scopes: string[] = data.authorize?.scopes || [];
               const required = ["read", "trade"];
               const missing = required.filter((s) => !scopes.includes(s));
@@ -116,12 +128,13 @@ async function testBroker(cred: any): Promise<{ ok: boolean; message: string; de
                 message: missing.length === 0
                   ? `Authorized as ${data.authorize?.loginid}`
                   : `Token missing scopes: ${missing.join(", ")}`,
-                details: { balance: data.authorize?.balance, currency: data.authorize?.currency, scopes },
+                details: { balance: data.authorize?.balance, currency: data.authorize?.currency, scopes, loginid: data.authorize?.loginid },
                 missingScopes: missing,
               });
             }
           };
-          ws.onerror = () => { clearTimeout(timer); resolve({ ok: false, message: "WebSocket error" }); };
+          ws.onerror = (err: any) => { clearTimeout(timer); resolve({ ok: false, message: `Deriv WebSocket error: ${err?.message || "connection failed"}` }); };
+          ws.onclose = (ev) => { if (ev && ev.code && ev.code !== 1000 && ev.code !== 1005) { clearTimeout(timer); resolve({ ok: false, message: `Deriv closed connection (code ${ev.code})` }); } };
         });
       }
       case "binance": {
