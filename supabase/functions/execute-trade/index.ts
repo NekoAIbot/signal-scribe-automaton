@@ -513,7 +513,7 @@ async function executeBinance(creds: any, data: any) {
   if (!apiKey || secretCandidates.length === 0) throw new Error('Binance requires api_token (API key) and api_secret');
   const base = (creds.environment === 'live') ? 'https://api.binance.com' : 'https://testnet.binance.vision';
   const environmentLabel = creds.environment === 'live' ? 'Binance.com Live' : 'Binance Spot Testnet';
-  const symbol = data.symbol.replace('/', '').toUpperCase().replace('USD', 'USDT');
+  const symbol = toBinanceSymbol(data.symbol);
   const side = data.type === 'BUY' ? 'BUY' : 'SELL';
   const qty = data.lotSize || 0.001;
 
