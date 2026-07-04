@@ -163,36 +163,79 @@ export const MT5AccountSettings = () => {
     return () => clearInterval(id);
   }, [credentials, testing, testConnection]);
 
+  const resetForm = () => setForm({
+    broker_type: 'deriv', account_name: '', api_token: '', api_secret: '',
+    account_id: '', login: '', password: '', server: '', environment: 'demo', account_type: 'demo',
+  });
+
+  const handleEdit = (c: BrokerCredential) => {
+    setEditingId(c.id);
+    setShowAddForm(true);
+    setForm({
+      broker_type: c.broker_type,
+      account_name: c.account_name || '',
+      api_token: '',
+      api_secret: '',
+      account_id: c.account_id || '',
+      login: c.login || '',
+      password: '',
+      server: c.server || '',
+      environment: c.environment || 'demo',
+      account_type: c.account_type || 'demo',
+    });
+  };
+
   const handleAdd = async () => {
     if (!user?.id) { toast.error('You must be logged in'); return; }
     if (!form.account_name) { toast.error('Account name required'); return; }
-    for (const f of broker.needs) {
-      if (!(form as any)[f]) { toast.error(`${f.replace('_',' ')} required for ${broker.label}`); return; }
+    if (!editingId) {
+      for (const f of broker.needs) {
+        if (!(form as any)[f]) { toast.error(`${f.replace('_',' ')} required for ${broker.label}`); return; }
+      }
     }
     setIsSaving(true);
     try {
-      const payload: any = {
-        user_id: user.id,
-        broker_type: form.broker_type,
-        account_name: form.account_name,
-        account_type: form.account_type,
-        environment: form.environment,
-        api_token: form.api_token || null,
-        api_secret: form.api_secret ? btoa(form.api_secret) : null,
-        account_id: form.account_id || null,
-        login: form.login || form.account_id || form.account_name,
-        server: form.server || form.broker_type,
-        encrypted_password: form.password ? btoa(form.password) : 'n/a',
-      };
-      const { error } = await supabase.from('broker_credentials').insert(payload);
-      if (error) throw error;
-      toast.success(`${broker.label} account added`);
-      setForm({ ...form, account_name: '', api_token: '', api_secret: '', account_id: '', login: '', password: '', server: '' });
+      if (editingId) {
+        const updates: any = {
+          account_name: form.account_name,
+          account_type: form.account_type,
+          environment: form.environment,
+          account_id: form.account_id || null,
+          login: form.login || form.account_id || form.account_name,
+          server: form.server || form.broker_type,
+        };
+        // Only overwrite secrets if user typed a new value
+        if (form.api_token) updates.api_token = form.api_token;
+        if (form.api_secret) updates.api_secret = btoa(form.api_secret);
+        if (form.password) updates.encrypted_password = btoa(form.password);
+        const { error } = await supabase.from('broker_credentials').update(updates).eq('id', editingId);
+        if (error) throw error;
+        toast.success(`${broker.label} account updated`);
+      } else {
+        const payload: any = {
+          user_id: user.id,
+          broker_type: form.broker_type,
+          account_name: form.account_name,
+          account_type: form.account_type,
+          environment: form.environment,
+          api_token: form.api_token || null,
+          api_secret: form.api_secret ? btoa(form.api_secret) : null,
+          account_id: form.account_id || null,
+          login: form.login || form.account_id || form.account_name,
+          server: form.server || form.broker_type,
+          encrypted_password: form.password ? btoa(form.password) : 'n/a',
+        };
+        const { error } = await supabase.from('broker_credentials').insert(payload);
+        if (error) throw error;
+        toast.success(`${broker.label} account added`);
+      }
+      resetForm();
+      setEditingId(null);
       setShowAddForm(false);
       fetchCredentials();
     } catch (error: any) {
-      console.error('Error adding account:', error);
-      toast.error(error?.message || 'Failed to add account');
+      console.error('Error saving account:', error);
+      toast.error(error?.message || 'Failed to save account');
     } finally {
       setIsSaving(false);
     }
