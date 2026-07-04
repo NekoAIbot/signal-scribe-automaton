@@ -359,8 +359,8 @@ export const MT5AccountSettings = () => {
                 )}
               </div>
               <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={() => setShowAddForm(false)}>Cancel</Button>
-                <Button onClick={handleAdd} disabled={isSaving}>{isSaving ? 'Saving…' : 'Save Account'}</Button>
+                <Button variant="outline" onClick={() => { setShowAddForm(false); setEditingId(null); resetForm(); }}>Cancel</Button>
+                <Button onClick={handleAdd} disabled={isSaving}>{isSaving ? 'Saving…' : editingId ? 'Update Account' : 'Save Account'}</Button>
               </div>
             </CardContent>
           </Card>
