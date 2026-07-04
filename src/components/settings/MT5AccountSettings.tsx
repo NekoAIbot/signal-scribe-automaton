@@ -352,7 +352,7 @@ export const MT5AccountSettings = () => {
                   <div className="space-y-2"><Label>MT5 Login</Label><Input value={form.login} onChange={(e) => setForm({ ...form, login: e.target.value })} /></div>
                 )}
                 {broker.needs.includes('password') && (
-                  <div className="space-y-2"><Label>Password</Label><Input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} type="password" /></div>
+                  <div className="space-y-2"><Label>Password{editingId ? ' (leave blank to keep current)' : ''}</Label><Input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} type="password" placeholder={editingId ? '••••••• (unchanged)' : ''} /></div>
                 )}
                 {broker.needs.includes('server') && (
                   <div className="space-y-2"><Label>MT5 Server</Label><Input value={form.server} onChange={(e) => setForm({ ...form, server: e.target.value })} placeholder="Broker-Demo" /></div>
