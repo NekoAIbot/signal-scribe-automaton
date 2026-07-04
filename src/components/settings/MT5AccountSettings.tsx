@@ -269,7 +269,9 @@ export const MT5AccountSettings = () => {
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={fetchCredentials}><RefreshCw className="h-4 w-4" /></Button>
-            <Button size="sm" onClick={() => setShowAddForm(!showAddForm)}><Plus className="h-4 w-4 mr-2" />Add Broker</Button>
+            <Button size="sm" onClick={() => { if (showAddForm) { setEditingId(null); resetForm(); } setShowAddForm(!showAddForm); }}>
+              <Plus className="h-4 w-4 mr-2" />{editingId ? 'Editing' : 'Add Broker'}
+            </Button>
           </div>
         </div>
       </CardHeader>
