@@ -78,6 +78,16 @@ const BROKERS: BrokerDef[] = [
 
 const HEALTH_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
+const normalizeCredentialInput = (value: string) => {
+  let cleaned = (value || '').trim();
+  if (!cleaned) return '';
+  cleaned = cleaned.replace(/^['"`]+|['"`]+$/g, '').trim();
+  cleaned = cleaned.replace(/^Bearer\s+/i, '').trim();
+  cleaned = cleaned.replace(/^(token|api[_ -]?token|api[_ -]?key|secret|password)\s*[:=]\s*/i, '').trim();
+  cleaned = cleaned.replace(/^['"`]+|['"`]+$/g, '').trim();
+  return cleaned;
+};
+
 export const MT5AccountSettings = () => {
   const { user } = useAuth();
   const [credentials, setCredentials] = useState<BrokerCredential[]>([]);
@@ -195,19 +205,25 @@ export const MT5AccountSettings = () => {
     }
     setIsSaving(true);
     try {
+      const cleanApiToken = normalizeCredentialInput(form.api_token);
+      const cleanApiSecret = normalizeCredentialInput(form.api_secret);
+      const cleanPassword = normalizeCredentialInput(form.password);
+      const cleanAccountId = normalizeCredentialInput(form.account_id);
+      const cleanLogin = normalizeCredentialInput(form.login);
+      const cleanServer = form.server.trim();
       if (editingId) {
         const updates: any = {
           account_name: form.account_name,
           account_type: form.account_type,
           environment: form.environment,
-          account_id: form.account_id || null,
-          login: form.login || form.account_id || form.account_name,
-          server: form.server || form.broker_type,
+          account_id: cleanAccountId || null,
+          login: cleanLogin || cleanAccountId || form.account_name,
+          server: cleanServer || form.broker_type,
         };
         // Only overwrite secrets if user typed a new value
-        if (form.api_token) updates.api_token = form.api_token;
-        if (form.api_secret) updates.api_secret = btoa(form.api_secret);
-        if (form.password) updates.encrypted_password = btoa(form.password);
+        if (cleanApiToken) updates.api_token = cleanApiToken;
+        if (cleanApiSecret) updates.api_secret = btoa(cleanApiSecret);
+        if (cleanPassword) updates.encrypted_password = btoa(cleanPassword);
         const { error } = await supabase.from('broker_credentials').update(updates).eq('id', editingId);
         if (error) throw error;
         toast.success(`${broker.label} account updated`);
@@ -218,12 +234,12 @@ export const MT5AccountSettings = () => {
           account_name: form.account_name,
           account_type: form.account_type,
           environment: form.environment,
-          api_token: form.api_token || null,
-          api_secret: form.api_secret ? btoa(form.api_secret) : null,
-          account_id: form.account_id || null,
-          login: form.login || form.account_id || form.account_name,
-          server: form.server || form.broker_type,
-          encrypted_password: form.password ? btoa(form.password) : 'n/a',
+          api_token: cleanApiToken || null,
+          api_secret: cleanApiSecret ? btoa(cleanApiSecret) : null,
+          account_id: cleanAccountId || null,
+          login: cleanLogin || cleanAccountId || form.account_name,
+          server: cleanServer || form.broker_type,
+          encrypted_password: cleanPassword ? btoa(cleanPassword) : 'n/a',
         };
         const { error } = await supabase.from('broker_credentials').insert(payload);
         if (error) throw error;
