@@ -350,21 +350,64 @@ async function persistFailedTimeline(
 }
 
 function decodeStoredPassword(password: string) {
-  try { return atob(password); } catch { return password; }
+  return decodeSecretCandidates(password)[0] || '';
 }
 
 // Binance secrets are 64-char alphanumeric which are valid base64 chars,
 // so atob() never throws even on raw plaintext secrets — it just yields garbage.
 // Return both candidates so callers can retry with the raw value on signature errors.
 function decodeSecretCandidates(stored: string): string[] {
-  const raw = String(stored || "").trim();
+  return credentialCandidates(stored);
+}
+
+function credentialCandidates(stored: unknown): string[] {
+  const raw = String(stored || '').trim();
+  if (!raw) return [];
   const out: string[] = [];
+  const push = (value: unknown) => {
+    const cleaned = cleanCredentialValue(value);
+    if (cleaned && !out.includes(cleaned)) out.push(cleaned);
+  };
+
+  push(raw);
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === 'string') push(parsed);
+    else if (parsed && typeof parsed === 'object') {
+      for (const key of ['token', 'api_token', 'apiToken', 'api_key', 'apiKey', 'secret', 'password', 'value']) {
+        if (typeof parsed[key] === 'string') push(parsed[key]);
+      }
+    }
+  } catch (_) { /* not JSON */ }
+
   try {
     const decoded = atob(raw);
-    if (decoded && /^[\x20-\x7E]+$/.test(decoded)) out.push(decoded);
+    if (decoded && /^[\x09\x0A\x0D\x20-\x7E]+$/.test(decoded)) {
+      push(decoded);
+      try {
+        const parsedDecoded = JSON.parse(decoded);
+        if (typeof parsedDecoded === 'string') push(parsedDecoded);
+        else if (parsedDecoded && typeof parsedDecoded === 'object') {
+          for (const key of ['token', 'api_token', 'apiToken', 'api_key', 'apiKey', 'secret', 'password', 'value']) {
+            if (typeof parsedDecoded[key] === 'string') push(parsedDecoded[key]);
+          }
+        }
+      } catch (_) { /* decoded value is not JSON */ }
+    }
   } catch (_) { /* not base64 */ }
-  if (!out.includes(raw)) out.push(raw);
+
   return out;
+}
+
+function cleanCredentialValue(value: unknown): string {
+  let cleaned = String(value || '').trim();
+  if (!cleaned) return '';
+  cleaned = cleaned.replace(/^['"`]+|['"`]+$/g, '').trim();
+  cleaned = cleaned.replace(/^Bearer\s+/i, '').trim();
+  cleaned = cleaned.replace(/^(token|api[_ -]?token|api[_ -]?key|secret|password)\s*[:=]\s*/i, '').trim();
+  cleaned = cleaned.replace(/^['"`]+|['"`]+$/g, '').trim();
+  return cleaned;
 }
 
 
