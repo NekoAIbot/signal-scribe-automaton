@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 const REQUIRED_SCOPES: Record<string, string[]> = {
@@ -12,6 +12,16 @@ const REQUIRED_SCOPES: Record<string, string[]> = {
   oanda:   ["Read account", "Trade"],
   capital: ["Trading API enabled", "Custom password set"],
   mt5:     ["Investor / Master password", "Trading enabled"],
+};
+
+type BrokerTestResult = {
+  ok: boolean;
+  message: string;
+  details?: any;
+  missingScopes?: string[];
+  detectedEnvironment?: string;
+  credentialAccepted?: boolean;
+  normalizedCredentialUpdates?: Record<string, unknown>;
 };
 
 serve(async (req) => {
@@ -42,6 +52,7 @@ serve(async (req) => {
         details: result.details ?? null,
         required_scopes: requiredScopes,
         missing_scopes: missingScopes,
+        credential_normalized: Boolean(result.normalizedCredentialUpdates),
         tested_at: new Date().toISOString(),
       },
     };
@@ -54,6 +65,10 @@ serve(async (req) => {
     if (result.detectedEnvironment && result.detectedEnvironment !== cred.environment) {
       updatePayload.environment = result.detectedEnvironment;
       updatePayload.account_type = result.detectedEnvironment;
+    }
+
+    if (result.normalizedCredentialUpdates && (result.ok || result.credentialAccepted)) {
+      Object.assign(updatePayload, result.normalizedCredentialUpdates);
     }
 
     await service.from("broker_credentials").update(updatePayload).eq("id", credentialId);
@@ -91,65 +106,48 @@ function inferMissingScopes(broker: string, message: string | undefined, ok: boo
   return Array.from(new Set(out));
 }
 
-async function testBroker(cred: any): Promise<{ ok: boolean; message: string; details?: any; missingScopes?: string[]; detectedEnvironment?: string }> {
+async function testBroker(cred: any): Promise<BrokerTestResult> {
   const token = cred.api_token;
   const env = cred.environment || "demo";
   try {
     switch (cred.broker_type) {
       case "deriv": {
-        const cleanToken = String(token || "").trim();
-        if (!cleanToken) return { ok: false, message: "API token missing", missingScopes: ["read", "trade"] };
-        const appId = Deno.env.get("DERIV_APP_ID") || "1089";
-        const url = `wss://ws.derivws.com/websockets/v3?app_id=${appId}`;
-        return await new Promise((resolve) => {
-          let ws: WebSocket;
-          try { ws = new WebSocket(url); }
-          catch (err) { return resolve({ ok: false, message: `Deriv WS init failed: ${(err as Error).message}` }); }
-          const timer = setTimeout(() => { try { ws.close(); } catch {} resolve({ ok: false, message: "Timeout connecting to Deriv (15s)" }); }, 15000);
-          ws.onopen = () => { try { ws.send(JSON.stringify({ authorize: cleanToken })); } catch (err) { clearTimeout(timer); resolve({ ok: false, message: `Deriv send failed: ${(err as Error).message}` }); } };
-          ws.onmessage = (e) => {
-            clearTimeout(timer);
-            let data: any = {};
-            try { data = JSON.parse(e.data); } catch { data = { error: { message: "Invalid Deriv response" } }; }
-            try { ws.close(); } catch {}
-            if (data.error) {
-              const code = data.error.code || "";
-              const msg = data.error.message || "Deriv rejected token";
-              const missing: string[] = [];
-              if (/InvalidToken|AuthorizationRequired/i.test(code)) missing.push("read", "trade");
-              if (/PermissionDenied|scope/i.test(code + msg)) missing.push("trade", "payments");
-              resolve({ ok: false, message: `${msg}${code ? ` [${code}]` : ""}`, missingScopes: missing });
-            } else {
-              const scopes: string[] = data.authorize?.scopes || [];
-              const required = ["read", "trade"];
-              const missing = required.filter((s) => !scopes.includes(s));
-              resolve({
-                ok: missing.length === 0,
-                message: missing.length === 0
-                  ? `Authorized as ${data.authorize?.loginid}`
-                  : `Token missing scopes: ${missing.join(", ")}`,
-                details: { balance: data.authorize?.balance, currency: data.authorize?.currency, scopes, loginid: data.authorize?.loginid },
-                missingScopes: missing,
-              });
-            }
-          };
-          ws.onerror = (err: any) => { clearTimeout(timer); resolve({ ok: false, message: `Deriv WebSocket error: ${err?.message || "connection failed"}` }); };
-          ws.onclose = (ev) => { if (ev && ev.code && ev.code !== 1000 && ev.code !== 1005) { clearTimeout(timer); resolve({ ok: false, message: `Deriv closed connection (code ${ev.code})` }); } };
-        });
+        const tokenCandidates = credentialCandidates(token);
+        if (tokenCandidates.length === 0) return { ok: false, message: "API token missing", missingScopes: ["read", "trade"] };
+        let last: BrokerTestResult | null = null;
+        for (const cleanToken of tokenCandidates) {
+          const result = await testDerivToken(cleanToken);
+          last = result;
+          if (result.ok || result.credentialAccepted) {
+            return withNormalizedUpdate(result, cred.api_token, cleanToken, "api_token");
+          }
+          if (!isCredentialFormatError(result.message)) return result;
+        }
+        return last || { ok: false, message: "Deriv token rejected" };
       }
       case "binance": {
         if (!token || !cred.api_secret) return { ok: false, message: "API key/secret missing", missingScopes: ["Enable Reading"] };
+        const tokenCandidates = credentialCandidates(token);
         const secretCandidates = decodeSecretCandidates(cred.api_secret);
-        const cleanToken = String(token).trim();
         const primaryEnv = env === "live" ? "live" : "demo";
 
         const tryAll = async (envToTest: "demo" | "live") => {
           let last: any = null;
-          for (const s of secretCandidates) {
-            const r = await testBinanceAccount(cleanToken, s, envToTest);
-            if (r.ok) return r;
-            last = r;
-            if (!isBinanceRejectedKey(r.message) && !isBinanceSignatureError(r.message)) return r;
+          for (const cleanToken of tokenCandidates) {
+            for (const s of secretCandidates) {
+              const r = await testBinanceAccount(cleanToken, s, envToTest);
+              if (r.ok) {
+                return {
+                  ...r,
+                  normalizedCredentialUpdates: normalizedUpdates([
+                    [cred.api_token, cleanToken, "api_token", false],
+                    [cred.api_secret, s, "api_secret", true],
+                  ]),
+                };
+              }
+              last = r;
+              if (!isBinanceRejectedKey(r.message) && !isBinanceSignatureError(r.message)) return r;
+            }
           }
           return last;
         };
@@ -175,24 +173,60 @@ async function testBroker(cred: any): Promise<{ ok: boolean; message: string; de
         return primary;
       }
       case "oanda": {
-        if (!token || !cred.account_id) return { ok: false, message: "Token/account_id missing", missingScopes: ["Read account"] };
+        const tokenCandidates = credentialCandidates(token);
+        const accountId = String(cred.account_id || "").trim();
+        if (tokenCandidates.length === 0 || !accountId) return { ok: false, message: "Token/account_id missing", missingScopes: ["Read account"] };
         const base = env === "live" ? "https://api-fxtrade.oanda.com" : "https://api-fxpractice.oanda.com";
-        const r = await fetch(`${base}/v3/accounts/${cred.account_id}/summary`, { headers: { Authorization: `Bearer ${token}` } });
-        const j = await r.json();
-        if (!r.ok) return { ok: false, message: j.errorMessage || `HTTP ${r.status}` };
-        return { ok: true, message: "Connected", details: { balance: j.account?.balance, currency: j.account?.currency } };
+        let last: BrokerTestResult | null = null;
+        for (const cleanToken of tokenCandidates) {
+          const r = await fetch(`${base}/v3/accounts/${accountId}/summary`, { headers: { Authorization: `Bearer ${cleanToken}` } });
+          const j = await r.json().catch(() => ({}));
+          if (r.ok) {
+            return {
+              ok: true,
+              message: "Connected",
+              details: { balance: j.account?.balance, currency: j.account?.currency },
+              credentialAccepted: true,
+              normalizedCredentialUpdates: normalizedUpdates([[cred.api_token, cleanToken, "api_token", false], [cred.account_id, accountId, "account_id", false]]),
+            };
+          }
+          last = { ok: false, message: j.errorMessage || `HTTP ${r.status}` };
+          if (!isCredentialFormatError(last.message)) return last;
+        }
+        return last || { ok: false, message: "OANDA token rejected" };
       }
       case "capital": {
-        if (!token || !cred.account_id || !cred.encrypted_password) return { ok: false, message: "Credentials missing", missingScopes: ["Custom password set"] };
+        const apiKeyCandidates = credentialCandidates(token);
+        const passwordCandidates = decodeSecretCandidates(cred.encrypted_password || "");
+        const identifier = String(cred.account_id || "").trim();
+        if (apiKeyCandidates.length === 0 || !identifier || passwordCandidates.length === 0) return { ok: false, message: "Credentials missing", missingScopes: ["Custom password set"] };
         const base = env === "live" ? "https://api-capital.backend-capital.com" : "https://demo-api-capital.backend-capital.com";
-        const pwd = atob(cred.encrypted_password);
-        const r = await fetch(`${base}/api/v1/session`, {
-          method: "POST",
-          headers: { "X-CAP-API-KEY": token, "Content-Type": "application/json" },
-          body: JSON.stringify({ identifier: cred.account_id, password: pwd }),
-        });
-        if (!r.ok) { const t = await r.text(); return { ok: false, message: `HTTP ${r.status}: ${t.slice(0,120)}` }; }
-        return { ok: true, message: "Session created" };
+        let last: BrokerTestResult | null = null;
+        for (const cleanApiKey of apiKeyCandidates) {
+          for (const pwd of passwordCandidates) {
+            const r = await fetch(`${base}/api/v1/session`, {
+              method: "POST",
+              headers: { "X-CAP-API-KEY": cleanApiKey, "Content-Type": "application/json" },
+              body: JSON.stringify({ identifier, password: pwd }),
+            });
+            if (r.ok) {
+              return {
+                ok: true,
+                message: "Session created",
+                credentialAccepted: true,
+                normalizedCredentialUpdates: normalizedUpdates([
+                  [cred.api_token, cleanApiKey, "api_token", false],
+                  [cred.account_id, identifier, "account_id", false],
+                  [cred.encrypted_password, pwd, "encrypted_password", true],
+                ]),
+              };
+            }
+            const t = await r.text();
+            last = { ok: false, message: `HTTP ${r.status}: ${t.slice(0,120)}` };
+            if (!isCredentialFormatError(last.message)) return last;
+          }
+        }
+        return last || { ok: false, message: "Capital.com credentials rejected" };
       }
       case "mt5": {
         return { ok: false, message: "MT5 validation requires MetaApi bridge — not tested here" };
