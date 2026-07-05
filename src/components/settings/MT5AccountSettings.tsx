@@ -205,6 +205,7 @@ export const MT5AccountSettings = () => {
     }
     setIsSaving(true);
     try {
+      let savedCredentialId = editingId;
       const cleanApiToken = normalizeCredentialInput(form.api_token);
       const cleanApiSecret = normalizeCredentialInput(form.api_secret);
       const cleanPassword = normalizeCredentialInput(form.password);
@@ -226,7 +227,7 @@ export const MT5AccountSettings = () => {
         if (cleanPassword) updates.encrypted_password = btoa(cleanPassword);
         const { error } = await supabase.from('broker_credentials').update(updates).eq('id', editingId);
         if (error) throw error;
-        toast.success(`${broker.label} account updated`);
+        toast.success(`${broker.label} account updated — testing connection now`);
       } else {
         const payload: any = {
           user_id: user.id,
@@ -241,14 +242,16 @@ export const MT5AccountSettings = () => {
           server: cleanServer || form.broker_type,
           encrypted_password: cleanPassword ? btoa(cleanPassword) : 'n/a',
         };
-        const { error } = await supabase.from('broker_credentials').insert(payload);
+        const { data, error } = await supabase.from('broker_credentials').insert(payload).select('id').single();
         if (error) throw error;
-        toast.success(`${broker.label} account added`);
+        savedCredentialId = data?.id || null;
+        toast.success(`${broker.label} account added — testing connection now`);
       }
       resetForm();
       setEditingId(null);
       setShowAddForm(false);
-      fetchCredentials();
+      await fetchCredentials();
+      if (savedCredentialId) await testConnection(savedCredentialId, false);
     } catch (error: any) {
       console.error('Error saving account:', error);
       toast.error(error?.message || 'Failed to save account');
