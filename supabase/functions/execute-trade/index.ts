@@ -603,13 +603,26 @@ async function executeBinance(creds: any, data: any) {
 async function executeDeriv(creds: any, data: any) {
   const tokenCandidates = credentialCandidates(creds.api_token);
   if (tokenCandidates.length === 0) throw new Error('Deriv requires api_token');
+  let lastError: Error | null = null;
+  for (const token of tokenCandidates) {
+    try {
+      return await executeDerivWithToken(token, data);
+    } catch (error) {
+      lastError = error as Error;
+      if (!/invalidtoken|token is invalid|invalid token|authorization/i.test(lastError.message)) break;
+    }
+  }
+  throw lastError || new Error('Deriv token rejected');
+}
+
+async function executeDerivWithToken(token: string, data: any) {
   const appId = Deno.env.get('DERIV_APP_ID') || '1089';
   return await new Promise<{ ticketNumber: string; volume: number; mode: string }>((resolve, reject) => {
     const ws = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${appId}`);
     const timeout = setTimeout(() => { try { ws.close(); } catch {} reject(new Error('Deriv timeout')); }, 15000);
     const symbol = (data.symbol || '').replace('/', '');
     const amount = Math.max(0.35, (data.lotSize || 1));
-    ws.onopen = () => ws.send(JSON.stringify({ authorize: tokenCandidates[0] }));
+    ws.onopen = () => ws.send(JSON.stringify({ authorize: token }));
     ws.onmessage = (ev: MessageEvent) => {
       const msg = JSON.parse(ev.data as string);
       if (msg.error) { clearTimeout(timeout); ws.close(); return reject(new Error(`Deriv: ${msg.error.message}`)); }
