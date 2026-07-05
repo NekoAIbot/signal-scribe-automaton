@@ -71,6 +71,10 @@ serve(async (req) => {
       Object.assign(updatePayload, result.normalizedCredentialUpdates);
     }
 
+    if (shouldDeactivateForFailedTest(result, missingScopes)) {
+      updatePayload.is_active = false;
+    }
+
     await service.from("broker_credentials").update(updatePayload).eq("id", credentialId);
 
     return json({
@@ -104,6 +108,16 @@ function inferMissingScopes(broker: string, message: string | undefined, ok: boo
     if (m.includes("401") || m.includes("invalid")) out.push("Trading API enabled", "Custom password set");
   }
   return Array.from(new Set(out));
+}
+
+function shouldDeactivateForFailedTest(result: BrokerTestResult, missingScopes: string[]) {
+  if (result.ok) return false;
+  const m = String(result.message || "").toLowerCase();
+  return missingScopes.length > 0 ||
+    isCredentialFormatError(m) ||
+    m.includes("missing") ||
+    m.includes("permission") ||
+    m.includes("scope");
 }
 
 async function testBroker(cred: any): Promise<BrokerTestResult> {
