@@ -350,21 +350,64 @@ async function persistFailedTimeline(
 }
 
 function decodeStoredPassword(password: string) {
-  try { return atob(password); } catch { return password; }
+  return decodeSecretCandidates(password)[0] || '';
 }
 
 // Binance secrets are 64-char alphanumeric which are valid base64 chars,
 // so atob() never throws even on raw plaintext secrets — it just yields garbage.
 // Return both candidates so callers can retry with the raw value on signature errors.
 function decodeSecretCandidates(stored: string): string[] {
-  const raw = String(stored || "").trim();
+  return credentialCandidates(stored);
+}
+
+function credentialCandidates(stored: unknown): string[] {
+  const raw = String(stored || '').trim();
+  if (!raw) return [];
   const out: string[] = [];
+  const push = (value: unknown) => {
+    const cleaned = cleanCredentialValue(value);
+    if (cleaned && !out.includes(cleaned)) out.push(cleaned);
+  };
+
+  push(raw);
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === 'string') push(parsed);
+    else if (parsed && typeof parsed === 'object') {
+      for (const key of ['token', 'api_token', 'apiToken', 'api_key', 'apiKey', 'secret', 'password', 'value']) {
+        if (typeof parsed[key] === 'string') push(parsed[key]);
+      }
+    }
+  } catch (_) { /* not JSON */ }
+
   try {
     const decoded = atob(raw);
-    if (decoded && /^[\x20-\x7E]+$/.test(decoded)) out.push(decoded);
+    if (decoded && /^[\x09\x0A\x0D\x20-\x7E]+$/.test(decoded)) {
+      push(decoded);
+      try {
+        const parsedDecoded = JSON.parse(decoded);
+        if (typeof parsedDecoded === 'string') push(parsedDecoded);
+        else if (parsedDecoded && typeof parsedDecoded === 'object') {
+          for (const key of ['token', 'api_token', 'apiToken', 'api_key', 'apiKey', 'secret', 'password', 'value']) {
+            if (typeof parsedDecoded[key] === 'string') push(parsedDecoded[key]);
+          }
+        }
+      } catch (_) { /* decoded value is not JSON */ }
+    }
   } catch (_) { /* not base64 */ }
-  if (!out.includes(raw)) out.push(raw);
+
   return out;
+}
+
+function cleanCredentialValue(value: unknown): string {
+  let cleaned = String(value || '').trim();
+  if (!cleaned) return '';
+  cleaned = cleaned.replace(/^['"`]+|['"`]+$/g, '').trim();
+  cleaned = cleaned.replace(/^Bearer\s+/i, '').trim();
+  cleaned = cleaned.replace(/^(token|api[_ -]?token|api[_ -]?key|secret|password)\s*[:=]\s*/i, '').trim();
+  cleaned = cleaned.replace(/^['"`]+|['"`]+$/g, '').trim();
+  return cleaned;
 }
 
 
@@ -522,9 +565,9 @@ function toBinanceSymbol(raw: string): string {
 }
 
 async function executeBinance(creds: any, data: any) {
-  const apiKey = String(creds.api_token || '').trim();
+  const apiKeyCandidates = credentialCandidates(creds.api_token);
   const secretCandidates = decodeSecretCandidates(creds.api_secret || creds.encrypted_password || '');
-  if (!apiKey || secretCandidates.length === 0) throw new Error('Binance requires api_token (API key) and api_secret');
+  if (apiKeyCandidates.length === 0 || secretCandidates.length === 0) throw new Error('Binance requires api_token (API key) and api_secret');
   const base = (creds.environment === 'live') ? 'https://api.binance.com' : 'https://testnet.binance.vision';
   const environmentLabel = creds.environment === 'live' ? 'Binance.com Live' : 'Binance Spot Testnet';
   const symbol = toBinanceSymbol(data.symbol);
@@ -533,21 +576,23 @@ async function executeBinance(creds: any, data: any) {
 
   let lastBody = '';
   let lastStatus = 0;
-  for (const apiSecret of secretCandidates) {
-    const timestamp = Date.now();
-    const query = `symbol=${symbol}&side=${side}&type=MARKET&quantity=${qty}&timestamp=${timestamp}`;
-    const sig = await hmacSha256(apiSecret, query);
-    const res = await fetch(`${base}/api/v3/order?${query}&signature=${sig}`, {
-      method: 'POST', headers: { 'X-MBX-APIKEY': apiKey }
-    });
-    if (res.ok) {
-      const j = await res.json();
-      return { ticketNumber: String(j.orderId), volume: qty, mode: 'binance' };
+  for (const apiKey of apiKeyCandidates) {
+    for (const apiSecret of secretCandidates) {
+      const timestamp = Date.now();
+      const query = `symbol=${symbol}&side=${side}&type=MARKET&quantity=${qty}&timestamp=${timestamp}`;
+      const sig = await hmacSha256(apiSecret, query);
+      const res = await fetch(`${base}/api/v3/order?${query}&signature=${sig}`, {
+        method: 'POST', headers: { 'X-MBX-APIKEY': apiKey }
+      });
+      if (res.ok) {
+        const j = await res.json();
+        return { ticketNumber: String(j.orderId), volume: qty, mode: 'binance' };
+      }
+      lastBody = await res.text();
+      lastStatus = res.status;
+      // Only retry on signature/key errors
+      if (!/-1022|-2014|-2015|signature|invalid api/i.test(lastBody)) break;
     }
-    lastBody = await res.text();
-    lastStatus = res.status;
-    // Only retry on signature/key errors
-    if (!/-1022|-2014|-2015|signature|invalid api/i.test(lastBody)) break;
   }
   const hint = lastBody.includes('-2015') && creds.environment !== 'live'
     ? ' This looks like a Binance.com live API key saved as Demo/Testnet. Set this broker account environment to Live, or create a separate Spot Testnet key at testnet.binance.vision.'
@@ -556,8 +601,21 @@ async function executeBinance(creds: any, data: any) {
 }
 
 async function executeDeriv(creds: any, data: any) {
-  const token = creds.api_token;
-  if (!token) throw new Error('Deriv requires api_token');
+  const tokenCandidates = credentialCandidates(creds.api_token);
+  if (tokenCandidates.length === 0) throw new Error('Deriv requires api_token');
+  let lastError: Error | null = null;
+  for (const token of tokenCandidates) {
+    try {
+      return await executeDerivWithToken(token, data);
+    } catch (error) {
+      lastError = error as Error;
+      if (!/invalidtoken|token is invalid|invalid token|authorization/i.test(lastError.message)) break;
+    }
+  }
+  throw lastError || new Error('Deriv token rejected');
+}
+
+async function executeDerivWithToken(token: string, data: any) {
   const appId = Deno.env.get('DERIV_APP_ID') || '1089';
   return await new Promise<{ ticketNumber: string; volume: number; mode: string }>((resolve, reject) => {
     const ws = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${appId}`);
@@ -583,7 +641,7 @@ async function executeDeriv(creds: any, data: any) {
 }
 
 async function executeOanda(creds: any, data: any) {
-  const token = creds.api_token;
+  const token = credentialCandidates(creds.api_token)[0];
   const accountId = creds.account_id || creds.login;
   if (!token || !accountId) throw new Error('OANDA requires api_token and account_id');
   const base = (creds.environment === 'live') ? 'https://api-fxtrade.oanda.com' : 'https://api-fxpractice.oanda.com';
@@ -603,7 +661,7 @@ async function executeOanda(creds: any, data: any) {
 }
 
 async function executeCapital(creds: any, data: any) {
-  const apiKey = creds.api_token;
+  const apiKey = credentialCandidates(creds.api_token)[0];
   const identifier = creds.account_id || creds.login;
   const password = decodeStoredPassword(creds.encrypted_password || creds.api_secret || '');
   if (!apiKey || !identifier || !password) throw new Error('Capital.com requires api_token, account_id, and password');
