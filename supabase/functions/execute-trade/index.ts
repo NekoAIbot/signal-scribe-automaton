@@ -565,9 +565,9 @@ function toBinanceSymbol(raw: string): string {
 }
 
 async function executeBinance(creds: any, data: any) {
-  const apiKey = String(creds.api_token || '').trim();
+  const apiKeyCandidates = credentialCandidates(creds.api_token);
   const secretCandidates = decodeSecretCandidates(creds.api_secret || creds.encrypted_password || '');
-  if (!apiKey || secretCandidates.length === 0) throw new Error('Binance requires api_token (API key) and api_secret');
+  if (apiKeyCandidates.length === 0 || secretCandidates.length === 0) throw new Error('Binance requires api_token (API key) and api_secret');
   const base = (creds.environment === 'live') ? 'https://api.binance.com' : 'https://testnet.binance.vision';
   const environmentLabel = creds.environment === 'live' ? 'Binance.com Live' : 'Binance Spot Testnet';
   const symbol = toBinanceSymbol(data.symbol);
@@ -576,21 +576,23 @@ async function executeBinance(creds: any, data: any) {
 
   let lastBody = '';
   let lastStatus = 0;
-  for (const apiSecret of secretCandidates) {
-    const timestamp = Date.now();
-    const query = `symbol=${symbol}&side=${side}&type=MARKET&quantity=${qty}&timestamp=${timestamp}`;
-    const sig = await hmacSha256(apiSecret, query);
-    const res = await fetch(`${base}/api/v3/order?${query}&signature=${sig}`, {
-      method: 'POST', headers: { 'X-MBX-APIKEY': apiKey }
-    });
-    if (res.ok) {
-      const j = await res.json();
-      return { ticketNumber: String(j.orderId), volume: qty, mode: 'binance' };
+  for (const apiKey of apiKeyCandidates) {
+    for (const apiSecret of secretCandidates) {
+      const timestamp = Date.now();
+      const query = `symbol=${symbol}&side=${side}&type=MARKET&quantity=${qty}&timestamp=${timestamp}`;
+      const sig = await hmacSha256(apiSecret, query);
+      const res = await fetch(`${base}/api/v3/order?${query}&signature=${sig}`, {
+        method: 'POST', headers: { 'X-MBX-APIKEY': apiKey }
+      });
+      if (res.ok) {
+        const j = await res.json();
+        return { ticketNumber: String(j.orderId), volume: qty, mode: 'binance' };
+      }
+      lastBody = await res.text();
+      lastStatus = res.status;
+      // Only retry on signature/key errors
+      if (!/-1022|-2014|-2015|signature|invalid api/i.test(lastBody)) break;
     }
-    lastBody = await res.text();
-    lastStatus = res.status;
-    // Only retry on signature/key errors
-    if (!/-1022|-2014|-2015|signature|invalid api/i.test(lastBody)) break;
   }
   const hint = lastBody.includes('-2015') && creds.environment !== 'live'
     ? ' This looks like a Binance.com live API key saved as Demo/Testnet. Set this broker account environment to Live, or create a separate Spot Testnet key at testnet.binance.vision.'
@@ -599,15 +601,15 @@ async function executeBinance(creds: any, data: any) {
 }
 
 async function executeDeriv(creds: any, data: any) {
-  const token = creds.api_token;
-  if (!token) throw new Error('Deriv requires api_token');
+  const tokenCandidates = credentialCandidates(creds.api_token);
+  if (tokenCandidates.length === 0) throw new Error('Deriv requires api_token');
   const appId = Deno.env.get('DERIV_APP_ID') || '1089';
   return await new Promise<{ ticketNumber: string; volume: number; mode: string }>((resolve, reject) => {
     const ws = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${appId}`);
     const timeout = setTimeout(() => { try { ws.close(); } catch {} reject(new Error('Deriv timeout')); }, 15000);
     const symbol = (data.symbol || '').replace('/', '');
     const amount = Math.max(0.35, (data.lotSize || 1));
-    ws.onopen = () => ws.send(JSON.stringify({ authorize: token }));
+    ws.onopen = () => ws.send(JSON.stringify({ authorize: tokenCandidates[0] }));
     ws.onmessage = (ev: MessageEvent) => {
       const msg = JSON.parse(ev.data as string);
       if (msg.error) { clearTimeout(timeout); ws.close(); return reject(new Error(`Deriv: ${msg.error.message}`)); }
@@ -626,7 +628,7 @@ async function executeDeriv(creds: any, data: any) {
 }
 
 async function executeOanda(creds: any, data: any) {
-  const token = creds.api_token;
+  const token = credentialCandidates(creds.api_token)[0];
   const accountId = creds.account_id || creds.login;
   if (!token || !accountId) throw new Error('OANDA requires api_token and account_id');
   const base = (creds.environment === 'live') ? 'https://api-fxtrade.oanda.com' : 'https://api-fxpractice.oanda.com';
@@ -646,7 +648,7 @@ async function executeOanda(creds: any, data: any) {
 }
 
 async function executeCapital(creds: any, data: any) {
-  const apiKey = creds.api_token;
+  const apiKey = credentialCandidates(creds.api_token)[0];
   const identifier = creds.account_id || creds.login;
   const password = decodeStoredPassword(creds.encrypted_password || creds.api_secret || '');
   if (!apiKey || !identifier || !password) throw new Error('Capital.com requires api_token, account_id, and password');
