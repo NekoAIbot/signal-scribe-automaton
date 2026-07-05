@@ -38,6 +38,15 @@ export interface UnifiedSignal {
   modelVersion?: string;
   assetClass?: string;
   strategyId?: string;
+  signalReasoning?: {
+    market_regime: string;
+    strategy_chosen: string;
+    why_entry: string;
+    why_sl: string;
+    why_tp: string;
+    confidence_breakdown: Record<string, any>;
+    features: Record<string, any>;
+  };
 }
 
 // Global state
@@ -557,21 +566,17 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
             risk_reward_ratio: (tpPips / slPips).toFixed(2),
             pip_value: symbol.includes('JPY') ? 0.01 : 0.0001,
             model_edge: modelVote?.rawScore,
-          }
+          },
+          signalReasoning: {
+            market_regime: regime,
+            strategy_chosen: chosenStrategy.name,
+            why_entry: `${type} on ${displaySymbol}: ${modelVote?.shouldSignal ? 'model vote' : chosenStrategy.ai_auto_select && aiPred ? 'AI predictor' : `${Math.max(bullishVotes, bearishVotes)}/${enabledConditions} indicator votes`}, ADX ${adx.toFixed(1)}, regime ${regime} (fit ×${regimeFit.toFixed(2)})`,
+            why_sl: `1.5×ATR (${slPips.toFixed(5)})`,
+            why_tp: `2.5×ATR (${tpPips.toFixed(5)}), RR ${(tpPips/slPips).toFixed(2)}`,
+            confidence_breakdown: { base: confidence / regimeFit, regime_fit: regimeFit, final: confidence, model_accuracy: bestModel?.accuracy ?? null },
+            features: { rsi, adx, atr, volatility, ema_short: emaShort, ema_long: emaLong, macd: macdValue, macd_signal: macdSignal, stoch_k: stochK, stoch_d: stochD },
+          },
         });
-
-        // Phase 1/2: Explainable-AI reasoning log (fire-and-forget)
-        const lastSignal = signals[signals.length - 1];
-        supabase.from('signal_reasoning').insert({
-          signal_id: lastSignal.id,
-          market_regime: regime,
-          strategy_chosen: chosenStrategy.name,
-          why_entry: `${type} on ${displaySymbol}: ${modelVote?.shouldSignal ? 'model vote' : chosenStrategy.ai_auto_select && aiPred ? 'AI predictor' : `${Math.max(bullishVotes, bearishVotes)}/${enabledConditions} indicator votes`}, ADX ${adx.toFixed(1)}, regime ${regime} (fit ×${regimeFit.toFixed(2)})`,
-          why_sl: `1.5×ATR (${slPips.toFixed(5)})`,
-          why_tp: `2.5×ATR (${tpPips.toFixed(5)}), RR ${(tpPips/slPips).toFixed(2)}`,
-          confidence_breakdown: { base: confidence / regimeFit, regime_fit: regimeFit, final: confidence, model_accuracy: bestModel?.accuracy ?? null },
-          features: { rsi, adx, atr, volatility, ema_short: emaShort, ema_long: emaLong, macd: macdValue, macd_signal: macdSignal, stoch_k: stochK, stoch_d: stochD },
-        } as any).then(({ error }) => { if (error) console.warn('signal_reasoning insert failed', error.message); });
       }
     }
 
@@ -727,6 +732,16 @@ async function saveSignalsToDb(signals: UnifiedSignal[]) {
 
     const { data, error } = await supabase.from('trading_signals').insert(inserts).select('id');
     if (error) throw error;
+    const reasoningRows = (data || [])
+      .map((saved, index) => {
+        const reasoning = signals[index]?.signalReasoning;
+        return saved?.id && reasoning ? { signal_id: saved.id, ...reasoning } : null;
+      })
+      .filter(Boolean);
+    if (reasoningRows.length > 0) {
+      const { error: reasoningError } = await supabase.from('signal_reasoning').insert(reasoningRows as any);
+      if (reasoningError) console.warn('signal_reasoning insert failed', reasoningError.message);
+    }
     return data || [];
   } catch (error) {
     console.error('Failed to save signals:', error);
