@@ -217,8 +217,13 @@ export const MT5AccountSettings = () => {
       const cleanLogin = normalizeCredentialInput(form.login);
       const cleanDerivAppId = normalizeCredentialInput(form.deriv_app_id);
       const cleanServer = form.server.trim();
+      const existingCredential = credentials.find((c) => c.id === editingId);
       const metadataUpdate = form.broker_type === 'deriv'
-        ? { deriv_app_id: cleanDerivAppId || null, credential_kind: cleanApiToken.startsWith('pat_') ? 'pat' : undefined }
+        ? {
+            ...(editingId ? (existingCredential?.metadata || {}) : {}),
+            deriv_app_id: cleanDerivAppId || null,
+            ...(cleanApiToken ? { credential_kind: cleanApiToken.startsWith('pat_') ? 'pat' : 'legacy' } : {}),
+          }
         : undefined;
       if (editingId) {
         const updates: any = {
