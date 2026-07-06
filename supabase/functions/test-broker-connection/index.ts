@@ -145,7 +145,6 @@ async function testBroker(cred: any): Promise<BrokerTestResult> {
               normalizedCredentialUpdates: {
                 ...normalized,
                 metadata: {
-                  ...(cred.metadata || {}),
                   credential_kind: derivConfig.tokenKind,
                   ...(derivConfig.appId ? { deriv_app_id: derivConfig.appId, deriv_app_id_source: derivConfig.source } : {}),
                 },
