@@ -68,7 +68,11 @@ serve(async (req) => {
     }
 
     if (result.normalizedCredentialUpdates && (result.ok || result.credentialAccepted)) {
-      Object.assign(updatePayload, result.normalizedCredentialUpdates);
+      const normalized = { ...result.normalizedCredentialUpdates };
+      if (normalized.metadata && typeof normalized.metadata === "object") {
+        normalized.metadata = { ...mergedMeta, ...(normalized.metadata as Record<string, unknown>) };
+      }
+      Object.assign(updatePayload, normalized);
     }
 
     if (shouldDeactivateForFailedTest(result, missingScopes)) {
@@ -130,10 +134,24 @@ async function testBroker(cred: any): Promise<BrokerTestResult> {
         if (tokenCandidates.length === 0) return { ok: false, message: "API token missing", missingScopes: ["read", "trade"] };
         let last: BrokerTestResult | null = null;
         for (const cleanToken of tokenCandidates) {
-          const result = await testDerivToken(cleanToken);
+          const derivConfig = resolveDerivConfig(cred, cleanToken);
+          const result = await testDerivToken(cleanToken, derivConfig, cred);
           last = result;
           if (result.ok || result.credentialAccepted) {
-            return withNormalizedUpdate(result, cred.api_token, cleanToken, "api_token");
+            const normalized = normalizedUpdates([[cred.api_token, cleanToken, "api_token", false]]) || {};
+            const accountId = result.details?.account_id || result.details?.loginid || null;
+            return {
+              ...result,
+              normalizedCredentialUpdates: {
+                ...normalized,
+                metadata: {
+                  ...(cred.metadata || {}),
+                  credential_kind: derivConfig.tokenKind,
+                  ...(derivConfig.appId ? { deriv_app_id: derivConfig.appId, deriv_app_id_source: derivConfig.source } : {}),
+                },
+                ...(accountId ? { account_id: accountId, login: accountId } : {}),
+              },
+            };
           }
           if (!isCredentialFormatError(result.message)) return result;
         }
