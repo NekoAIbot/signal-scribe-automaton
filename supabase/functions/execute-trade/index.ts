@@ -273,7 +273,7 @@ serve(async (req) => {
   }
 });
 
-async function writeAuditLog(client: ReturnType<typeof createClient>, args: {
+async function writeAuditLog(client: any, args: {
   userId: string;
   requestData: any;
   timeline: TimelineEvent[];
@@ -320,7 +320,7 @@ function jsonResponse(payload: unknown, corsHeaders: Record<string, string>, sta
 }
 
 async function persistFailedTimeline(
-  client: ReturnType<typeof createClient>,
+  client: any,
   userId: string,
   requestData: any,
   events: TimelineEvent[],
@@ -411,7 +411,7 @@ function cleanCredentialValue(value: unknown): string {
 }
 
 
-async function resolveMainBrokerAccount(client: ReturnType<typeof createClient>, userId: string, requestedAccountId?: string | null) {
+async function resolveMainBrokerAccount(client: any, userId: string, requestedAccountId?: string | null) {
   const selectColumns = 'id, user_id, account_name, login, encrypted_password, api_token, api_secret, account_id, environment, server, broker_type, account_type, is_active, created_at, metadata';
 
   if (requestedAccountId) {
