@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const REQUIRED_SCOPES: Record<string, string[]> = {
-  deriv:   ["read", "trade", "trading_information", "payments"],
+  deriv:   ["trade", "account_manage"],
   binance: ["Enable Reading", "Enable Spot & Margin & Stock Trading"],
   oanda:   ["Read account", "Trade"],
   capital: ["Trading API enabled", "Custom password set"],
@@ -100,8 +100,8 @@ function inferMissingScopes(broker: string, message: string | undefined, ok: boo
   const m = (message || "").toLowerCase();
   const out: string[] = [];
   if (broker === "deriv") {
-    if (m.includes("invalidtoken") || m.includes("token")) out.push("read", "trade");
-    if (m.includes("permission") || m.includes("scope")) out.push("trade", "payments");
+    if (m.includes("invalidtoken") || m.includes("invalid token") || m.includes("authentication")) out.push("trade");
+    if (m.includes("permission") || m.includes("scope") || m.includes("forbidden")) out.push("trade", "account_manage");
   } else if (broker === "binance") {
     if (m.includes("api-key") || m.includes("invalid api")) out.push("Enable Reading");
     if (m.includes("permission") || m.includes("trading")) out.push("Enable Spot & Margin Trading");
@@ -391,8 +391,115 @@ function withNormalizedUpdate(result: BrokerTestResult, stored: unknown, accepte
   };
 }
 
-async function testDerivToken(cleanToken: string): Promise<BrokerTestResult> {
-  const appId = Deno.env.get("DERIV_APP_ID") || "1089";
+type DerivConfig = {
+  tokenKind: "pat" | "legacy";
+  appId: string;
+  source: "credential" | "secret" | "legacy_default" | "missing";
+};
+
+function resolveDerivConfig(cred: any, cleanToken: string): DerivConfig {
+  const tokenKind = cleanToken.startsWith("pat_") ? "pat" : "legacy";
+  const metadataAppId = cleanCredentialValue(cred.metadata?.deriv_app_id || cred.metadata?.app_id || "");
+  const patSecretAppId = cleanCredentialValue(Deno.env.get("DERIV_PAT_APP_ID") || "");
+  const legacySecretAppId = cleanCredentialValue(Deno.env.get("DERIV_APP_ID") || "");
+
+  if (metadataAppId) return { tokenKind, appId: metadataAppId, source: "credential" };
+  if (tokenKind === "pat" && patSecretAppId) return { tokenKind, appId: patSecretAppId, source: "secret" };
+  if (legacySecretAppId) return { tokenKind, appId: legacySecretAppId, source: "secret" };
+  if (tokenKind === "legacy") return { tokenKind, appId: "1089", source: "legacy_default" };
+  return { tokenKind, appId: "", source: "missing" };
+}
+
+async function testDerivToken(cleanToken: string, config: DerivConfig, cred: any): Promise<BrokerTestResult> {
+  if (config.tokenKind === "pat") return testDerivPatToken(cleanToken, config, cred);
+  return testDerivLegacyToken(cleanToken, config.appId || "1089");
+}
+
+async function testDerivPatToken(cleanToken: string, config: DerivConfig, cred: any): Promise<BrokerTestResult> {
+  if (!config.appId) {
+    return {
+      ok: false,
+      credentialAccepted: true,
+      message: "Deriv PAT token detected, but the matching Deriv App ID is missing. Edit this broker and add the App ID from the same PAT application.",
+      missingScopes: [],
+      details: { token_kind: "pat", app_id_required: true },
+    };
+  }
+
+  try {
+    const response = await fetch("https://api.derivws.com/trading/v1/options/accounts", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${cleanToken}`,
+        "Deriv-App-ID": config.appId,
+      },
+    });
+    const raw = await response.text();
+    const body = parseJson(raw);
+    if (!response.ok) {
+      return derivRestFailure(response.status, raw, body, config);
+    }
+
+    const accounts = Array.isArray(body?.data) ? body.data : [];
+    const preferred = cleanCredentialValue(cred.account_id || cred.login || "");
+    const env = String(cred.environment || cred.account_type || "demo").toLowerCase();
+    const account = accounts.find((a: any) => preferred && a.account_id === preferred) ||
+      accounts.find((a: any) => String(a.account_type || "").toLowerCase() === env && a.status === "active") ||
+      accounts.find((a: any) => a.status === "active") ||
+      accounts[0] || null;
+
+    return {
+      ok: Boolean(account),
+      credentialAccepted: true,
+      message: account ? `Deriv PAT authorized for ${account.account_id}` : "Deriv PAT authorized, but no trading account was returned",
+      details: {
+        token_kind: "pat",
+        account_id: account?.account_id || null,
+        balance: account?.balance ?? null,
+        currency: account?.currency || null,
+        account_type: account?.account_type || null,
+        accounts: accounts.map((a: any) => ({ account_id: a.account_id, account_type: a.account_type, status: a.status, currency: a.currency })),
+      },
+      missingScopes: account ? [] : ["account_manage"],
+    };
+  } catch (error) {
+    return { ok: false, message: `Deriv PAT validation failed: ${(error as Error).message}` };
+  }
+}
+
+function derivRestFailure(status: number, raw: string, body: any, config: DerivConfig): BrokerTestResult {
+  const firstError = Array.isArray(body?.errors) ? body.errors[0] : null;
+  const code = String(firstError?.code || "");
+  const message = String(firstError?.message || raw || `HTTP ${status}`).trim();
+  const lower = message.toLowerCase();
+
+  if (lower.includes("invalid application")) {
+    return {
+      ok: false,
+      credentialAccepted: true,
+      message: "Deriv PAT reached the new API, but the saved App ID is invalid or does not match this PAT application. Edit this broker and enter the App ID shown beside the PAT in Deriv.",
+      missingScopes: [],
+      details: { token_kind: "pat", app_id_source: config.source },
+    };
+  }
+
+  if (status === 403 || /permission|scope|accessdenied/i.test(code + message)) {
+    return { ok: false, message: `${message}${code ? ` [${code}]` : ""}`, missingScopes: ["trade", "account_manage"] };
+  }
+
+  if (status === 401) {
+    return { ok: false, message: `${message}${code ? ` [${code}]` : ""}`, missingScopes: ["trade"] };
+  }
+
+  return { ok: false, message: `${message}${code ? ` [${code}]` : ""}` };
+}
+
+function parseJson(raw: string) {
+  try { return raw ? JSON.parse(raw) : {}; }
+  catch { return {}; }
+}
+
+async function testDerivLegacyToken(cleanToken: string, appId: string): Promise<BrokerTestResult> {
   const url = `wss://ws.derivws.com/websockets/v3?app_id=${appId}`;
   return await new Promise((resolve) => {
     let settled = false;
