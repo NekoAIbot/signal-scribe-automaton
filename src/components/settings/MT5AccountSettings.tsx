@@ -178,7 +178,7 @@ export const MT5AccountSettings = () => {
 
   const resetForm = () => setForm({
     broker_type: 'deriv', account_name: '', api_token: '', api_secret: '',
-    account_id: '', login: '', password: '', server: '', environment: 'demo', account_type: 'demo',
+    account_id: '', login: '', password: '', server: '', deriv_app_id: '', environment: 'demo', account_type: 'demo',
   });
 
   const handleEdit = (c: BrokerCredential) => {
