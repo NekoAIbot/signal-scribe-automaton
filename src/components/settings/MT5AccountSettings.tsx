@@ -34,6 +34,7 @@ interface BrokerDef {
   url: string;
   requiredScopes: string[];
   scopeHelp: string;
+  needsAppId?: boolean;
   disabled?: boolean;
 }
 
@@ -41,9 +42,10 @@ const BROKERS: BrokerDef[] = [
   {
     value: 'deriv', label: 'Deriv', markets: 'Crypto + Synthetics + Forex',
     needs: ['api_token'], tierMin: 'free',
-    url: 'https://app.deriv.com/account/api-token',
-    requiredScopes: ['Read', 'Trade', 'Trading information', 'Payments'],
-    scopeHelp: 'When creating the Deriv API token, check the "Read", "Trade", "Trading information" and "Payments" scopes — otherwise auto-execute will be rejected.',
+    url: 'https://developers.deriv.com/dashboard',
+    requiredScopes: ['Trade', 'Account manage'],
+    scopeHelp: 'For new Deriv PAT tokens, paste the token and the matching App ID from the same PAT application. Legacy tokens still work without a PAT App ID.',
+    needsAppId: true,
   },
   {
     value: 'binance', label: 'Binance', markets: 'Crypto',
@@ -128,6 +130,7 @@ export const MT5AccountSettings = () => {
     login: '',
     password: '',
     server: '',
+    deriv_app_id: '',
     environment: 'demo',
     account_type: 'demo',
   });
@@ -175,7 +178,7 @@ export const MT5AccountSettings = () => {
 
   const resetForm = () => setForm({
     broker_type: 'deriv', account_name: '', api_token: '', api_secret: '',
-    account_id: '', login: '', password: '', server: '', environment: 'demo', account_type: 'demo',
+    account_id: '', login: '', password: '', server: '', deriv_app_id: '', environment: 'demo', account_type: 'demo',
   });
 
   const handleEdit = (c: BrokerCredential) => {
@@ -190,6 +193,7 @@ export const MT5AccountSettings = () => {
       login: c.login || '',
       password: '',
       server: c.server || '',
+      deriv_app_id: c.metadata?.deriv_app_id || '',
       environment: c.environment || 'demo',
       account_type: c.account_type || 'demo',
     });
@@ -211,7 +215,16 @@ export const MT5AccountSettings = () => {
       const cleanPassword = normalizeCredentialInput(form.password);
       const cleanAccountId = normalizeCredentialInput(form.account_id);
       const cleanLogin = normalizeCredentialInput(form.login);
+      const cleanDerivAppId = normalizeCredentialInput(form.deriv_app_id);
       const cleanServer = form.server.trim();
+      const existingCredential = credentials.find((c) => c.id === editingId);
+      const metadataUpdate = form.broker_type === 'deriv'
+        ? {
+            ...(editingId ? (existingCredential?.metadata || {}) : {}),
+            deriv_app_id: cleanDerivAppId || null,
+            ...(cleanApiToken ? { credential_kind: cleanApiToken.startsWith('pat_') ? 'pat' : 'legacy' } : {}),
+          }
+        : undefined;
       if (editingId) {
         const updates: any = {
           account_name: form.account_name,
@@ -221,6 +234,7 @@ export const MT5AccountSettings = () => {
           login: cleanLogin || cleanAccountId || form.account_name,
           server: cleanServer || form.broker_type,
         };
+        if (metadataUpdate) updates.metadata = metadataUpdate;
         // Only overwrite secrets if user typed a new value
         if (cleanApiToken) updates.api_token = cleanApiToken;
         if (cleanApiSecret) updates.api_secret = btoa(cleanApiSecret);
@@ -241,6 +255,7 @@ export const MT5AccountSettings = () => {
           login: cleanLogin || cleanAccountId || form.account_name,
           server: cleanServer || form.broker_type,
           encrypted_password: cleanPassword ? btoa(cleanPassword) : 'n/a',
+          ...(metadataUpdate ? { metadata: metadataUpdate } : {}),
         };
         const { data, error } = await supabase.from('broker_credentials').insert(payload).select('id').single();
         if (error) throw error;
@@ -348,6 +363,12 @@ export const MT5AccountSettings = () => {
                   <div className="space-y-2">
                     <Label>Account ID</Label>
                     <Input value={form.account_id} onChange={(e) => setForm({ ...form, account_id: e.target.value })} placeholder="001-001-12345-001" />
+                  </div>
+                )}
+                {broker.needsAppId && (
+                  <div className="space-y-2">
+                    <Label>Deriv App ID</Label>
+                    <Input value={form.deriv_app_id} onChange={(e) => setForm({ ...form, deriv_app_id: e.target.value })} placeholder="Required for pat_ tokens" />
                   </div>
                 )}
                 {broker.needs.includes('api_token') && (

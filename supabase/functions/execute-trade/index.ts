@@ -273,7 +273,7 @@ serve(async (req) => {
   }
 });
 
-async function writeAuditLog(client: ReturnType<typeof createClient>, args: {
+async function writeAuditLog(client: any, args: {
   userId: string;
   requestData: any;
   timeline: TimelineEvent[];
@@ -320,7 +320,7 @@ function jsonResponse(payload: unknown, corsHeaders: Record<string, string>, sta
 }
 
 async function persistFailedTimeline(
-  client: ReturnType<typeof createClient>,
+  client: any,
   userId: string,
   requestData: any,
   events: TimelineEvent[],
@@ -411,8 +411,8 @@ function cleanCredentialValue(value: unknown): string {
 }
 
 
-async function resolveMainBrokerAccount(client: ReturnType<typeof createClient>, userId: string, requestedAccountId?: string | null) {
-  const selectColumns = 'id, user_id, account_name, login, encrypted_password, api_token, api_secret, account_id, environment, server, broker_type, account_type, is_active, created_at';
+async function resolveMainBrokerAccount(client: any, userId: string, requestedAccountId?: string | null) {
+  const selectColumns = 'id, user_id, account_name, login, encrypted_password, api_token, api_secret, account_id, environment, server, broker_type, account_type, is_active, created_at, metadata';
 
   if (requestedAccountId) {
     const { data: requestedAccount } = await client
@@ -606,7 +606,9 @@ async function executeDeriv(creds: any, data: any) {
   let lastError: Error | null = null;
   for (const token of tokenCandidates) {
     try {
-      return await executeDerivWithToken(token, data);
+      return token.startsWith('pat_')
+        ? await executeDerivWithPatToken(token, creds, data)
+        : await executeDerivWithLegacyToken(token, creds, data);
     } catch (error) {
       lastError = error as Error;
       if (!/invalidtoken|token is invalid|invalid token|authorization/i.test(lastError.message)) break;
@@ -615,8 +617,18 @@ async function executeDeriv(creds: any, data: any) {
   throw lastError || new Error('Deriv token rejected');
 }
 
-async function executeDerivWithToken(token: string, data: any) {
-  const appId = Deno.env.get('DERIV_APP_ID') || '1089';
+function resolveDerivAppId(creds: any, token: string) {
+  const metadataAppId = cleanCredentialValue(creds.metadata?.deriv_app_id || creds.metadata?.app_id || '');
+  const patAppId = cleanCredentialValue(Deno.env.get('DERIV_PAT_APP_ID') || '');
+  const legacyAppId = cleanCredentialValue(Deno.env.get('DERIV_APP_ID') || '');
+  if (metadataAppId) return metadataAppId;
+  if (token.startsWith('pat_') && patAppId) return patAppId;
+  if (legacyAppId) return legacyAppId;
+  return token.startsWith('pat_') ? '' : '1089';
+}
+
+async function executeDerivWithLegacyToken(token: string, creds: any, data: any) {
+  const appId = resolveDerivAppId(creds, token);
   return await new Promise<{ ticketNumber: string; volume: number; mode: string }>((resolve, reject) => {
     const ws = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${appId}`);
     const timeout = setTimeout(() => { try { ws.close(); } catch {} reject(new Error('Deriv timeout')); }, 15000);
@@ -638,6 +650,99 @@ async function executeDerivWithToken(token: string, data: any) {
     };
     ws.onerror = (e) => { clearTimeout(timeout); reject(new Error(`Deriv WS error: ${String(e)}`)); };
   });
+}
+
+async function executeDerivWithPatToken(token: string, creds: any, data: any) {
+  const appId = resolveDerivAppId(creds, token);
+  if (!appId) throw new Error('Deriv PAT execution requires the matching Deriv App ID. Edit the broker account and add the App ID from the same PAT application.');
+
+  const accountId = cleanCredentialValue(creds.account_id || creds.login || '');
+  const resolvedAccountId = accountId || await resolveDerivPatAccountId(token, appId, creds);
+  if (!resolvedAccountId) throw new Error('Deriv PAT is authorized, but no Deriv options trading account was found.');
+
+  const otpResponse = await fetch(`https://api.derivws.com/trading/v1/options/accounts/${encodeURIComponent(resolvedAccountId)}/otp`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Deriv-App-ID': appId },
+  });
+  const otpRaw = await otpResponse.text();
+  const otpBody = parseJson(otpRaw);
+  if (!otpResponse.ok || !otpBody?.data?.url) {
+    throw new Error(`Deriv PAT OTP failed: ${formatDerivRestError(otpResponse.status, otpRaw, otpBody)}`);
+  }
+
+  return await buyDerivPatContract(otpBody.data.url, data);
+}
+
+async function resolveDerivPatAccountId(token: string, appId: string, creds: any) {
+  const response = await fetch('https://api.derivws.com/trading/v1/options/accounts', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}`, 'Deriv-App-ID': appId },
+  });
+  const raw = await response.text();
+  const body = parseJson(raw);
+  if (!response.ok) throw new Error(`Deriv PAT account lookup failed: ${formatDerivRestError(response.status, raw, body)}`);
+
+  const accounts = Array.isArray(body?.data) ? body.data : [];
+  const env = String(creds.environment || creds.account_type || 'demo').toLowerCase();
+  const account = accounts.find((a: any) => String(a.account_type || '').toLowerCase() === env && a.status === 'active') ||
+    accounts.find((a: any) => a.status === 'active') ||
+    accounts[0];
+  return account?.account_id || '';
+}
+
+async function buyDerivPatContract(wsUrl: string, data: any) {
+  return await new Promise<{ ticketNumber: string; volume: number; mode: string }>((resolve, reject) => {
+    const ws = new WebSocket(wsUrl);
+    const amount = Math.max(0.35, data.lotSize || 1);
+    const symbol = toDerivSymbol(data.symbol);
+    const timeout = setTimeout(() => { try { ws.close(); } catch {} reject(new Error('Deriv PAT WebSocket timeout')); }, 15000);
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({
+        proposal: 1,
+        amount,
+        basis: 'stake',
+        contract_type: data.type === 'BUY' ? 'CALL' : 'PUT',
+        currency: 'USD',
+        duration: 5,
+        duration_unit: 'm',
+        underlying_symbol: symbol,
+        req_id: 1,
+      }));
+    };
+    ws.onmessage = (ev: MessageEvent) => {
+      const msg = JSON.parse(ev.data as string);
+      if (msg.error) { clearTimeout(timeout); try { ws.close(); } catch {} return reject(new Error(`Deriv PAT: ${msg.error.message}`)); }
+      if (msg.msg_type === 'proposal' && msg.proposal?.id) {
+        ws.send(JSON.stringify({ buy: msg.proposal.id, price: amount, req_id: 2 }));
+      } else if (msg.msg_type === 'buy') {
+        clearTimeout(timeout); try { ws.close(); } catch {}
+        resolve({ ticketNumber: String(msg.buy?.contract_id || msg.buy?.transaction_id || Date.now()), volume: amount, mode: 'deriv-pat' });
+      }
+    };
+    ws.onerror = () => { clearTimeout(timeout); reject(new Error('Deriv PAT WebSocket error')); };
+  });
+}
+
+function toDerivSymbol(raw: string) {
+  const s = String(raw || '').replace(/[\s\-_]/g, '').toUpperCase();
+  if (s.includes('/')) {
+    const compact = s.replace('/', '');
+    if (/^[A-Z]{6}$/.test(compact)) return `frx${compact}`;
+    return compact;
+  }
+  if (/^[A-Z]{6}$/.test(s) && /USD|EUR|GBP|JPY|AUD|NZD|CAD|CHF/.test(s)) return `frx${s}`;
+  return s;
+}
+
+function parseJson(raw: string) {
+  try { return raw ? JSON.parse(raw) : {}; }
+  catch { return {}; }
+}
+
+function formatDerivRestError(status: number, raw: string, body: any) {
+  const firstError = Array.isArray(body?.errors) ? body.errors[0] : null;
+  return String(firstError?.message || raw || `HTTP ${status}`).trim();
 }
 
 async function executeOanda(creds: any, data: any) {
