@@ -9,7 +9,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Trash2, Plus, Eye, EyeOff, RefreshCw, ExternalLink, CheckCircle2, XCircle, Loader2, HelpCircle, AlertTriangle, ShieldCheck, Pencil } from "lucide-react";
+import { Trash2, Plus, Eye, EyeOff, RefreshCw, ExternalLink, CheckCircle2, XCircle, Loader2, HelpCircle, AlertTriangle, ShieldCheck, Pencil, Wifi, WifiOff } from "lucide-react";
+import { TRADING_PURPOSES, getBrokerDefinition, isOAuthDefault, type DiscoveredBrokerAccount } from '@/services/broker/authFramework';
 
 interface BrokerCredential {
   id: string;
@@ -42,10 +43,9 @@ const BROKERS: BrokerDef[] = [
   {
     value: 'deriv', label: 'Deriv', markets: 'Crypto + Synthetics + Forex',
     needs: ['api_token'], tierMin: 'free',
-    url: 'https://developers.deriv.com/dashboard',
-    requiredScopes: ['Trade', 'Account manage'],
-    scopeHelp: 'For new Deriv PAT tokens, paste the token and the matching App ID from the same PAT application. Legacy tokens still work without a PAT App ID.',
-    needsAppId: true,
+    url: 'https://oauth.deriv.com/oauth2/authorize',
+    requiredScopes: ['Trade', 'Account manage', 'Read account'],
+    scopeHelp: 'OAuth is the default. App IDs, redirect URLs, and secrets are configured only on the backend. Personal access token is an advanced fallback.',
   },
   {
     value: 'binance', label: 'Binance', markets: 'Crypto',
@@ -53,6 +53,27 @@ const BROKERS: BrokerDef[] = [
     url: 'https://www.binance.com/en/my/settings/api-management',
     requiredScopes: ['Enable Reading', 'Enable Spot & Margin & Stock Trading'],
     scopeHelp: 'Binance.com API keys must use Live environment. In Binance API Management, enable "Reading" and "Spot & Margin & Stock Trading". Disable withdrawals. If you use IP whitelist, add the server IP shown after a failed test, or disable the restriction.',
+  },
+  {
+    value: 'bybit', label: 'Bybit', markets: 'Crypto',
+    needs: ['api_token', 'api_secret'], tierMin: 'starter',
+    url: 'https://www.bybit.com/app/user/api-management',
+    requiredScopes: ['Read account', 'Trade'],
+    scopeHelp: 'OAuth is preferred when available. API key/secret is the official fallback; use testnet keys for Testnet.',
+  },
+  {
+    value: 'alpaca', label: 'Alpaca', markets: 'Stocks + Crypto',
+    needs: ['api_token', 'api_secret'], tierMin: 'starter',
+    url: 'https://app.alpaca.markets/paper/dashboard/overview',
+    requiredScopes: ['Account read', 'Trading'],
+    scopeHelp: 'OAuth is preferred. API key/secret is the fallback for paper or live accounts.',
+  },
+  {
+    value: 'interactive_brokers', label: 'Interactive Brokers', markets: 'Multi-asset',
+    needs: [], tierMin: 'pro',
+    url: 'https://www.interactivebrokers.com/',
+    requiredScopes: ['Accounts', 'Trading'],
+    scopeHelp: 'Use the official Interactive Brokers authorization flow; credentials remain backend-only.',
   },
   {
     value: 'oanda', label: 'OANDA', markets: 'Forex + CFDs',
@@ -69,12 +90,11 @@ const BROKERS: BrokerDef[] = [
     scopeHelp: 'Enable the Trading API in Capital.com settings and set a separate custom password for API access — your login password will not work.',
   },
   {
-    value: 'mt5', label: 'MT5 (Disabled)', markets: 'Use Deriv / Binance / OANDA / Capital.com instead',
+    value: 'mt5', label: 'MT5', markets: 'Broker login + server',
     needs: ['login', 'password', 'server'], tierMin: 'enterprise',
     url: '',
     requiredScopes: [],
-    scopeHelp: 'MetaTrader execution has been removed. Existing MT5 accounts will not place trades — switch to one of the supported brokers above.',
-    disabled: true,
+    scopeHelp: 'MetaTrader uses the official broker login/password/server flow. Existing MT5 accounts remain compatible.',
   },
 ];
 
@@ -99,6 +119,10 @@ export const MT5AccountSettings = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [testing, setTesting] = useState<Record<string, boolean>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [activeAccountId, setActiveAccountId] = useState<string>('');
+  const [oauthStarting, setOauthStarting] = useState(false);
+  const [isOnline, setIsOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
+  const [defaultAssignments, setDefaultAssignments] = useState<Record<string, string>>({});
   const lastAutoTest = useRef<Record<string, number>>({});
 
   const testConnection = useCallback(async (id: string, silent = false) => {
@@ -136,6 +160,8 @@ export const MT5AccountSettings = () => {
   });
 
   const broker = BROKERS.find(b => b.value === form.broker_type)!;
+  const brokerDefinition = getBrokerDefinition(form.broker_type);
+  const supportsOAuth = isOAuthDefault(form.broker_type);
 
   const fetchCredentials = async () => {
     if (!user?.id) return;
@@ -156,6 +182,21 @@ export const MT5AccountSettings = () => {
   };
 
   useEffect(() => { fetchCredentials(); /* eslint-disable-next-line */ }, [user?.id]);
+
+  useEffect(() => {
+    const online = () => setIsOnline(true);
+    const offline = () => setIsOnline(false);
+    window.addEventListener('online', online);
+    window.addEventListener('offline', offline);
+    return () => { window.removeEventListener('online', online); window.removeEventListener('offline', offline); };
+  }, []);
+
+  useEffect(() => {
+    const active = credentials.find((c) => c.is_active);
+    if (active && !activeAccountId) setActiveAccountId(active.id);
+    const savedDefaults = credentials.reduce<Record<string, string>>((acc, c) => ({ ...acc, ...(c.metadata?.default_assignments || {}) }), {});
+    if (Object.keys(savedDefaults).length) setDefaultAssignments(savedDefaults);
+  }, [credentials, activeAccountId]);
 
   // Periodic background health check — re-test active credentials every 5 min
   useEffect(() => {
@@ -199,9 +240,67 @@ export const MT5AccountSettings = () => {
     });
   };
 
+  const startOAuth = async () => {
+    if (!supportsOAuth) return;
+    setOauthStarting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('broker-oauth-start', { body: { broker: form.broker_type, environment: form.environment } });
+      if (error) throw error;
+      if (data?.ok && data.authorizationUrl) {
+        sessionStorage.setItem('broker_oauth_state', JSON.stringify({ broker: form.broker_type, environment: form.environment, state: data.state }));
+        window.location.assign(data.authorizationUrl);
+      } else {
+        toast.info(data?.error || 'OAuth is not configured yet. Use the advanced fallback for this broker.');
+      }
+    } catch (error: any) {
+      toast.error(error?.message || 'Unable to start broker OAuth');
+    } finally {
+      setOauthStarting(false);
+    }
+  };
+
+  const discoveredAccounts = (credential: BrokerCredential): DiscoveredBrokerAccount[] => {
+    const accounts = credential.metadata?.discovered_accounts || credential.metadata?.last_test?.details?.accounts || [];
+    if (Array.isArray(accounts) && accounts.length) {
+      return accounts.map((account: any, index: number) => ({
+        accountId: String(account.accountId || account.account_id || account.id || credential.account_id || `${credential.id}-${index}`),
+        accountName: String(account.accountName || account.name || account.account_id || credential.account_name),
+        accountNumber: account.accountNumber || account.login || account.account_id || null,
+        accountType: String(account.accountType || account.account_type || credential.account_type || 'demo'),
+        environment: (account.environment || credential.environment || credential.account_type || 'demo') as any,
+        balance: account.balance ?? null, equity: account.equity ?? null, currency: account.currency || null, leverage: account.leverage || null,
+        permissions: account.permissions || credential.metadata?.permissions || [], metadata: account,
+      }));
+    }
+    return [{ accountId: credential.account_id || credential.login || credential.id, accountName: credential.account_name, accountNumber: credential.login, accountType: credential.account_type, environment: (credential.environment || credential.account_type || 'demo') as any, balance: credential.metadata?.last_test?.details?.balance ?? null, equity: credential.metadata?.last_test?.details?.equity ?? null, currency: credential.metadata?.last_test?.details?.currency || null, leverage: credential.metadata?.leverage || null, permissions: credential.metadata?.permissions || [] }];
+  };
+
+  const switchAccount = async (credential: BrokerCredential, account: DiscoveredBrokerAccount) => {
+    try {
+      setActiveAccountId(credential.id);
+      const { error } = await supabase.functions.invoke('broker-account-sync', { body: { credentialId: credential.id, selectedAccount: account } });
+      if (error) throw error;
+      toast.success(`Active broker account switched to ${account.accountName}`);
+      fetchCredentials();
+    } catch (error: any) {
+      toast.error(error?.message || 'Account switch failed');
+    }
+  };
+
+  const saveDefaultAssignment = async (purpose: string, credentialId: string) => {
+    const next = { ...defaultAssignments, [purpose]: credentialId };
+    setDefaultAssignments(next);
+    const credential = credentials.find((c) => c.id === credentialId);
+    if (!credential) return;
+    const metadata = { ...(credential.metadata || {}), default_assignments: next };
+    const { error } = await supabase.from('broker_credentials').update({ metadata }).eq('id', credentialId);
+    if (error) toast.error('Failed to save default account'); else toast.success('Default account saved');
+  };
+
   const handleAdd = async () => {
     if (!user?.id) { toast.error('You must be logged in'); return; }
     if (!form.account_name) { toast.error('Account name required'); return; }
+    if (!editingId && supportsOAuth && broker.needs.length === 0) { toast.info('This broker uses backend OAuth. Click Connect instead of saving browser credentials.'); return; }
     if (!editingId) {
       for (const f of broker.needs) {
         if (!(form as any)[f]) { toast.error(`${f.replace('_',' ')} required for ${broker.label}`); return; }
@@ -299,7 +398,7 @@ export const MT5AccountSettings = () => {
         <div className="flex items-center justify-between">
           <div>
             <CardTitle>Broker Accounts</CardTitle>
-            <CardDescription>Connect a free cloud broker — credentials are auto-tested every 5 minutes</CardDescription>
+            <CardDescription>Universal broker authentication, account discovery, switching, and session health</CardDescription>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={fetchCredentials}><RefreshCw className="h-4 w-4" /></Button>
@@ -310,13 +409,19 @@ export const MT5AccountSettings = () => {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        <Alert>
+          {isOnline ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
+          <AlertTitle className="text-sm">Session management</AlertTitle>
+          <AlertDescription className="text-xs">OAuth-capable brokers authenticate through backend-managed authorization. Refresh tokens, client IDs, app IDs, redirect URLs, and secrets are never entered in the browser. Active sessions are heartbeated every 5 minutes and recover safely when you return online.</AlertDescription>
+        </Alert>
+
         {showAddForm && (
           <Card className="border-dashed">
             <CardContent className="pt-4 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Broker</Label>
-                  <Select value={form.broker_type} disabled={!!editingId} onValueChange={(v) => setForm({ ...form, broker_type: v, environment: v === 'binance' ? 'live' : form.environment, account_type: v === 'binance' ? 'live' : form.account_type })}>
+                  <Select value={form.broker_type} disabled={!!editingId} onValueChange={(v) => { const nextBroker = getBrokerDefinition(v); setForm({ ...form, broker_type: v, environment: nextBroker.defaultEnvironment, account_type: nextBroker.defaultEnvironment }); }}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {BROKERS.map(b => (
@@ -354,8 +459,9 @@ export const MT5AccountSettings = () => {
                   <Select value={form.environment} onValueChange={(v) => setForm({ ...form, environment: v, account_type: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="demo">Demo / Practice / Testnet</SelectItem>
-                      <SelectItem value="live">Live</SelectItem>
+                      {brokerDefinition.environments.map((environment) => (
+                        <SelectItem key={environment} value={environment}>{environment.charAt(0).toUpperCase() + environment.slice(1)}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -365,12 +471,7 @@ export const MT5AccountSettings = () => {
                     <Input value={form.account_id} onChange={(e) => setForm({ ...form, account_id: e.target.value })} placeholder="001-001-12345-001" />
                   </div>
                 )}
-                {broker.needsAppId && (
-                  <div className="space-y-2">
-                    <Label>Deriv App ID</Label>
-                    <Input value={form.deriv_app_id} onChange={(e) => setForm({ ...form, deriv_app_id: e.target.value })} placeholder="Required for pat_ tokens" />
-                  </div>
-                )}
+
                 {broker.needs.includes('api_token') && (
                   <div className="space-y-2 md:col-span-2">
                     <Label>API Token / Key{editingId ? ' (leave blank to keep current)' : ''}</Label>
@@ -400,7 +501,8 @@ export const MT5AccountSettings = () => {
               </div>
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" onClick={() => { setShowAddForm(false); setEditingId(null); resetForm(); }}>Cancel</Button>
-                <Button onClick={handleAdd} disabled={isSaving}>{isSaving ? 'Saving…' : editingId ? 'Update Account' : 'Save Account'}</Button>
+                {supportsOAuth && !editingId && <Button variant="secondary" onClick={startOAuth} disabled={oauthStarting || !isOnline}>{oauthStarting ? 'Starting OAuth…' : `Connect with ${broker.label}`}</Button>}
+                <Button onClick={handleAdd} disabled={isSaving}>{isSaving ? 'Saving…' : editingId ? 'Update Account' : supportsOAuth ? 'Save fallback account' : 'Save Account'}</Button>
               </div>
             </CardContent>
           </Card>
@@ -496,8 +598,50 @@ export const MT5AccountSettings = () => {
           </div>
         )}
 
+        {credentials.length > 0 && (
+          <Card className="border-muted">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Universal Account Switcher & Defaults</CardTitle>
+              <CardDescription>Switch discovered accounts without re-authentication and assign defaults for trading modes.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3">
+                {credentials.map((credential) => (
+                  <div key={`switch-${credential.id}`} className="rounded-lg border p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="font-medium">{credential.account_name}</div>
+                      <Badge variant={activeAccountId === credential.id || credential.is_active ? 'default' : 'outline'}>{activeAccountId === credential.id || credential.is_active ? 'Active session' : 'Available'}</Badge>
+                    </div>
+                    <div className="grid md:grid-cols-2 gap-2">
+                      {discoveredAccounts(credential).map((account) => (
+                        <Button key={`${credential.id}-${account.accountId}`} variant="outline" className="h-auto justify-start" onClick={() => switchAccount(credential, account)}>
+                          <span className="text-left">
+                            <span className="block">{account.accountName}</span>
+                            <span className="block text-xs text-muted-foreground">{account.accountType} • {account.currency || '—'} {account.balance ?? '—'} balance • {account.permissions.length ? account.permissions.join(', ') : 'standard permissions'}</span>
+                          </span>
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="grid md:grid-cols-2 gap-3">
+                {TRADING_PURPOSES.map((purpose) => (
+                  <div key={purpose.key} className="space-y-1">
+                    <Label>{purpose.label} default</Label>
+                    <Select value={defaultAssignments[purpose.key] || ''} onValueChange={(value) => saveDefaultAssignment(purpose.key, value)}>
+                      <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
+                      <SelectContent>{credentials.map((credential) => <SelectItem key={`${purpose.key}-${credential.id}`} value={credential.id}>{credential.account_name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <div className="text-sm text-muted-foreground mt-4 p-3 bg-muted/50 rounded-lg">
-          <strong>Free Cloud Brokers:</strong> Deriv / Binance / OANDA / Capital.com run server-side. Connections are auto-re-tested every 5 minutes so the status badge stays current.
+          <strong>Free Cloud Brokers:</strong> Deriv / Binance / Bybit / Alpaca / Interactive Brokers / OANDA / Capital.com / MT5 run through broker-independent adapters. Connections are auto-re-tested every 5 minutes so the status badge stays current.
         </div>
       </CardContent>
     </Card>
