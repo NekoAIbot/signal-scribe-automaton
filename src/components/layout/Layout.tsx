@@ -73,7 +73,7 @@ export function Layout() {
                 </div>
                 <div className="flex flex-col">
                   <span className="text-[0.68rem] uppercase tracking-[0.28em] text-muted-foreground">Classical AI Desk</span>
-                  <span className="text-xl font-semibold">Signal Scribe</span>
+                  <span className="text-xl font-semibold">Axion AI</span>
                 </div>
               </NavLink>
             </div>
@@ -131,7 +131,7 @@ export function Layout() {
               </div>
               <div className="flex flex-col">
                 <span className="text-[0.62rem] uppercase tracking-[0.24em] text-muted-foreground">Classical AI Desk</span>
-                <span className="text-lg font-semibold">Signal Scribe</span>
+                <span className="text-lg font-semibold">Axion AI</span>
               </div>
             </div>
           </header>
@@ -146,7 +146,7 @@ export function Layout() {
                   </div>
                   <NavLink to="/" className="flex flex-col font-semibold">
                     <span className="text-[0.62rem] uppercase tracking-[0.24em] text-muted-foreground">Classical AI Desk</span>
-                    <span className="text-xl font-semibold">Signal Scribe</span>
+                    <span className="text-xl font-semibold">Axion AI</span>
                   </NavLink>
                 </div>
                 <ScrollArea className="flex-grow">

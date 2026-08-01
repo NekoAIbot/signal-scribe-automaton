@@ -1,5 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+import {
+  BrokerError,
+  asBrokerError,
+  describeBroker,
+  executeOrder,
+  isSupportedBroker,
+} from "../_shared/broker-sdk/index.ts";
+
 
 const corsBaseHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
@@ -169,41 +177,78 @@ serve(async (req) => {
 
     let executionResult: { ticketNumber: string; volume: number; mode: string };
 
-    // Route by broker_type: only direct-API brokers are supported.
-    if (['deriv','binance','oanda','capital'].includes(brokerType)) {
-      timeline.push('order', 'started', `Sending to ${brokerType.toUpperCase()} API`);
-      executionResult = await executeViaBrokerApi(brokerType, mainBrokerAccount, requestData);
-      timeline.push('order', 'success', `${brokerType} ticket ${executionResult.ticketNumber}`);
-      timeline.push('filled', 'success');
-    } else if (['mt4', 'mt5', 'metatrader'].includes(brokerType)) {
-      const msg = 'MetaTrader execution has been disabled. Add a Deriv, Binance, OANDA, or Capital.com account in Settings → Brokers to continue trading.';
-      timeline.push('order', 'failed', msg);
-      await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'metatrader_disabled');
-      await writeAuditLog(serviceClient, {
-        userId, requestData, timeline: timeline.events, success: false,
-        status: 'metatrader_disabled', error: msg, retryOf, brokerAccount: mainBrokerAccount,
-      });
-      return jsonResponse({ success: false, error: msg, timeline: timeline.events }, corsHeaders);
+    // Every broker call goes through the Universal Broker SDK.
+    if (isSupportedBroker(brokerType)) {
+      const descriptor = describeBroker(brokerType)!;
+      timeline.push('validation', 'started', `Validating order for ${descriptor.displayName}`);
+      try {
+        const outcome = await executeOrder(mainBrokerAccount, {
+          symbol: requestData.symbol,
+          side: requestData.type === 'BUY' ? 'BUY' : 'SELL',
+          quantity: Number(requestData.lotSize) || 0.01,
+          orderType: 'MARKET',
+          price: requestData.price ?? null,
+          stopLoss: requestData.stopLoss ?? null,
+          takeProfit: requestData.takeProfit ?? null,
+          clientOrderId: requestData.clientOrderId || `axion-${Date.now()}`,
+        });
+
+        const warnings = outcome.validation.issues.map(i => i.message);
+        timeline.push('validation', 'success', warnings.length ? warnings.join(' ') : 'Order passed pre-trade validation', {
+          normalizedQuantity: outcome.validation.normalizedOrder.quantity,
+        });
+        timeline.push('order', 'started', `Sending to ${descriptor.displayName}`);
+        executionResult = {
+          ticketNumber: outcome.order.brokerOrderId,
+          volume: outcome.order.filledQuantity,
+          mode: outcome.order.mode,
+        };
+        timeline.push('order', 'success', `${descriptor.displayName} order ${executionResult.ticketNumber}`, {
+          status: outcome.order.status,
+          price: outcome.order.price,
+        });
+        timeline.push('filled', 'success');
+      } catch (error) {
+        const brokerError = error instanceof BrokerError ? error : asBrokerError(brokerType, error);
+        timeline.push('order', 'failed', brokerError.message, brokerError.toJSON());
+        await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, brokerError.code.toLowerCase());
+        await writeAuditLog(serviceClient, {
+          userId, requestData, timeline: timeline.events, success: false,
+          status: brokerError.code.toLowerCase(), error: brokerError.message, retryOf, brokerAccount: mainBrokerAccount,
+        });
+        return jsonResponse({
+          success: false,
+          error: brokerError.message,
+          errorCode: brokerError.code,
+          hint: brokerError.hint,
+          retryable: brokerError.retryable,
+          timeline: timeline.events,
+        }, corsHeaders);
+      }
     } else if (PAPER_MODE && requestData.allowPaperMode === true) {
       timeline.push('order', 'started', 'Paper-mode (no broker call)');
       executionResult = { ticketNumber: `PAPER-${Date.now()}`, volume: requestData.lotSize || 0.01, mode: 'paper' };
       timeline.push('order', 'success', `Paper ticket ${executionResult.ticketNumber}`);
       timeline.push('filled', 'success');
-    } else if (MT5_BRIDGE_URL) {
-      timeline.push('order', 'started', 'Sending to MT5 bridge');
+    } else if (MT5_BRIDGE_URL && ['mt4', 'mt5', 'metatrader', 'mt5bridge'].includes(brokerType)) {
+      timeline.push('order', 'started', 'Sending to self-hosted MT5 bridge');
       executionResult = await executeViaBridge(MT5_BRIDGE_URL, MT5_BRIDGE_API_KEY || '', requestData);
       timeline.push('order', 'success', `Bridge ticket ${executionResult.ticketNumber}`);
       timeline.push('filled', 'success');
     } else {
-      const msg = `Broker type "${brokerType}" is not supported. Add a Deriv, Binance, OANDA, or Capital.com account in Settings → Brokers.`;
+      const descriptor = describeBroker(brokerType);
+      const msg = descriptor
+        ? `${descriptor.displayName} is not enabled for execution yet. ${descriptor.notes || ''}`.trim()
+        : `Broker type "${brokerType}" is not supported. Add a Deriv, Binance, OANDA, or Capital.com account in Settings → Brokers.`;
       timeline.push('order', 'failed', msg);
       await persistFailedTimeline(serviceClient, userId, requestData, timeline.events, 'unsupported_broker');
       await writeAuditLog(serviceClient, {
         userId, requestData, timeline: timeline.events, success: false,
         status: 'unsupported_broker', error: msg, retryOf, brokerAccount: mainBrokerAccount,
       });
-      return jsonResponse({ success: false, error: msg, timeline: timeline.events }, corsHeaders);
+      return jsonResponse({ success: false, error: msg, errorCode: 'NOT_SUPPORTED', timeline: timeline.events }, corsHeaders);
     }
+
 
     // Record trade with full timeline
     const tradeRecord = {
