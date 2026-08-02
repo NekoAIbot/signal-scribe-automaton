@@ -36,12 +36,15 @@ export class DerivAdapter implements BrokerAdapter {
     const meta = (this.creds.metadata || {}) as Record<string, unknown>;
     const metaId = cleanCredentialValue(meta.deriv_app_id || meta.app_id || '');
     if (metaId) return metaId;
+    const oauthId = cleanCredentialValue(Deno.env.get('DERIV_OAUTH_APP_ID') || '');
     const patId = cleanCredentialValue(Deno.env.get('DERIV_PAT_APP_ID') || '');
     const legacyId = cleanCredentialValue(Deno.env.get('DERIV_APP_ID') || '');
-    if (token.startsWith('pat_') && patId) return patId;
-    if (legacyId) return legacyId;
-    return token.startsWith('pat_') ? '' : '1089';
+    // OAuth-issued tokens must be used with the app that authorized them.
+    if (String((this.creds as any).auth_method || '') === 'oauth' && oauthId) return oauthId;
+    if (token.startsWith('pat_')) return patId || oauthId || '';
+    return legacyId || oauthId || '1089';
   }
+
 
   private requireToken() {
     if (!this.tokens.length) {
