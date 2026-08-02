@@ -6,12 +6,19 @@ export * from './errors.ts';
 export * from './symbols.ts';
 export * from './validation.ts';
 export * from './registry.ts';
+export * from './oauth.ts';
+export { standardizeAdapter, resolveAuthMethod } from './standard.ts';
+export {
+  encryptSecret, decryptSecret, decryptCredentials, isEncrypted, encryptionAvailable,
+} from './crypto.ts';
 export { credentialCandidates, cleanCredentialValue, firstCredential, httpRequest, parseJson, hmacSha256Hex } from './credentials.ts';
 
 import type { BrokerAdapter, BrokerCredentials, OrderRequest, OrderResult } from './types.ts';
 import { createBrokerAdapter } from './registry.ts';
 import { asBrokerError, BrokerError } from './errors.ts';
+import { decryptCredentials } from './crypto.ts';
 import { assertValid, validateOrder, type ValidationResult } from './validation.ts';
+
 
 export interface ExecutionOutcome {
   order: OrderResult;
@@ -27,7 +34,8 @@ export async function executeOrder(
   credentials: BrokerCredentials,
   request: OrderRequest,
 ): Promise<ExecutionOutcome> {
-  const adapter = createBrokerAdapter(credentials);
+  const resolved = await decryptCredentials(credentials as Record<string, unknown>) as BrokerCredentials;
+  const adapter = createBrokerAdapter(resolved);
   try {
     let rules = null;
     try { rules = await adapter.getSymbolRules(request.symbol); }
@@ -55,10 +63,12 @@ export async function executeOrder(
 }
 
 export async function checkBrokerHealth(credentials: BrokerCredentials) {
-  const adapter = createBrokerAdapter(credentials);
+  const resolved = await decryptCredentials(credentials as Record<string, unknown>) as BrokerCredentials;
+  const adapter = createBrokerAdapter(resolved);
   try {
     return await adapter.healthCheck();
   } finally {
     try { await adapter.disconnect(); } catch { /* noop */ }
   }
+
 }

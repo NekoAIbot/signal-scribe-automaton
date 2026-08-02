@@ -20,7 +20,37 @@ export type BrokerErrorCode =
   | 'ENVIRONMENT_MISMATCH'
   | 'NOT_SUPPORTED'
   | 'CONFIG_MISSING'
+  | 'OAUTH_DENIED'
+  | 'OAUTH_CALLBACK_FAILED'
+  | 'OAUTH_EXCHANGE_FAILED'
+  | 'OAUTH_STATE_INVALID'
+  | 'INVALID_REDIRECT_URI'
+  | 'REFRESH_EXPIRED'
+  | 'SESSION_REVOKED'
+  | 'BROKER_UNAVAILABLE'
   | 'UNKNOWN';
+
+/** Human recovery actions surfaced with every structured broker error. */
+export const RECOVERY_ACTIONS: Record<string, string> = {
+  AUTH_FAILED: 'Reconnect this broker account.',
+  AUTH_EXPIRED: 'Reconnect this broker account to renew the session.',
+  PERMISSION_DENIED: 'Grant the missing trading permission and reconnect.',
+  OAUTH_DENIED: 'Start the connection again and approve access on the broker consent screen.',
+  OAUTH_CALLBACK_FAILED: 'Start the connection again from Settings → Brokers.',
+  OAUTH_EXCHANGE_FAILED: 'Retry the connection; if it keeps failing, re-check the broker application redirect URL.',
+  OAUTH_STATE_INVALID: 'The connection link expired. Start the connection again.',
+  INVALID_REDIRECT_URI: 'Register this app callback URL on the broker application, then retry.',
+  REFRESH_EXPIRED: 'Reconnect the broker account — the refresh token is no longer valid.',
+  SESSION_REVOKED: 'Access was revoked at the broker. Reconnect to restore trading.',
+  BROKER_UNAVAILABLE: 'The broker is temporarily unavailable. Retry in a few minutes.',
+  TIMEOUT: 'Retry — the broker did not respond in time.',
+  NETWORK_ERROR: 'Check connectivity and retry.',
+  CONFIG_MISSING: 'Complete the broker configuration and retry.',
+};
+
+export function recoveryAction(code: string): string {
+  return RECOVERY_ACTIONS[code] || 'Retry the action; contact support if the problem persists.';
+}
 
 export interface BrokerErrorOptions {
   broker: string;
@@ -59,11 +89,12 @@ export class BrokerError extends Error {
       hint: this.hint,
       retryable: this.retryable,
       httpStatus: this.httpStatus,
+      recovery: recoveryAction(this.code),
     };
   }
 }
 
-const RETRYABLE: BrokerErrorCode[] = ['RATE_LIMITED', 'TIMEOUT', 'NETWORK_ERROR'];
+const RETRYABLE: BrokerErrorCode[] = ['RATE_LIMITED', 'TIMEOUT', 'NETWORK_ERROR', 'BROKER_UNAVAILABLE'];
 
 /** Best-effort translation of an arbitrary provider payload into a BrokerError. */
 export function translateError(

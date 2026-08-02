@@ -119,14 +119,20 @@ export type Database = {
           account_type: string
           api_secret: string | null
           api_token: string | null
+          auth_method: string
           broker_type: string
           created_at: string | null
           encrypted_password: string | null
           environment: string | null
           id: string
           is_active: boolean | null
+          last_connected_at: string | null
           login: string | null
           metadata: Json | null
+          oauth_expires_at: string | null
+          oauth_refresh_token: string | null
+          oauth_scopes: string[] | null
+          secrets_encrypted: boolean
           server: string | null
           updated_at: string | null
           user_id: string
@@ -137,14 +143,20 @@ export type Database = {
           account_type?: string
           api_secret?: string | null
           api_token?: string | null
+          auth_method?: string
           broker_type?: string
           created_at?: string | null
           encrypted_password?: string | null
           environment?: string | null
           id?: string
           is_active?: boolean | null
+          last_connected_at?: string | null
           login?: string | null
           metadata?: Json | null
+          oauth_expires_at?: string | null
+          oauth_refresh_token?: string | null
+          oauth_scopes?: string[] | null
+          secrets_encrypted?: boolean
           server?: string | null
           updated_at?: string | null
           user_id: string
@@ -155,16 +167,64 @@ export type Database = {
           account_type?: string
           api_secret?: string | null
           api_token?: string | null
+          auth_method?: string
           broker_type?: string
           created_at?: string | null
           encrypted_password?: string | null
           environment?: string | null
           id?: string
           is_active?: boolean | null
+          last_connected_at?: string | null
           login?: string | null
           metadata?: Json | null
+          oauth_expires_at?: string | null
+          oauth_refresh_token?: string | null
+          oauth_scopes?: string[] | null
+          secrets_encrypted?: boolean
           server?: string | null
           updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      broker_oauth_states: {
+        Row: {
+          account_name: string | null
+          broker_type: string
+          consumed_at: string | null
+          created_at: string
+          environment: string | null
+          expires_at: string
+          id: string
+          redirect_uri: string
+          return_to: string | null
+          state: string
+          user_id: string
+        }
+        Insert: {
+          account_name?: string | null
+          broker_type: string
+          consumed_at?: string | null
+          created_at?: string
+          environment?: string | null
+          expires_at?: string
+          id?: string
+          redirect_uri: string
+          return_to?: string | null
+          state: string
+          user_id: string
+        }
+        Update: {
+          account_name?: string | null
+          broker_type?: string
+          consumed_at?: string | null
+          created_at?: string
+          environment?: string | null
+          expires_at?: string
+          id?: string
+          redirect_uri?: string
+          return_to?: string | null
+          state?: string
           user_id?: string
         }
         Relationships: []
