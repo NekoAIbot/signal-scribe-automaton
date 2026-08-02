@@ -48,6 +48,7 @@ export const BROKER_CATALOG: BrokerDescriptor[] = [
     assetClasses: ['crypto'],
     requiredFields: ['api_token', 'api_secret'], optionalFields: [],
     requiredScopes: ['Enable Reading', 'Enable Spot & Margin Trading'], environments: ['testnet', 'live'],
+    auth: { ...DEFAULT_AUTH_CAPABILITIES, supportsStreaming: true },
     notes: 'Live keys must be stored as Live. Do not enable IP allow-listing.',
   },
   {
@@ -55,33 +56,40 @@ export const BROKER_CATALOG: BrokerDescriptor[] = [
     assetClasses: ['forex', 'metals', 'indices', 'commodities'],
     requiredFields: ['api_token'], optionalFields: ['account_id'],
     requiredScopes: ['Trade'], environments: ['practice', 'live'],
+    auth: { ...DEFAULT_AUTH_CAPABILITIES, supportsPAT: true, supportsStreaming: true },
   },
   {
     id: 'capital', displayName: 'Capital.com', supported: true, authKind: 'key_identifier_password',
     assetClasses: ['forex', 'crypto', 'metals', 'indices', 'commodities', 'stocks'],
     requiredFields: ['api_token', 'account_id', 'password'], optionalFields: [],
     requiredScopes: ['Trading enabled API key'], environments: ['demo', 'live'],
+    auth: { ...DEFAULT_AUTH_CAPABILITIES, supportsStreaming: true },
   },
   {
     id: 'bybit', displayName: 'Bybit', supported: false, authKind: 'api_key_secret',
     assetClasses: ['crypto'], requiredFields: ['api_token', 'api_secret'], optionalFields: [],
-    requiredScopes: ['Trade'], environments: ['testnet', 'live'], notes: 'Adapter planned.',
+    requiredScopes: ['Trade'], environments: ['testnet', 'live'],
+    auth: { ...DEFAULT_AUTH_CAPABILITIES }, notes: 'Adapter planned.',
   },
   {
     id: 'alpaca', displayName: 'Alpaca', supported: false, authKind: 'api_key_secret',
     assetClasses: ['stocks', 'crypto'], requiredFields: ['api_token', 'api_secret'], optionalFields: [],
-    requiredScopes: ['Trading'], environments: ['sandbox', 'live'], notes: 'Adapter planned.',
+    requiredScopes: ['Trading'], environments: ['sandbox', 'live'],
+    auth: { ...DEFAULT_AUTH_CAPABILITIES }, notes: 'Adapter planned.',
   },
   {
     id: 'ctrader', displayName: 'cTrader', supported: false, authKind: 'oauth',
     assetClasses: ['forex', 'metals', 'indices'], requiredFields: [], optionalFields: [],
-    requiredScopes: ['trading'], environments: ['demo', 'live'], notes: 'OAuth adapter planned.',
+    requiredScopes: ['trading'], environments: ['demo', 'live'],
+    auth: { ...DEFAULT_AUTH_CAPABILITIES, supportsOAuth: true, supportsApiKey: false, defaultAuthMethod: 'oauth' },
+    notes: 'OAuth adapter planned.',
   },
   {
     id: 'mt5bridge', displayName: 'MetaTrader 5 Bridge', supported: false, authKind: 'token',
     assetClasses: ['forex', 'metals', 'indices', 'commodities'],
     requiredFields: ['api_token'], optionalFields: ['server'],
     requiredScopes: [], environments: ['demo', 'live'],
+    auth: { ...DEFAULT_AUTH_CAPABILITIES, supportsTrading: false },
     notes: 'Requires a self-hosted bridge; disabled for cloud execution.',
   },
 ];
@@ -95,7 +103,11 @@ export function isSupportedBroker(brokerType: string): boolean {
   return describeBroker(brokerType)?.supported === true;
 }
 
-export function createBrokerAdapter(credentials: BrokerCredentials): BrokerAdapter {
+export function brokerAuthCapabilities(brokerType: string): BrokerAuthCapabilities {
+  return describeBroker(brokerType)?.auth ?? { ...DEFAULT_AUTH_CAPABILITIES };
+}
+
+function instantiate(credentials: BrokerCredentials): BrokerAdapter {
   const brokerType = String(credentials.broker_type || '').toLowerCase();
   switch (brokerType) {
     case 'binance': return new BinanceAdapter(credentials);
@@ -118,4 +130,10 @@ export function createBrokerAdapter(credentials: BrokerCredentials): BrokerAdapt
         hint: 'Supported brokers: Deriv, Binance, OANDA, Capital.com.',
       });
   }
+}
+
+export function createBrokerAdapter(credentials: BrokerCredentials): StandardBrokerAdapter {
+  return standardizeAdapter(instantiate(credentials), credentials);
+}
+
 }
