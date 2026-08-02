@@ -34,7 +34,8 @@ export async function executeOrder(
   credentials: BrokerCredentials,
   request: OrderRequest,
 ): Promise<ExecutionOutcome> {
-  const adapter = createBrokerAdapter(credentials);
+  const resolved = await decryptCredentials(credentials as Record<string, unknown>) as BrokerCredentials;
+  const adapter = createBrokerAdapter(resolved);
   try {
     let rules = null;
     try { rules = await adapter.getSymbolRules(request.symbol); }
@@ -62,10 +63,12 @@ export async function executeOrder(
 }
 
 export async function checkBrokerHealth(credentials: BrokerCredentials) {
-  const adapter = createBrokerAdapter(credentials);
+  const resolved = await decryptCredentials(credentials as Record<string, unknown>) as BrokerCredentials;
+  const adapter = createBrokerAdapter(resolved);
   try {
     return await adapter.healthCheck();
   } finally {
     try { await adapter.disconnect(); } catch { /* noop */ }
   }
+
 }
