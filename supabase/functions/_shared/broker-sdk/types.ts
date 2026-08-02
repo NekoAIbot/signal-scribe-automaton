@@ -168,3 +168,70 @@ export interface BrokerAdapter {
   placeOrder(order: OrderRequest): Promise<OrderResult>;
   closePosition(positionId: string, quantity?: number): Promise<OrderResult>;
 }
+
+// ---------------------------------------------------------------------------
+// Authentication capabilities + standardized adapter surface
+// ---------------------------------------------------------------------------
+
+export type AuthMethod = 'oauth' | 'api_key' | 'pat' | 'login_password';
+
+export interface BrokerAuthCapabilities {
+  supportsOAuth: boolean;
+  supportsApiKey: boolean;
+  supportsPAT: boolean;
+  supportsDemo: boolean;
+  supportsLive: boolean;
+  supportsCopyTrading: boolean;
+  supportsStreaming: boolean;
+  supportsHistory: boolean;
+  supportsTrading: boolean;
+  supportsAccountSync: boolean;
+  supportsPortfolioSync: boolean;
+  /** Auth method the connection wizard should offer first. */
+  defaultAuthMethod: AuthMethod;
+}
+
+export const DEFAULT_AUTH_CAPABILITIES: BrokerAuthCapabilities = {
+  supportsOAuth: false,
+  supportsApiKey: true,
+  supportsPAT: false,
+  supportsDemo: true,
+  supportsLive: true,
+  supportsCopyTrading: false,
+  supportsStreaming: false,
+  supportsHistory: true,
+  supportsTrading: true,
+  supportsAccountSync: true,
+  supportsPortfolioSync: true,
+  defaultAuthMethod: 'api_key',
+};
+
+export interface SessionStatus {
+  valid: boolean;
+  authMethod: AuthMethod;
+  expiresAt: string | null;
+  renewable: boolean;
+  /** Present when the session was silently renewed — persist these fields. */
+  renewedCredentials?: Partial<BrokerCredentials>;
+  message: string;
+}
+
+export interface PermissionReport {
+  granted: string[];
+  missing: string[];
+  canTrade: boolean;
+  canRead: boolean;
+}
+
+/** Standardized methods every adapter exposes (defaults supplied by the SDK). */
+export interface StandardAdapterMethods {
+  refresh(): Promise<SessionStatus>;
+  validate(): Promise<SessionStatus>;
+  health(): Promise<HealthStatus>;
+  permissions(): Promise<PermissionReport>;
+  supportedAssets(): string[];
+  supportedOrderTypes(): string[];
+  supportedTimeframes(): string[];
+}
+
+export type StandardBrokerAdapter = BrokerAdapter & StandardAdapterMethods;
