@@ -1,8 +1,11 @@
 // Universal Broker SDK — adapter registry.
-// This is the ONLY place that knows which concrete adapter serves a broker id.
+// This is the ONLY place that knows which concrete adapter serves a broker id,
+// and the single source of truth for broker capabilities (auth + trading).
 
-import type { BrokerAdapter, BrokerCredentials, BrokerId } from './types.ts';
+import type { BrokerAdapter, BrokerAuthCapabilities, BrokerCredentials, BrokerId, StandardBrokerAdapter } from './types.ts';
+import { DEFAULT_AUTH_CAPABILITIES } from './types.ts';
 import { BrokerError } from './errors.ts';
+import { standardizeAdapter } from './standard.ts';
 import { BinanceAdapter } from './adapters/binance.ts';
 import { DerivAdapter } from './adapters/deriv.ts';
 import { OandaAdapter } from './adapters/oanda.ts';
@@ -18,17 +21,28 @@ export interface BrokerDescriptor {
   optionalFields: string[];
   requiredScopes: string[];
   environments: string[];
+  auth: BrokerAuthCapabilities;
   notes?: string;
 }
 
 export const BROKER_CATALOG: BrokerDescriptor[] = [
   {
-    id: 'deriv', displayName: 'Deriv', supported: true, authKind: 'token',
+    id: 'deriv', displayName: 'Deriv', supported: true, authKind: 'oauth',
     assetClasses: ['forex', 'crypto', 'metals', 'indices', 'synthetic'],
-    requiredFields: ['api_token'], optionalFields: ['account_id', 'deriv_app_id'],
+    requiredFields: [], optionalFields: ['api_token', 'account_id', 'deriv_app_id'],
     requiredScopes: ['read', 'trade'], environments: ['demo', 'live'],
-    notes: 'Personal access tokens (pat_…) also require the App ID of the issuing application.',
+    auth: {
+      ...DEFAULT_AUTH_CAPABILITIES,
+      supportsOAuth: true,
+      supportsApiKey: true,
+      supportsPAT: true,
+      supportsCopyTrading: true,
+      supportsStreaming: true,
+      defaultAuthMethod: 'oauth',
+    },
+    notes: 'Connect with Deriv OAuth — no manual token needed. API tokens (including pat_… with an App ID) remain available as an advanced option.',
   },
+
   {
     id: 'binance', displayName: 'Binance Spot', supported: true, authKind: 'api_key_secret',
     assetClasses: ['crypto'],
