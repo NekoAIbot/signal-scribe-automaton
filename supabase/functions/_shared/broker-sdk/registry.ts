@@ -136,4 +136,3 @@ export function createBrokerAdapter(credentials: BrokerCredentials): StandardBro
   return standardizeAdapter(instantiate(credentials), credentials);
 }
 
-}
