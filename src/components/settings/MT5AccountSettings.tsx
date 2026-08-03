@@ -527,14 +527,20 @@ export const MT5AccountSettings = () => {
               const isTesting = !!testing[c.id];
               const missing = lt?.missing_scopes || [];
               return (
-                <div key={c.id} className="flex flex-col gap-2 p-4 rounded-lg border bg-card">
+                <div key={c.id} className={`flex flex-col gap-2 p-4 rounded-lg border bg-card ${c.is_default ? 'border-primary/60 ring-1 ring-primary/30' : ''}`}>
                   <div className="flex items-center justify-between gap-3 flex-wrap">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium">{c.account_name}</span>
                         <Badge variant="secondary">{c.broker_type.toUpperCase()}</Badge>
-                        <Badge variant={c.environment === 'live' ? 'default' : 'secondary'}>{c.environment || c.account_type}</Badge>
+                        <Badge variant={c.environment === 'live' ? 'default' : 'secondary'}>{c.environment === 'live' ? 'Real' : (c.environment || c.account_type)}</Badge>
                         <Badge variant={c.is_active ? 'default' : 'outline'}>{c.is_active ? 'Active' : 'Inactive'}</Badge>
+                        {c.is_default && (
+                          <Badge className="gap-1 bg-primary/20 text-primary border-primary/40"><Star className="h-3 w-3" /> Trading account</Badge>
+                        )}
+                        {c.auth_method === 'oauth' && (
+                          <Badge variant="outline" className="gap-1 text-[10px]"><ShieldCheck className="h-3 w-3" /> OAuth</Badge>
+                        )}
                         {isTesting ? (
                           <Badge variant="outline" className="gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Testing</Badge>
                         ) : lt ? (
@@ -546,25 +552,43 @@ export const MT5AccountSettings = () => {
                         )}
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        {c.account_id ? `Account: ${c.account_id}` : (c.login ? `Login: ${c.login}` : '')}
-                        {c.server ? ` • ${c.server}` : ''}
-                        {lt?.tested_at ? ` • last checked ${new Date(lt.tested_at).toLocaleTimeString()}` : ''}
+                        {c.account_id ? `Login ID: ${c.account_id}` : (c.login ? `Login: ${c.login}` : '')}
+                        {c.currency ? ` • ${c.currency}` : ''}
+                        {typeof c.balance === 'number' ? ` • Balance ${Number(c.balance).toFixed(2)}` : ''}
+                        {c.landing_company ? ` • ${c.landing_company}` : ''}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {c.server ? `${c.server}` : ''}
+                        {c.last_synced_at ? ` • synced ${new Date(c.last_synced_at).toLocaleTimeString()}` : ''}
+                        {lt?.tested_at ? ` • checked ${new Date(lt.tested_at).toLocaleTimeString()}` : ''}
                       </div>
                       {lt && (
                         <div className={`text-xs mt-1 ${lt.ok ? 'text-green-400' : 'text-red-400'}`}>{lt.message}</div>
                       )}
                     </div>
                     <div className="flex gap-2 flex-wrap">
+                      {!c.is_default && (
+                        <Button variant="outline" size="sm" onClick={() => handleSetDefault(c)}>
+                          <Star className="h-4 w-4 mr-1" />Use for trading
+                        </Button>
+                      )}
                       <Button variant="outline" size="sm" onClick={() => testConnection(c.id)} disabled={isTesting}>
                         {isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Test'}
                       </Button>
-                      <Button variant="outline" size="sm" onClick={() => handleEdit(c)}><Pencil className="h-4 w-4 mr-1" />Edit</Button>
+                      {c.auth_method !== 'oauth' && (
+                        <Button variant="outline" size="sm" onClick={() => handleEdit(c)}><Pencil className="h-4 w-4 mr-1" />Edit</Button>
+                      )}
                       <Button variant="outline" size="sm" onClick={() => handleToggle(c.id, c.is_active)}>
                         {c.is_active ? 'Deactivate' : 'Activate'}
                       </Button>
-                      <Button variant="destructive" size="sm" onClick={() => handleDelete(c.id)}><Trash2 className="h-4 w-4" /></Button>
+                      {c.auth_method === 'oauth' ? (
+                        <Button variant="destructive" size="sm" onClick={() => handleDisconnect(c)}><Unplug className="h-4 w-4 mr-1" />Disconnect</Button>
+                      ) : (
+                        <Button variant="destructive" size="sm" onClick={() => handleDelete(c.id)}><Trash2 className="h-4 w-4" /></Button>
+                      )}
                     </div>
                   </div>
+
 
                   {lt && !lt.ok && (
                     <Alert variant="destructive" className="py-2">
