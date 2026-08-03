@@ -368,15 +368,53 @@ export const MT5AccountSettings = () => {
             <CardDescription>Connect a free cloud broker — credentials are auto-tested every 5 minutes</CardDescription>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={fetchCredentials}><RefreshCw className="h-4 w-4" /></Button>
-            <Button size="sm" onClick={() => { if (showAddForm) { setEditingId(null); resetForm(); } setShowAddForm(!showAddForm); }}>
-              <Plus className="h-4 w-4 mr-2" />{editingId ? 'Editing' : 'Add Broker'}
+            <Button variant="outline" size="sm" onClick={handleSyncAccounts} disabled={syncing}>
+              {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             </Button>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Default, production connection method — OAuth, no manual tokens */}
+        <Card className="border-primary/40 bg-primary/5">
+          <CardContent className="pt-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="h-9 w-9 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
+                <Link2 className="h-4 w-4 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-medium leading-tight">Connect Deriv securely</p>
+                <p className="text-xs text-muted-foreground">
+                  Sign in on Deriv and authorize Axion AI. All of your real and demo accounts are linked automatically — no API token to copy.
+                </p>
+              </div>
+            </div>
+            <Button className="w-full" onClick={handleConnectDeriv} disabled={connecting}>
+              {connecting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Link2 className="h-4 w-4 mr-2" />}
+              Continue with Deriv
+            </Button>
+            <div className="flex flex-wrap gap-1">
+              {['read', 'trade', 'trading_information'].map(s => (
+                <Badge key={s} variant="secondary" className="text-[10px]">{s}</Badge>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="text-xs text-muted-foreground underline underline-offset-2"
+            >
+              {showAdvanced ? 'Hide advanced connection methods' : 'Advanced: connect with an API token instead'}
+            </button>
+            {showAdvanced && (
+              <Button variant="outline" size="sm" className="w-full" onClick={() => { if (showAddForm) { setEditingId(null); resetForm(); } setShowAddForm(!showAddForm); }}>
+                <Plus className="h-4 w-4 mr-2" />{editingId ? 'Editing manual account' : 'Add broker with API token'}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
         {showAddForm && (
+
           <Card className="border-dashed">
             <CardContent className="pt-4 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
