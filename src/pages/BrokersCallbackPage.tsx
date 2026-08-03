@@ -11,7 +11,7 @@ const RESUME_KEY = 'axion.broker_oauth.callback';
 
 export default function BrokersCallbackPage() {
   const navigate = useNavigate();
-  const { isAuthenticated, isLoading } = useAuth() as any;
+  const { isAuthenticated, loading: isLoading } = useAuth();
   const started = useRef(false);
   const [status, setStatus] = useState<'working' | 'done' | 'error'>('working');
   const [message, setMessage] = useState('Verifying your broker authorization…');
