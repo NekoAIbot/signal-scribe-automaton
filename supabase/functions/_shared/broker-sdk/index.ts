@@ -72,3 +72,18 @@ export async function checkBrokerHealth(credentials: BrokerCredentials) {
   }
 
 }
+
+/** Fetch normalized account information (balance, currency, permissions) via the SDK. */
+export async function getBrokerAccountInfo(credentials: BrokerCredentials) {
+  const resolved = await decryptCredentials(credentials as Record<string, unknown>) as BrokerCredentials;
+  const adapter = createBrokerAdapter(resolved);
+  try {
+    const [info, permissions] = await Promise.all([
+      adapter.getAccountInfo(),
+      adapter.permissions().catch(() => null),
+    ]);
+    return { info, permissions };
+  } finally {
+    try { await adapter.disconnect(); } catch { /* noop */ }
+  }
+}
