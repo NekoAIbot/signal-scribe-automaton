@@ -9,7 +9,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Trash2, Plus, Eye, EyeOff, RefreshCw, ExternalLink, CheckCircle2, XCircle, Loader2, HelpCircle, AlertTriangle, ShieldCheck, Pencil } from "lucide-react";
+import { Trash2, Plus, Eye, EyeOff, RefreshCw, ExternalLink, CheckCircle2, XCircle, Loader2, HelpCircle, AlertTriangle, ShieldCheck, Pencil, Link2, Star, Unplug } from "lucide-react";
+import { startBrokerOAuth, disconnectBroker, syncBrokerAccounts } from "@/services/brokerOAuth";
 
 interface BrokerCredential {
   id: string;
@@ -23,6 +24,12 @@ interface BrokerCredential {
   is_active: boolean;
   created_at: string;
   metadata: any;
+  is_default?: boolean;
+  balance?: number | null;
+  currency?: string | null;
+  landing_company?: string | null;
+  auth_method?: string | null;
+  last_synced_at?: string | null;
 }
 
 interface BrokerDef {
@@ -99,6 +106,9 @@ export const MT5AccountSettings = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [testing, setTesting] = useState<Record<string, boolean>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const lastAutoTest = useRef<Record<string, number>>({});
 
   const testConnection = useCallback(async (id: string, silent = false) => {
@@ -143,7 +153,7 @@ export const MT5AccountSettings = () => {
     try {
       const { data, error } = await supabase
         .from('broker_credentials')
-        .select('id, broker_type, account_name, login, server, account_type, environment, account_id, is_active, created_at, metadata')
+        .select('id, broker_type, account_name, login, server, account_type, environment, account_id, is_active, created_at, metadata, is_default, balance, currency, landing_company, auth_method, last_synced_at')
         .order('created_at', { ascending: false });
       if (error) throw error;
       setCredentials((data as any) || []);
@@ -156,6 +166,13 @@ export const MT5AccountSettings = () => {
   };
 
   useEffect(() => { fetchCredentials(); /* eslint-disable-next-line */ }, [user?.id]);
+
+  useEffect(() => {
+    const onChange = () => fetchCredentials();
+    window.addEventListener('broker-accounts-changed', onChange);
+    return () => window.removeEventListener('broker-accounts-changed', onChange);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // Periodic background health check — re-test active credentials every 5 min
   useEffect(() => {
@@ -291,6 +308,55 @@ export const MT5AccountSettings = () => {
       if (error) throw error;
       fetchCredentials();
     } catch { toast.error('Failed to update'); }
+  };
+
+  const handleConnectDeriv = async () => {
+    setConnecting(true);
+    try {
+      await startBrokerOAuth({ broker: 'deriv', returnTo: '/settings' });
+    } catch (e: any) {
+      setConnecting(false);
+      toast.error(e?.message || 'Could not start the Deriv connection');
+    }
+  };
+
+  const handleSyncAccounts = async () => {
+    setSyncing(true);
+    try {
+      const res = await syncBrokerAccounts();
+      toast.success(`Synchronized ${res?.synced ?? 0} account(s)`);
+      await fetchCredentials();
+    } catch (e: any) {
+      toast.error(e?.message || 'Account sync failed');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleSetDefault = async (c: BrokerCredential) => {
+    try {
+      await supabase.from('broker_credentials').update({ is_default: false }).eq('broker_type', c.broker_type);
+      const { error } = await supabase.from('broker_credentials')
+        .update({ is_default: true, is_active: true }).eq('id', c.id);
+      if (error) throw error;
+      toast.success(`${c.account_name} is now the active trading account`);
+      await fetchCredentials();
+      window.dispatchEvent(new Event('broker-accounts-changed'));
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not switch account');
+    }
+  };
+
+  const handleDisconnect = async (c: BrokerCredential) => {
+    if (!confirm(`Disconnect ${c.account_name}? You can reconnect at any time.`)) return;
+    try {
+      await disconnectBroker({ credentialId: c.id, mode: 'delete' });
+      toast.success('Broker account disconnected');
+      await fetchCredentials();
+      window.dispatchEvent(new Event('broker-accounts-changed'));
+    } catch (e: any) {
+      toast.error(e?.message || 'Disconnect failed');
+    }
   };
 
   return (
