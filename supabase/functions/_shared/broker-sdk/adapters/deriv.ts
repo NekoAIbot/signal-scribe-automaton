@@ -233,7 +233,14 @@ export class DerivAdapter implements BrokerAdapter {
         accountType: auth.is_virtual ? 'demo' : 'live',
         environment: auth.is_virtual ? 'demo' : 'live',
         tradingPermitted: true,
-        raw: { scopes: auth.scopes },
+        raw: {
+          scopes: auth.scopes,
+          landing_company: auth.landing_company_fullname || auth.landing_company_name || null,
+          is_virtual: !!auth.is_virtual,
+          account_list: auth.account_list || [],
+          email: auth.email || null,
+        },
+
       } as AccountInfo;
     });
   }
