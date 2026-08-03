@@ -12,6 +12,7 @@ export interface BrokerAccount {
   broker_type: string;
   is_active: boolean;
   created_at: string;
+  is_default?: boolean | null;
 }
 
 // Global state for cross-component reactivity
@@ -36,7 +37,7 @@ export function useBrokerAccounts() {
     try {
       const { data, error } = await supabase
         .from('broker_credentials')
-        .select('id, account_name, login, server, account_type, broker_type, is_active, created_at')
+        .select('id, account_name, login, server, account_type, broker_type, is_active, created_at, is_default')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -52,6 +53,12 @@ export function useBrokerAccounts() {
 
   useEffect(() => {
     fetchAccounts();
+  }, [fetchAccounts]);
+
+  useEffect(() => {
+    const onChange = () => fetchAccounts();
+    window.addEventListener('broker-accounts-changed', onChange);
+    return () => window.removeEventListener('broker-accounts-changed', onChange);
   }, [fetchAccounts]);
 
   const activeAccounts = accounts.filter(a => a.is_active);

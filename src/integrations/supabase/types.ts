@@ -120,13 +120,18 @@ export type Database = {
           api_secret: string | null
           api_token: string | null
           auth_method: string
+          balance: number | null
           broker_type: string
           created_at: string | null
+          currency: string | null
           encrypted_password: string | null
           environment: string | null
           id: string
           is_active: boolean | null
+          is_default: boolean
+          landing_company: string | null
           last_connected_at: string | null
+          last_synced_at: string | null
           login: string | null
           metadata: Json | null
           oauth_expires_at: string | null
@@ -144,13 +149,18 @@ export type Database = {
           api_secret?: string | null
           api_token?: string | null
           auth_method?: string
+          balance?: number | null
           broker_type?: string
           created_at?: string | null
+          currency?: string | null
           encrypted_password?: string | null
           environment?: string | null
           id?: string
           is_active?: boolean | null
+          is_default?: boolean
+          landing_company?: string | null
           last_connected_at?: string | null
+          last_synced_at?: string | null
           login?: string | null
           metadata?: Json | null
           oauth_expires_at?: string | null
@@ -168,13 +178,18 @@ export type Database = {
           api_secret?: string | null
           api_token?: string | null
           auth_method?: string
+          balance?: number | null
           broker_type?: string
           created_at?: string | null
+          currency?: string | null
           encrypted_password?: string | null
           environment?: string | null
           id?: string
           is_active?: boolean | null
+          is_default?: boolean
+          landing_company?: string | null
           last_connected_at?: string | null
+          last_synced_at?: string | null
           login?: string | null
           metadata?: Json | null
           oauth_expires_at?: string | null
@@ -187,10 +202,48 @@ export type Database = {
         }
         Relationships: []
       }
+      broker_oauth_events: {
+        Row: {
+          broker_type: string
+          created_at: string
+          details: Json
+          id: string
+          message: string | null
+          state: string | null
+          status: string
+          step: string
+          user_id: string
+        }
+        Insert: {
+          broker_type: string
+          created_at?: string
+          details?: Json
+          id?: string
+          message?: string | null
+          state?: string | null
+          status?: string
+          step: string
+          user_id: string
+        }
+        Update: {
+          broker_type?: string
+          created_at?: string
+          details?: Json
+          id?: string
+          message?: string | null
+          state?: string | null
+          status?: string
+          step?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       broker_oauth_states: {
         Row: {
           account_name: string | null
           broker_type: string
+          code_challenge: string | null
+          code_challenge_method: string | null
           consumed_at: string | null
           created_at: string
           environment: string | null
@@ -204,6 +257,8 @@ export type Database = {
         Insert: {
           account_name?: string | null
           broker_type: string
+          code_challenge?: string | null
+          code_challenge_method?: string | null
           consumed_at?: string | null
           created_at?: string
           environment?: string | null
@@ -217,6 +272,8 @@ export type Database = {
         Update: {
           account_name?: string | null
           broker_type?: string
+          code_challenge?: string | null
+          code_challenge_method?: string | null
           consumed_at?: string | null
           created_at?: string
           environment?: string | null

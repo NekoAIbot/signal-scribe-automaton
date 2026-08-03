@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
@@ -22,6 +22,7 @@ import PropAccountsPage from './pages/PropAccountsPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import NotFound from './pages/NotFound';
+import BrokersCallbackPage from './pages/BrokersCallbackPage';
 
 // Guards & Utilities
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
@@ -48,6 +49,16 @@ function ScrollToTop() {
 
 function SignalRuntime() {
   const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+
+  // Resume a broker OAuth callback that was interrupted by an expired session.
+  React.useEffect(() => {
+    if (!isAuthenticated) return;
+    const parked = localStorage.getItem('axion.broker_oauth.callback');
+    if (parked && !window.location.pathname.startsWith('/brokers/callback')) {
+      navigate(`/brokers/callback${parked}`, { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   React.useEffect(() => {
     if (!isAuthenticated) return;
@@ -74,6 +85,7 @@ function App() {
             <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
+              <Route path="/brokers/callback" element={<BrokersCallbackPage />} />
               
               <Route path="/" element={<ProtectedRoute />}>
                 <Route element={<Layout />}>

@@ -9,7 +9,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Trash2, Plus, Eye, EyeOff, RefreshCw, ExternalLink, CheckCircle2, XCircle, Loader2, HelpCircle, AlertTriangle, ShieldCheck, Pencil } from "lucide-react";
+import { Trash2, Plus, Eye, EyeOff, RefreshCw, ExternalLink, CheckCircle2, XCircle, Loader2, HelpCircle, AlertTriangle, ShieldCheck, Pencil, Link2, Star, Unplug } from "lucide-react";
+import { startBrokerOAuth, disconnectBroker, syncBrokerAccounts } from "@/services/brokerOAuth";
 
 interface BrokerCredential {
   id: string;
@@ -23,6 +24,12 @@ interface BrokerCredential {
   is_active: boolean;
   created_at: string;
   metadata: any;
+  is_default?: boolean;
+  balance?: number | null;
+  currency?: string | null;
+  landing_company?: string | null;
+  auth_method?: string | null;
+  last_synced_at?: string | null;
 }
 
 interface BrokerDef {
@@ -99,6 +106,9 @@ export const MT5AccountSettings = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [testing, setTesting] = useState<Record<string, boolean>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const lastAutoTest = useRef<Record<string, number>>({});
 
   const testConnection = useCallback(async (id: string, silent = false) => {
@@ -143,7 +153,7 @@ export const MT5AccountSettings = () => {
     try {
       const { data, error } = await supabase
         .from('broker_credentials')
-        .select('id, broker_type, account_name, login, server, account_type, environment, account_id, is_active, created_at, metadata')
+        .select('id, broker_type, account_name, login, server, account_type, environment, account_id, is_active, created_at, metadata, is_default, balance, currency, landing_company, auth_method, last_synced_at')
         .order('created_at', { ascending: false });
       if (error) throw error;
       setCredentials((data as any) || []);
@@ -156,6 +166,13 @@ export const MT5AccountSettings = () => {
   };
 
   useEffect(() => { fetchCredentials(); /* eslint-disable-next-line */ }, [user?.id]);
+
+  useEffect(() => {
+    const onChange = () => fetchCredentials();
+    window.addEventListener('broker-accounts-changed', onChange);
+    return () => window.removeEventListener('broker-accounts-changed', onChange);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // Periodic background health check — re-test active credentials every 5 min
   useEffect(() => {
@@ -293,6 +310,55 @@ export const MT5AccountSettings = () => {
     } catch { toast.error('Failed to update'); }
   };
 
+  const handleConnectDeriv = async () => {
+    setConnecting(true);
+    try {
+      await startBrokerOAuth({ broker: 'deriv', returnTo: '/settings' });
+    } catch (e: any) {
+      setConnecting(false);
+      toast.error(e?.message || 'Could not start the Deriv connection');
+    }
+  };
+
+  const handleSyncAccounts = async () => {
+    setSyncing(true);
+    try {
+      const res = await syncBrokerAccounts();
+      toast.success(`Synchronized ${res?.synced ?? 0} account(s)`);
+      await fetchCredentials();
+    } catch (e: any) {
+      toast.error(e?.message || 'Account sync failed');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleSetDefault = async (c: BrokerCredential) => {
+    try {
+      await supabase.from('broker_credentials').update({ is_default: false }).eq('broker_type', c.broker_type);
+      const { error } = await supabase.from('broker_credentials')
+        .update({ is_default: true, is_active: true }).eq('id', c.id);
+      if (error) throw error;
+      toast.success(`${c.account_name} is now the active trading account`);
+      await fetchCredentials();
+      window.dispatchEvent(new Event('broker-accounts-changed'));
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not switch account');
+    }
+  };
+
+  const handleDisconnect = async (c: BrokerCredential) => {
+    if (!confirm(`Disconnect ${c.account_name}? You can reconnect at any time.`)) return;
+    try {
+      await disconnectBroker({ credentialId: c.id, mode: 'delete' });
+      toast.success('Broker account disconnected');
+      await fetchCredentials();
+      window.dispatchEvent(new Event('broker-accounts-changed'));
+    } catch (e: any) {
+      toast.error(e?.message || 'Disconnect failed');
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -302,15 +368,53 @@ export const MT5AccountSettings = () => {
             <CardDescription>Connect a free cloud broker — credentials are auto-tested every 5 minutes</CardDescription>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={fetchCredentials}><RefreshCw className="h-4 w-4" /></Button>
-            <Button size="sm" onClick={() => { if (showAddForm) { setEditingId(null); resetForm(); } setShowAddForm(!showAddForm); }}>
-              <Plus className="h-4 w-4 mr-2" />{editingId ? 'Editing' : 'Add Broker'}
+            <Button variant="outline" size="sm" onClick={handleSyncAccounts} disabled={syncing}>
+              {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             </Button>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Default, production connection method — OAuth, no manual tokens */}
+        <Card className="border-primary/40 bg-primary/5">
+          <CardContent className="pt-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="h-9 w-9 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
+                <Link2 className="h-4 w-4 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-medium leading-tight">Connect Deriv securely</p>
+                <p className="text-xs text-muted-foreground">
+                  Sign in on Deriv and authorize Axion AI. All of your real and demo accounts are linked automatically — no API token to copy.
+                </p>
+              </div>
+            </div>
+            <Button className="w-full" onClick={handleConnectDeriv} disabled={connecting}>
+              {connecting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Link2 className="h-4 w-4 mr-2" />}
+              Continue with Deriv
+            </Button>
+            <div className="flex flex-wrap gap-1">
+              {['read', 'trade', 'trading_information'].map(s => (
+                <Badge key={s} variant="secondary" className="text-[10px]">{s}</Badge>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="text-xs text-muted-foreground underline underline-offset-2"
+            >
+              {showAdvanced ? 'Hide advanced connection methods' : 'Advanced: connect with an API token instead'}
+            </button>
+            {showAdvanced && (
+              <Button variant="outline" size="sm" className="w-full" onClick={() => { if (showAddForm) { setEditingId(null); resetForm(); } setShowAddForm(!showAddForm); }}>
+                <Plus className="h-4 w-4 mr-2" />{editingId ? 'Editing manual account' : 'Add broker with API token'}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
         {showAddForm && (
+
           <Card className="border-dashed">
             <CardContent className="pt-4 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -423,14 +527,20 @@ export const MT5AccountSettings = () => {
               const isTesting = !!testing[c.id];
               const missing = lt?.missing_scopes || [];
               return (
-                <div key={c.id} className="flex flex-col gap-2 p-4 rounded-lg border bg-card">
+                <div key={c.id} className={`flex flex-col gap-2 p-4 rounded-lg border bg-card ${c.is_default ? 'border-primary/60 ring-1 ring-primary/30' : ''}`}>
                   <div className="flex items-center justify-between gap-3 flex-wrap">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium">{c.account_name}</span>
                         <Badge variant="secondary">{c.broker_type.toUpperCase()}</Badge>
-                        <Badge variant={c.environment === 'live' ? 'default' : 'secondary'}>{c.environment || c.account_type}</Badge>
+                        <Badge variant={c.environment === 'live' ? 'default' : 'secondary'}>{c.environment === 'live' ? 'Real' : (c.environment || c.account_type)}</Badge>
                         <Badge variant={c.is_active ? 'default' : 'outline'}>{c.is_active ? 'Active' : 'Inactive'}</Badge>
+                        {c.is_default && (
+                          <Badge className="gap-1 bg-primary/20 text-primary border-primary/40"><Star className="h-3 w-3" /> Trading account</Badge>
+                        )}
+                        {c.auth_method === 'oauth' && (
+                          <Badge variant="outline" className="gap-1 text-[10px]"><ShieldCheck className="h-3 w-3" /> OAuth</Badge>
+                        )}
                         {isTesting ? (
                           <Badge variant="outline" className="gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Testing</Badge>
                         ) : lt ? (
@@ -442,25 +552,43 @@ export const MT5AccountSettings = () => {
                         )}
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        {c.account_id ? `Account: ${c.account_id}` : (c.login ? `Login: ${c.login}` : '')}
-                        {c.server ? ` • ${c.server}` : ''}
-                        {lt?.tested_at ? ` • last checked ${new Date(lt.tested_at).toLocaleTimeString()}` : ''}
+                        {c.account_id ? `Login ID: ${c.account_id}` : (c.login ? `Login: ${c.login}` : '')}
+                        {c.currency ? ` • ${c.currency}` : ''}
+                        {typeof c.balance === 'number' ? ` • Balance ${Number(c.balance).toFixed(2)}` : ''}
+                        {c.landing_company ? ` • ${c.landing_company}` : ''}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {c.server ? `${c.server}` : ''}
+                        {c.last_synced_at ? ` • synced ${new Date(c.last_synced_at).toLocaleTimeString()}` : ''}
+                        {lt?.tested_at ? ` • checked ${new Date(lt.tested_at).toLocaleTimeString()}` : ''}
                       </div>
                       {lt && (
                         <div className={`text-xs mt-1 ${lt.ok ? 'text-green-400' : 'text-red-400'}`}>{lt.message}</div>
                       )}
                     </div>
                     <div className="flex gap-2 flex-wrap">
+                      {!c.is_default && (
+                        <Button variant="outline" size="sm" onClick={() => handleSetDefault(c)}>
+                          <Star className="h-4 w-4 mr-1" />Use for trading
+                        </Button>
+                      )}
                       <Button variant="outline" size="sm" onClick={() => testConnection(c.id)} disabled={isTesting}>
                         {isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Test'}
                       </Button>
-                      <Button variant="outline" size="sm" onClick={() => handleEdit(c)}><Pencil className="h-4 w-4 mr-1" />Edit</Button>
+                      {c.auth_method !== 'oauth' && (
+                        <Button variant="outline" size="sm" onClick={() => handleEdit(c)}><Pencil className="h-4 w-4 mr-1" />Edit</Button>
+                      )}
                       <Button variant="outline" size="sm" onClick={() => handleToggle(c.id, c.is_active)}>
                         {c.is_active ? 'Deactivate' : 'Activate'}
                       </Button>
-                      <Button variant="destructive" size="sm" onClick={() => handleDelete(c.id)}><Trash2 className="h-4 w-4" /></Button>
+                      {c.auth_method === 'oauth' ? (
+                        <Button variant="destructive" size="sm" onClick={() => handleDisconnect(c)}><Unplug className="h-4 w-4 mr-1" />Disconnect</Button>
+                      ) : (
+                        <Button variant="destructive" size="sm" onClick={() => handleDelete(c.id)}><Trash2 className="h-4 w-4" /></Button>
+                      )}
                     </div>
                   </div>
+
 
                   {lt && !lt.ok && (
                     <Alert variant="destructive" className="py-2">

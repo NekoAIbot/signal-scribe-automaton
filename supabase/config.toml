@@ -45,3 +45,17 @@ verify_jwt = false
 [functions.paystack-webhook]
 verify_jwt = false
 
+[functions.broker-oauth-start]
+verify_jwt = false
+
+[functions.broker-oauth-complete]
+verify_jwt = false
+
+[functions.broker-oauth-disconnect]
+verify_jwt = false
+
+[functions.broker-accounts-sync]
+verify_jwt = false
+
+[functions.test-broker-connection]
+verify_jwt = false
