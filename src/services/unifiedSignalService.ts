@@ -8,6 +8,8 @@
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { fetchMainBrokerAccount, formatBrokerAccountName } from './brokerAccountSelection';
+import { evaluateSignalQuality } from './signalQualityGate';
+
 
 export interface UnifiedSignal {
   id: string;
