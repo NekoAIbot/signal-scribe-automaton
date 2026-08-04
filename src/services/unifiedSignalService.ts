@@ -631,8 +631,21 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
 
     }
 
+    // Quality gate summary — a quiet cycle is a valid, deliberate outcome.
+    if (rejectedSignals.length) {
+      console.info('[quality-gate] cycle summary', {
+        accepted: signals.length,
+        rejected: rejectedSignals.length,
+        detail: rejectedSignals,
+      });
+    }
+    if (!signals.length && rejectedSignals.length) {
+      console.info('[axion] No trade this cycle — conditions insufficient across all candidates.');
+    }
+
     // Rank by confidence and return top-N (quality over quantity)
     return signals.sort((a, b) => b.confidence - a.confidence).slice(0, 5);
+
   } catch (error) {
     console.error('Error generating AI signals:', error);
     return [];
