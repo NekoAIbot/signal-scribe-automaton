@@ -59,3 +59,6 @@ verify_jwt = false
 
 [functions.test-broker-connection]
 verify_jwt = false
+
+[functions.system-watchdog]
+verify_jwt = false

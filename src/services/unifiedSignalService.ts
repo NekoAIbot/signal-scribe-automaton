@@ -8,6 +8,8 @@
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { fetchMainBrokerAccount, formatBrokerAccountName } from './brokerAccountSelection';
+import { evaluateSignalQuality } from './signalQualityGate';
+
 
 export interface UnifiedSignal {
   id: string;
@@ -336,6 +338,8 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
     const quotes = quotesData.quotes;
     const candlesMap = quotesData.candles || {};
     const signals: UnifiedSignal[] = [];
+    const rejectedSignals: Array<{ symbol: string; type: string; reasons: string[]; score: number }> = [];
+
     const now = new Date().toISOString();
 
     // Use AI for signal analysis - pass strategy/model context so trained models inform predictions
@@ -503,8 +507,6 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
       }
 
       if (shouldSignal && confidence > 0.6) {
-        const slPips = atr * 1.5;
-        const tpPips = atr * 2.5;
         // Weight confidence by trained model accuracy
         if (bestModel?.accuracy) {
           confidence = Math.min(0.99, confidence * 0.6 + Number(bestModel.accuracy) * 0.4);
@@ -524,7 +526,6 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
         else if ((regime.startsWith('trending') && isRangeStrat) || (regime === 'ranging' && isTrendStrat)) regimeFit = 0.85;
         else if (regime === 'choppy') regimeFit = 0.9;
         confidence = Math.min(0.99, confidence * regimeFit);
-        if (confidence < 0.6) continue;
 
         // Determine asset class
         let assetClass = 'forex';
@@ -532,14 +533,52 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
         else if (['XAU/USD', 'XAUUSD', 'USOIL'].includes(symbol)) assetClass = 'commodities';
         else if (['US500', 'US30'].includes(symbol)) assetClass = 'indices';
 
+        // ---- Risk analysis -> trade optimization -> quality gate ----
+        const directionalVotes = type === 'BUY' ? bullishVotes : bearishVotes;
+        const sourceCount = enabledConditions + (modelVote ? 1 : 0) + (aiPred ? 1 : 0);
+        const agreeingSources = directionalVotes
+          + (modelVote?.shouldSignal && modelVote.type === type ? 1 : 0)
+          + (aiPred && ((aiPred.direction === 'down' || aiPred.prediction === 'SELL') ? 'SELL' : 'BUY') === type ? 1 : 0);
+
+        const verdict = evaluateSignalQuality({
+          symbol: displaySymbol,
+          assetClass,
+          type,
+          price: mid,
+          bid,
+          ask,
+          candles,
+          atr,
+          adx,
+          rsi,
+          macdValue,
+          macdSignal,
+          emaShort,
+          emaLong,
+          stochK,
+          baseConfidence: confidence,
+          modelAgreement: sourceCount > 0 ? agreeingSources / sourceCount : 0,
+          historicalWinRate: bestModel?.accuracy != null ? Number(bestModel.accuracy) : null,
+          regime,
+        });
+
+        if (!verdict.passed) {
+          console.info('[quality-gate] rejected', displaySymbol, type, verdict.rejections);
+          rejectedSignals.push({ symbol: displaySymbol, type, reasons: verdict.rejections, score: verdict.score });
+          continue;
+        }
+
+        const opt = verdict.optimized;
+        confidence = verdict.confidence;
+
         signals.push({
           id: `sig-${Date.now()}-${symbol.replace(/\//g, '')}`,
           symbol: displaySymbol,
           type,
-          price: mid,
-          stopLoss: type === 'BUY' ? mid - slPips : mid + slPips,
-          takeProfit1: type === 'BUY' ? mid + tpPips : mid - tpPips,
-          takeProfit2: type === 'BUY' ? mid + tpPips * 1.5 : mid - tpPips * 1.5,
+          price: opt.entry,
+          stopLoss: opt.stopLoss,
+          takeProfit1: opt.takeProfit1,
+          takeProfit2: opt.takeProfit2,
           strategy: chosenStrategy.name,
           strategyId: chosenStrategy.id,
           confidence,
@@ -561,27 +600,52 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
           calculations: {
             spread: ask - bid,
             mid_price: mid,
-            sl_distance: slPips,
-            tp_distance: tpPips,
-            risk_reward_ratio: (tpPips / slPips).toFixed(2),
+            sl_distance: opt.slDistance,
+            tp_distance: opt.tpDistance,
+            risk_reward_ratio: opt.riskReward.toFixed(2),
+            risk_fraction: opt.riskFraction,
             pip_value: symbol.includes('JPY') ? 0.01 : 0.0001,
             model_edge: modelVote?.rawScore,
+            quality_score: Number(verdict.score.toFixed(4)),
+            session: verdict.session,
+            execution_timing: opt.timingNote,
           },
           signalReasoning: {
             market_regime: regime,
             strategy_chosen: chosenStrategy.name,
-            why_entry: `${type} on ${displaySymbol}: ${modelVote?.shouldSignal ? 'model vote' : chosenStrategy.ai_auto_select && aiPred ? 'AI predictor' : `${Math.max(bullishVotes, bearishVotes)}/${enabledConditions} indicator votes`}, ADX ${adx.toFixed(1)}, regime ${regime} (fit ×${regimeFit.toFixed(2)})`,
-            why_sl: `1.5×ATR (${slPips.toFixed(5)})`,
-            why_tp: `2.5×ATR (${tpPips.toFixed(5)}), RR ${(tpPips/slPips).toFixed(2)}`,
-            confidence_breakdown: { base: confidence / regimeFit, regime_fit: regimeFit, final: confidence, model_accuracy: bestModel?.accuracy ?? null },
+            why_entry: `${type} on ${displaySymbol}: ${modelVote?.shouldSignal ? 'model vote' : chosenStrategy.ai_auto_select && aiPred ? 'AI predictor' : `${directionalVotes}/${enabledConditions} indicator votes`}, ADX ${adx.toFixed(1)}, regime ${regime} (fit ×${regimeFit.toFixed(2)}), quality ${(verdict.score * 100).toFixed(0)}%`,
+            why_sl: `ATR-anchored stop widened for spread (${opt.slDistance.toFixed(5)})`,
+            why_tp: `Next structural level at ${opt.tpDistance.toFixed(5)}, RR ${opt.riskReward.toFixed(2)}`,
+            confidence_breakdown: {
+              base: Number((confidence / Math.max(verdict.score, 1e-6)).toFixed(4)),
+              regime_fit: regimeFit,
+              quality_score: verdict.score,
+              final: confidence,
+              model_accuracy: bestModel?.accuracy ?? null,
+              factors: verdict.factors,
+            },
             features: { rsi, adx, atr, volatility, ema_short: emaShort, ema_long: emaLong, macd: macdValue, macd_signal: macdSignal, stoch_k: stochK, stoch_d: stochD },
           },
         });
       }
+
+    }
+
+    // Quality gate summary — a quiet cycle is a valid, deliberate outcome.
+    if (rejectedSignals.length) {
+      console.info('[quality-gate] cycle summary', {
+        accepted: signals.length,
+        rejected: rejectedSignals.length,
+        detail: rejectedSignals,
+      });
+    }
+    if (!signals.length && rejectedSignals.length) {
+      console.info('[axion] No trade this cycle — conditions insufficient across all candidates.');
     }
 
     // Rank by confidence and return top-N (quality over quantity)
     return signals.sort((a, b) => b.confidence - a.confidence).slice(0, 5);
+
   } catch (error) {
     console.error('Error generating AI signals:', error);
     return [];

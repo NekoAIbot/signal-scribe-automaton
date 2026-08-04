@@ -833,6 +833,48 @@ export type Database = {
         }
         Relationships: []
       }
+      system_health_events: {
+        Row: {
+          alerted: boolean
+          component: string
+          created_at: string
+          details: Json
+          healthy: boolean
+          id: string
+          message: string | null
+          recovery_attempted: boolean
+          recovery_succeeded: boolean | null
+          status: string
+          user_id: string | null
+        }
+        Insert: {
+          alerted?: boolean
+          component: string
+          created_at?: string
+          details?: Json
+          healthy?: boolean
+          id?: string
+          message?: string | null
+          recovery_attempted?: boolean
+          recovery_succeeded?: boolean | null
+          status: string
+          user_id?: string | null
+        }
+        Update: {
+          alerted?: boolean
+          component?: string
+          created_at?: string
+          details?: Json
+          healthy?: boolean
+          id?: string
+          message?: string | null
+          recovery_attempted?: boolean
+          recovery_succeeded?: boolean | null
+          status?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       trades: {
         Row: {
           broker_account_id: string | null
