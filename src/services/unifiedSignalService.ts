@@ -338,6 +338,8 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
     const quotes = quotesData.quotes;
     const candlesMap = quotesData.candles || {};
     const signals: UnifiedSignal[] = [];
+    const rejectedSignals: Array<{ symbol: string; type: string; reasons: string[]; score: number }> = [];
+
     const now = new Date().toISOString();
 
     // Use AI for signal analysis - pass strategy/model context so trained models inform predictions
