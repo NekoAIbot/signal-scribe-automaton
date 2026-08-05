@@ -9,6 +9,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { fetchMainBrokerAccount, formatBrokerAccountName } from './brokerAccountSelection';
 import { evaluateSignalQuality } from './signalQualityGate';
+import { buildContext, runInference } from './ai/ensemble';
+
 
 
 export interface UnifiedSignal {
@@ -487,37 +489,46 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
           ? 1
           : Math.min(enabledConditions, 2);
       
-      let shouldSignal = false;
-      let type: 'BUY' | 'SELL' = 'BUY';
-      let confidence = 0.6;
+      // ---- Regime + asset classification (inputs to the ensemble) ----
+      const volatility = atr / Math.max(mid, 1e-9);
+      const regime =
+        adx >= 25 ? (emaShort > emaLong ? 'trending_up' : 'trending_down')
+        : adx < 15 ? 'ranging'
+        : volatility > 0.01 ? 'breakout' : 'choppy';
 
-      if (modelVote?.shouldSignal) {
-        shouldSignal = true;
-        type = modelVote.type;
-        confidence = modelVote.confidence;
-      } else if (chosenStrategy.ai_auto_select && aiPred) {
-        shouldSignal = aiPred.confidence > 0.58;
-        type = aiPred.direction === 'down' || aiPred.prediction === 'SELL' ? 'SELL' : 'BUY';
-        confidence = aiPred.confidence;
-      } else {
-        const strongestVote = Math.max(bullishVotes, bearishVotes);
-        shouldSignal = strongestVote >= voteThreshold;
-        type = bullishVotes >= bearishVotes ? 'BUY' : 'SELL';
-        confidence = 0.55 + (strongestVote / enabledConditions) * 0.25 + Math.min(adx / 100, 0.15);
+      let assetClass = 'forex';
+      if (['BTC/USD', 'ETH/USD', 'BTCUSD', 'ETHUSD'].includes(symbol)) assetClass = 'crypto';
+      else if (['XAU/USD', 'XAUUSD', 'USOIL'].includes(symbol)) assetClass = 'commodities';
+      else if (['US500', 'US30'].includes(symbol)) assetClass = 'indices';
+
+      // ---- Specialists -> Meta-Decision Engine (the only publisher) ----
+      const ensembleContext = buildContext({
+        symbol: displaySymbol,
+        assetClass,
+        price: mid,
+        candles,
+        indicators: { rsi, macdValue, macdSignal, emaShort, emaLong, atr, adx, stochK, stochD },
+        regime,
+        aiPrediction: aiPred || null,
+        trainedModels: strategyModels.length ? strategyModels : (selectedModel ? [selectedModel] : []),
+      });
+      const decision = await runInference(ensembleContext);
+
+      if (!decision.publish) {
+        rejectedSignals.push({
+          symbol: displaySymbol,
+          type: decision.direction,
+          reasons: [decision.rationale],
+          score: decision.probability,
+        });
+        continue;
       }
 
-      if (shouldSignal && confidence > 0.6) {
-        // Weight confidence by trained model accuracy
-        if (bestModel?.accuracy) {
-          confidence = Math.min(0.99, confidence * 0.6 + Number(bestModel.accuracy) * 0.4);
-        }
+      const type: 'BUY' | 'SELL' = decision.direction === 'SELL' ? 'SELL' : 'BUY';
+      let confidence = decision.confidence;
 
-        // Phase 2: local market-regime classification + fit multiplier
-        const volatility = atr / Math.max(mid, 1e-9);
-        const regime =
-          adx >= 25 ? (emaShort > emaLong ? 'trending_up' : 'trending_down')
-          : adx < 15 ? 'ranging'
-          : volatility > 0.01 ? 'breakout' : 'choppy';
+      {
+        // Strategy/regime fit multiplier retained from Phase 2.
         const strategyKind = String(chosenStrategy.name || '').toLowerCase();
         const isTrendStrat = /trend|momentum|breakout|smc|ict/.test(strategyKind);
         const isRangeStrat = /reversal|mean|range|scalp|s\/r|support/.test(strategyKind);
@@ -527,18 +538,11 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
         else if (regime === 'choppy') regimeFit = 0.9;
         confidence = Math.min(0.99, confidence * regimeFit);
 
-        // Determine asset class
-        let assetClass = 'forex';
-        if (['BTC/USD', 'ETH/USD', 'BTCUSD', 'ETHUSD'].includes(symbol)) assetClass = 'crypto';
-        else if (['XAU/USD', 'XAUUSD', 'USOIL'].includes(symbol)) assetClass = 'commodities';
-        else if (['US500', 'US30'].includes(symbol)) assetClass = 'indices';
+        // Honest attribution: only specialists that actually ran are named.
+        const participantLabels = decision.participants.map(p => `${p.label} (${p.algorithm})`);
+        const trainedParticipant = decision.participants.find(p => p.modelId === decision.modelId);
+        const directionalVotes = decision.participants.filter(p => p.bias === type).length;
 
-        // ---- Risk analysis -> trade optimization -> quality gate ----
-        const directionalVotes = type === 'BUY' ? bullishVotes : bearishVotes;
-        const sourceCount = enabledConditions + (modelVote ? 1 : 0) + (aiPred ? 1 : 0);
-        const agreeingSources = directionalVotes
-          + (modelVote?.shouldSignal && modelVote.type === type ? 1 : 0)
-          + (aiPred && ((aiPred.direction === 'down' || aiPred.prediction === 'SELL') ? 'SELL' : 'BUY') === type ? 1 : 0);
 
         const verdict = evaluateSignalQuality({
           symbol: displaySymbol,
@@ -557,7 +561,7 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
           emaLong,
           stochK,
           baseConfidence: confidence,
-          modelAgreement: sourceCount > 0 ? agreeingSources / sourceCount : 0,
+          modelAgreement: decision.agreement,
           historicalWinRate: bestModel?.accuracy != null ? Number(bestModel.accuracy) : null,
           regime,
         });
@@ -585,9 +589,10 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
           time: now,
           status: 'new',
           assetClass,
-          modelId: selectedModelId,
-          modelVersion: selectedModel?.version,
-          modelUsed: selectedModel ? `${selectedModel.name} · ${selectedModel.type}` : (chosenStrategy.ai_auto_select ? 'AI Auto-Selection' : 'Technical Indicators'),
+          modelId: decision.modelId ?? selectedModelId,
+          modelVersion: trainedParticipant?.version ?? selectedModel?.version,
+          modelUsed: participantLabels.join(' + ') || 'Meta-Decision Engine',
+
           indicators: {
             rsi,
             macd: { value: macdValue, signal: macdSignal, histogram: macdValue - macdSignal },
@@ -605,7 +610,10 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
             risk_reward_ratio: opt.riskReward.toFixed(2),
             risk_fraction: opt.riskFraction,
             pip_value: symbol.includes('JPY') ? 0.01 : 0.0001,
-            model_edge: modelVote?.rawScore,
+            model_edge: Number((decision.probability - 0.5).toFixed(4)),
+            inference_engine: decision.engine,
+            specialists_used: participantLabels,
+            specialists_excluded: decision.excluded,
             quality_score: Number(verdict.score.toFixed(4)),
             session: verdict.session,
             execution_timing: opt.timingNote,
@@ -613,17 +621,24 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
           signalReasoning: {
             market_regime: regime,
             strategy_chosen: chosenStrategy.name,
-            why_entry: `${type} on ${displaySymbol}: ${modelVote?.shouldSignal ? 'model vote' : chosenStrategy.ai_auto_select && aiPred ? 'AI predictor' : `${directionalVotes}/${enabledConditions} indicator votes`}, ADX ${adx.toFixed(1)}, regime ${regime} (fit ×${regimeFit.toFixed(2)}), quality ${(verdict.score * 100).toFixed(0)}%`,
+            why_entry: `${decision.rationale} ADX ${adx.toFixed(1)}, regime fit ×${regimeFit.toFixed(2)}, quality ${(verdict.score * 100).toFixed(0)}%.`,
             why_sl: `ATR-anchored stop widened for spread (${opt.slDistance.toFixed(5)})`,
             why_tp: `Next structural level at ${opt.tpDistance.toFixed(5)}, RR ${opt.riskReward.toFixed(2)}`,
             confidence_breakdown: {
-              base: Number((confidence / Math.max(verdict.score, 1e-6)).toFixed(4)),
+              ensemble_probability: Number(decision.probability.toFixed(4)),
+              ensemble_confidence: Number(decision.confidence.toFixed(4)),
+              agreement: Number(decision.agreement.toFixed(4)),
+              uncertainty: Number(decision.uncertainty.toFixed(4)),
+              directional_specialists: directionalVotes,
               regime_fit: regimeFit,
               quality_score: verdict.score,
               final: confidence,
-              model_accuracy: bestModel?.accuracy ?? null,
+              engine: decision.engine,
+              feature_importance: decision.featureImportance,
+              excluded_models: decision.excluded,
               factors: verdict.factors,
             },
+
             features: { rsi, adx, atr, volatility, ema_short: emaShort, ema_long: emaLong, macd: macdValue, macd_signal: macdSignal, stoch_k: stochK, stoch_d: stochD },
           },
         });
