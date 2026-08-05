@@ -589,9 +589,10 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
           time: now,
           status: 'new',
           assetClass,
-          modelId: selectedModelId,
-          modelVersion: selectedModel?.version,
-          modelUsed: selectedModel ? `${selectedModel.name} · ${selectedModel.type}` : (chosenStrategy.ai_auto_select ? 'AI Auto-Selection' : 'Technical Indicators'),
+          modelId: decision.modelId ?? selectedModelId,
+          modelVersion: trainedParticipant?.version ?? selectedModel?.version,
+          modelUsed: participantLabels.join(' + ') || 'Meta-Decision Engine',
+
           indicators: {
             rsi,
             macd: { value: macdValue, signal: macdSignal, histogram: macdValue - macdSignal },
