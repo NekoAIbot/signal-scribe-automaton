@@ -487,37 +487,46 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
           ? 1
           : Math.min(enabledConditions, 2);
       
-      let shouldSignal = false;
-      let type: 'BUY' | 'SELL' = 'BUY';
-      let confidence = 0.6;
+      // ---- Regime + asset classification (inputs to the ensemble) ----
+      const volatility = atr / Math.max(mid, 1e-9);
+      const regime =
+        adx >= 25 ? (emaShort > emaLong ? 'trending_up' : 'trending_down')
+        : adx < 15 ? 'ranging'
+        : volatility > 0.01 ? 'breakout' : 'choppy';
 
-      if (modelVote?.shouldSignal) {
-        shouldSignal = true;
-        type = modelVote.type;
-        confidence = modelVote.confidence;
-      } else if (chosenStrategy.ai_auto_select && aiPred) {
-        shouldSignal = aiPred.confidence > 0.58;
-        type = aiPred.direction === 'down' || aiPred.prediction === 'SELL' ? 'SELL' : 'BUY';
-        confidence = aiPred.confidence;
-      } else {
-        const strongestVote = Math.max(bullishVotes, bearishVotes);
-        shouldSignal = strongestVote >= voteThreshold;
-        type = bullishVotes >= bearishVotes ? 'BUY' : 'SELL';
-        confidence = 0.55 + (strongestVote / enabledConditions) * 0.25 + Math.min(adx / 100, 0.15);
+      let assetClass = 'forex';
+      if (['BTC/USD', 'ETH/USD', 'BTCUSD', 'ETHUSD'].includes(symbol)) assetClass = 'crypto';
+      else if (['XAU/USD', 'XAUUSD', 'USOIL'].includes(symbol)) assetClass = 'commodities';
+      else if (['US500', 'US30'].includes(symbol)) assetClass = 'indices';
+
+      // ---- Specialists -> Meta-Decision Engine (the only publisher) ----
+      const ensembleContext = buildContext({
+        symbol: displaySymbol,
+        assetClass,
+        price: mid,
+        candles,
+        indicators: { rsi, macdValue, macdSignal, emaShort, emaLong, atr, adx, stochK, stochD },
+        regime,
+        aiPrediction: aiPred || null,
+        trainedModels: strategyModels.length ? strategyModels : (selectedModel ? [selectedModel] : []),
+      });
+      const decision = await runInference(ensembleContext);
+
+      if (!decision.publish) {
+        rejectedSignals.push({
+          symbol: displaySymbol,
+          type: decision.direction,
+          reasons: [decision.rationale],
+          score: decision.probability,
+        });
+        continue;
       }
 
-      if (shouldSignal && confidence > 0.6) {
-        // Weight confidence by trained model accuracy
-        if (bestModel?.accuracy) {
-          confidence = Math.min(0.99, confidence * 0.6 + Number(bestModel.accuracy) * 0.4);
-        }
+      const type: 'BUY' | 'SELL' = decision.direction === 'SELL' ? 'SELL' : 'BUY';
+      let confidence = decision.confidence;
 
-        // Phase 2: local market-regime classification + fit multiplier
-        const volatility = atr / Math.max(mid, 1e-9);
-        const regime =
-          adx >= 25 ? (emaShort > emaLong ? 'trending_up' : 'trending_down')
-          : adx < 15 ? 'ranging'
-          : volatility > 0.01 ? 'breakout' : 'choppy';
+      {
+        // Strategy/regime fit multiplier retained from Phase 2.
         const strategyKind = String(chosenStrategy.name || '').toLowerCase();
         const isTrendStrat = /trend|momentum|breakout|smc|ict/.test(strategyKind);
         const isRangeStrat = /reversal|mean|range|scalp|s\/r|support/.test(strategyKind);
@@ -527,18 +536,11 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
         else if (regime === 'choppy') regimeFit = 0.9;
         confidence = Math.min(0.99, confidence * regimeFit);
 
-        // Determine asset class
-        let assetClass = 'forex';
-        if (['BTC/USD', 'ETH/USD', 'BTCUSD', 'ETHUSD'].includes(symbol)) assetClass = 'crypto';
-        else if (['XAU/USD', 'XAUUSD', 'USOIL'].includes(symbol)) assetClass = 'commodities';
-        else if (['US500', 'US30'].includes(symbol)) assetClass = 'indices';
+        // Honest attribution: only specialists that actually ran are named.
+        const participantLabels = decision.participants.map(p => `${p.label} (${p.algorithm})`);
+        const trainedParticipant = decision.participants.find(p => p.modelId === decision.modelId);
+        const directionalVotes = decision.participants.filter(p => p.bias === type).length;
 
-        // ---- Risk analysis -> trade optimization -> quality gate ----
-        const directionalVotes = type === 'BUY' ? bullishVotes : bearishVotes;
-        const sourceCount = enabledConditions + (modelVote ? 1 : 0) + (aiPred ? 1 : 0);
-        const agreeingSources = directionalVotes
-          + (modelVote?.shouldSignal && modelVote.type === type ? 1 : 0)
-          + (aiPred && ((aiPred.direction === 'down' || aiPred.prediction === 'SELL') ? 'SELL' : 'BUY') === type ? 1 : 0);
 
         const verdict = evaluateSignalQuality({
           symbol: displaySymbol,
