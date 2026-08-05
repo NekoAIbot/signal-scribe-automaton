@@ -559,7 +559,7 @@ async function generateAISignals(): Promise<UnifiedSignal[]> {
           emaLong,
           stochK,
           baseConfidence: confidence,
-          modelAgreement: sourceCount > 0 ? agreeingSources / sourceCount : 0,
+          modelAgreement: decision.agreement,
           historicalWinRate: bestModel?.accuracy != null ? Number(bestModel.accuracy) : null,
           regime,
         });
