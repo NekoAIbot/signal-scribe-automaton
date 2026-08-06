@@ -5,6 +5,7 @@ import {
   asBrokerError,
   describeBroker,
   executeOrder,
+  validateOrderOnly,
   isSupportedBroker,
 } from "../_shared/broker-sdk/index.ts";
 
@@ -175,7 +176,60 @@ serve(async (req) => {
     }
     timeline.push('tier_check', 'success');
 
+    // Dry-run: verifies credentials, symbol rules, sizing and account state
+    // against the live broker without placing an order.
+    if (requestData.validateOnly === true) {
+      if (!isSupportedBroker(brokerType)) {
+        timeline.push('validation', 'failed', `Broker ${brokerType} is not supported by the SDK`);
+        return jsonResponse({ success: false, validated: false, error: `Broker "${brokerType}" is not supported.`, timeline: timeline.events }, corsHeaders);
+      }
+      timeline.push('validation', 'started', 'Dry-run pre-trade validation');
+      try {
+        const preflight = await validateOrderOnly(mainBrokerAccount, {
+          symbol: requestData.symbol,
+          side: requestData.type === 'BUY' ? 'BUY' : 'SELL',
+          quantity: Number(requestData.lotSize) || 0.01,
+          orderType: 'MARKET',
+          price: requestData.price ?? null,
+          stopLoss: requestData.stopLoss ?? null,
+          takeProfit: requestData.takeProfit ?? null,
+          clientOrderId: `axion-dryrun-${Date.now()}`,
+        });
+        timeline.push('validation', preflight.validation.valid ? 'success' : 'failed',
+          preflight.validation.issues.map(i => i.message).join(' ') || 'Order is executable on this account', {
+            normalizedQuantity: preflight.validation.normalizedOrder.quantity,
+            balance: preflight.account?.balance ?? null,
+            currency: preflight.account?.currency ?? null,
+          });
+        await writeAuditLog(serviceClient, {
+          userId, requestData, timeline: timeline.events, success: preflight.validation.valid,
+          status: preflight.validation.valid ? 'validated' : 'validation_failed',
+          error: preflight.validation.valid ? null : preflight.validation.issues.map(i => i.message).join('; '),
+          retryOf, brokerAccount: mainBrokerAccount,
+        });
+        return jsonResponse({
+          success: preflight.validation.valid,
+          validated: preflight.validation.valid,
+          broker: preflight.broker,
+          brokerAccountId: mainBrokerAccount.id,
+          issues: preflight.validation.issues,
+          normalizedOrder: preflight.validation.normalizedOrder,
+          account: preflight.account ? { balance: preflight.account.balance, currency: preflight.account.currency, environment: preflight.account.environment } : null,
+          timeline: timeline.events,
+        }, corsHeaders);
+      } catch (error) {
+        const brokerError = error instanceof BrokerError ? error : asBrokerError(brokerType, error);
+        timeline.push('validation', 'failed', brokerError.message, brokerError.toJSON());
+        await writeAuditLog(serviceClient, {
+          userId, requestData, timeline: timeline.events, success: false,
+          status: `dryrun_${brokerError.code.toLowerCase()}`, error: brokerError.message, retryOf, brokerAccount: mainBrokerAccount,
+        });
+        return jsonResponse({ success: false, validated: false, error: brokerError.message, errorCode: brokerError.code, hint: brokerError.hint, timeline: timeline.events }, corsHeaders);
+      }
+    }
+
     let executionResult: { ticketNumber: string; volume: number; mode: string };
+
 
     // Every broker call goes through the Universal Broker SDK.
     if (isSupportedBroker(brokerType)) {

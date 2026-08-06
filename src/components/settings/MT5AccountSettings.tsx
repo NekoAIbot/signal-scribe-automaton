@@ -131,6 +131,31 @@ export const MT5AccountSettings = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const [validating, setValidating] = useState<Record<string, boolean>>({});
+
+  const validateExecution = useCallback(async (id: string, brokerType: string) => {
+    setValidating((v) => ({ ...v, [id]: true }));
+    try {
+      const symbol = ['binance'].includes(String(brokerType).toLowerCase()) ? 'BTC/USDT' : 'EUR/USD';
+      const { data, error } = await supabase.functions.invoke('execute-trade', {
+        body: { validateOnly: true, brokerAccountId: id, symbol, type: 'BUY', lotSize: 0.01, manualOverride: true },
+      });
+      if (error) throw error;
+      if (data?.validated) {
+        const qty = data?.normalizedOrder?.quantity;
+        const bal = data?.account ? ` · balance ${Number(data.account.balance).toFixed(2)} ${data.account.currency || ''}` : '';
+        toast.success(`Execution ready on ${data.broker}: ${symbol} ${qty}${bal}`);
+      } else {
+        toast.error(data?.error || (data?.issues || []).map((i: any) => i.message).join(' ') || 'Execution validation failed');
+      }
+    } catch (e: any) {
+      toast.error(e?.message || 'Execution validation failed');
+    } finally {
+      setValidating((v) => ({ ...v, [id]: false }));
+    }
+  }, []);
+
+
   const [form, setForm] = useState({
     broker_type: 'deriv',
     account_name: '',
@@ -575,6 +600,10 @@ export const MT5AccountSettings = () => {
                       <Button variant="outline" size="sm" onClick={() => testConnection(c.id)} disabled={isTesting}>
                         {isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Test'}
                       </Button>
+                      <Button variant="outline" size="sm" onClick={() => validateExecution(c.id, c.broker_type)} disabled={!!validating[c.id]}>
+                        {validating[c.id] ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Validate execution'}
+                      </Button>
+
                       {c.auth_method !== 'oauth' && (
                         <Button variant="outline" size="sm" onClick={() => handleEdit(c)}><Pencil className="h-4 w-4 mr-1" />Edit</Button>
                       )}
