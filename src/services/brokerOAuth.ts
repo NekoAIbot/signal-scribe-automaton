@@ -41,6 +41,39 @@ export function callbackUrl(): string {
   return `${window.location.origin}/brokers/callback`;
 }
 
+/**
+ * Deriv (and most OAuth providers) send `X-Frame-Options: DENY`, so a plain
+ * `location.assign` inside the Lovable preview iframe silently fails. Navigate
+ * the top-level window when we can, otherwise open a popup, otherwise fall back
+ * to a same-frame redirect.
+ */
+export function navigateToAuthorizeUrl(url: string): 'top' | 'popup' | 'self' {
+  const inIframe = (() => {
+    try { return window.self !== window.top; } catch { return true; }
+  })();
+
+  if (!inIframe) {
+    window.location.assign(url);
+    return 'self';
+  }
+
+  try {
+    if (window.top) {
+      window.top.location.href = url;
+      return 'top';
+    }
+  } catch {
+    /* cross-origin parent — fall through to popup */
+  }
+
+  const popup = window.open(url, '_blank', 'noopener,noreferrer,width=520,height=720');
+  if (popup) return 'popup';
+
+  window.location.assign(url);
+  return 'self';
+}
+
+
 export function readPending(): PendingOAuth | null {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY) || localStorage.getItem(STORAGE_KEY);
@@ -99,8 +132,9 @@ export async function startBrokerOAuth(options: {
   });
 
   oauthLog('authorize_url_generated', { broker, redirectUri });
-  oauthLog('redirect_started', { broker, url: String(data.authorize_url).split('?')[0] });
-  window.location.assign(data.authorize_url);
+  const mode = navigateToAuthorizeUrl(data.authorize_url);
+  oauthLog('redirect_started', { broker, mode, url: String(data.authorize_url).split('?')[0] });
+
 }
 
 export interface CompleteResult {

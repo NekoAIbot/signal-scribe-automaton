@@ -34,6 +34,26 @@ serve(async (req) => {
     const requestBody = await req.json().catch(() => ({}));
     const requestedUserId = typeof requestBody.userId === "string" ? requestBody.userId : null;
 
+    // Scheduled retraining sweep — runs independently of signal generation so
+    // models keep learning even when the bot is paused or capped by tier.
+    if (String(requestBody.mode || "") === "retrain") {
+      const { data: owners, error: ownersError } = await client
+        .from("ml_models")
+        .select("user_id")
+        .eq("is_active", true);
+      if (ownersError) throw ownersError;
+      const userIds = [...new Set((owners || []).map((row: any) => row.user_id))]
+        .filter((id) => !requestedUserId || id === requestedUserId);
+      const sweep = [];
+      for (const userId of userIds) {
+        const timeline: TimelineEvent[] = [];
+        const retraining = await triggerAndProcessRetraining(client, supabaseUrl, anonKey, serviceKey, userId as string, timeline);
+        sweep.push({ userId, retraining, timeline });
+      }
+      return json({ success: true, mode: "retrain", processed: sweep.length, results: sweep });
+    }
+
+
     const { data: settings, error: settingsError } = await client
       .from("trading_bot_settings")
       .select("user_id, bot_enabled, telegram_enabled, interval_seconds, updated_at")

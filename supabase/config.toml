@@ -62,3 +62,6 @@ verify_jwt = false
 
 [functions.system-watchdog]
 verify_jwt = false
+
+[functions.ensemble-inference]
+verify_jwt = false

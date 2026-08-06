@@ -13,7 +13,7 @@ export {
 } from './crypto.ts';
 export { credentialCandidates, cleanCredentialValue, firstCredential, httpRequest, parseJson, hmacSha256Hex } from './credentials.ts';
 
-import type { BrokerAdapter, BrokerCredentials, OrderRequest, OrderResult } from './types.ts';
+import type { AccountInfo, BrokerAdapter, BrokerCredentials, OrderRequest, OrderResult } from './types.ts';
 import { createBrokerAdapter } from './registry.ts';
 import { asBrokerError, BrokerError } from './errors.ts';
 import { decryptCredentials } from './crypto.ts';
@@ -83,6 +83,41 @@ export async function getBrokerAccountInfo(credentials: BrokerCredentials) {
       adapter.permissions().catch(() => null),
     ]);
     return { info, permissions };
+  } finally {
+    try { await adapter.disconnect(); } catch { /* noop */ }
+  }
+}
+
+/**
+ * Dry-run path: performs the full guarded pre-trade sequence (credential
+ * decryption → adapter → symbol rules → local validation → account snapshot)
+ * WITHOUT placing an order. Used to verify broker execution readiness safely.
+ */
+export async function validateOrderOnly(
+  credentials: BrokerCredentials,
+  request: OrderRequest,
+): Promise<{ validation: ValidationResult; account: AccountInfo | null; broker: string }> {
+  const resolved = await decryptCredentials(credentials as Record<string, unknown>) as BrokerCredentials;
+  const adapter = createBrokerAdapter(resolved);
+  try {
+    let rules = null;
+    try { rules = await adapter.getSymbolRules(request.symbol); }
+    catch (error) {
+      const err = asBrokerError(adapter.id, error);
+      if (err.code === 'INVALID_SYMBOL' || err.code === 'SYMBOL_NOT_TRADABLE') throw err;
+    }
+    let account: AccountInfo | null = null;
+    try { account = await adapter.getAccountInfo(); } catch { /* balance is advisory here */ }
+
+    const validation = validateOrder(request, {
+      broker: adapter.displayName,
+      capabilities: adapter.capabilities,
+      rules,
+      account,
+    });
+    return { validation, account, broker: adapter.displayName };
+  } catch (error) {
+    throw error instanceof BrokerError ? error : asBrokerError(adapter.id, error);
   } finally {
     try { await adapter.disconnect(); } catch { /* noop */ }
   }
