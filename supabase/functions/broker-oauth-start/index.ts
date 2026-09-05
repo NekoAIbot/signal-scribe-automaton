@@ -35,8 +35,11 @@ function errorBody(error: unknown) {
   };
 }
 
-// Live check that the configured Deriv application id is accepted by Deriv.
+// Live check that the configured Deriv application id is usable.
 async function pingDerivAppId(appId: string): Promise<{ ok: boolean; detail: string }> {
+  if (!/^\d+$/.test(appId)) {
+    return { ok: false, detail: `"${appId}" is not a Deriv App ID. Deriv App IDs are numeric (e.g. 12345).` };
+  }
   try {
     const res = await fetch(`https://api.deriv.com/api/v1/website_status?app_id=${encodeURIComponent(appId)}`);
     if (res.ok) return { ok: true, detail: `Deriv accepted app_id ${appId}` };
@@ -45,6 +48,7 @@ async function pingDerivAppId(appId: string): Promise<{ ok: boolean; detail: str
     return { ok: false, detail: `Could not reach Deriv: ${(e as Error).message}` };
   }
 }
+
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
