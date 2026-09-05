@@ -35,8 +35,54 @@ function errorBody(error: unknown) {
   };
 }
 
+// Live check that the configured Deriv application id is usable.
+async function pingDerivAppId(appId: string): Promise<{ ok: boolean; detail: string }> {
+  if (!/^\d+$/.test(appId)) {
+    return { ok: false, detail: `"${appId}" is not a Deriv App ID. Deriv App IDs are numeric (e.g. 12345).` };
+  }
+  try {
+    const res = await fetch(`https://api.deriv.com/api/v1/website_status?app_id=${encodeURIComponent(appId)}`);
+    if (res.ok) return { ok: true, detail: `Deriv accepted app_id ${appId}` };
+    return { ok: false, detail: `Deriv responded ${res.status} for app_id ${appId}` };
+  } catch (e) {
+    return { ok: false, detail: `Could not reach Deriv: ${(e as Error).message}` };
+  }
+}
+
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  // Public, secret-free diagnostic: GET ?diagnose=deriv
+  const diagUrl = new URL(req.url);
+  if (req.method === "GET" && diagUrl.searchParams.get("diagnose")) {
+    const broker = String(diagUrl.searchParams.get("diagnose") || "deriv").toLowerCase();
+    const provider = getOAuthProvider(broker);
+    if (!provider) return json({ ok: false, message: `${broker} has no OAuth provider.` }, 400);
+    let appId = "";
+    for (const key of provider.appIdEnv) {
+      const v = (Deno.env.get(key) || "").trim();
+      if (v) { appId = v; break; }
+    }
+    if (!appId) {
+      return json({ ok: false, broker, app_id_configured: false, message: `Missing ${provider.appIdEnv[0]}.`, setup_url: provider.setupUrl });
+    }
+    const ping = await pingDerivAppId(appId);
+    return json({
+      ok: ping.ok,
+      broker,
+      app_id_configured: true,
+      app_id: appId,
+      app_id_valid: ping.ok,
+      detail: ping.detail,
+      scopes: provider.scopes,
+      register_redirect_urls: [
+        "https://signal-scribe-automaton.lovable.app/brokers/callback",
+      ],
+      setup_url: provider.setupUrl,
+    });
+  }
+
 
   const service = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   let userId: string | null = null;

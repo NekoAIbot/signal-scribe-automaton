@@ -82,7 +82,18 @@ export function supportsOAuth(broker: string): boolean {
 export function resolveOAuthAppId(provider: OAuthProviderConfig): string {
   for (const key of provider.appIdEnv) {
     const value = (Deno.env.get(key) || '').trim();
-    if (value) return value;
+    if (!value) continue;
+    // Deriv application ids are numeric. A non-numeric value is almost always an
+    // API token pasted by mistake and would make the authorize URL fail silently.
+    if (provider.broker === 'deriv' && !/^\d+$/.test(value)) {
+      throw new BrokerError({
+        broker: provider.broker,
+        code: 'CONFIG_MISSING',
+        message: `The saved ${provider.displayName} App ID is not valid.`,
+        hint: `${provider.displayName} App IDs are numbers (for example 12345). Copy the numeric App ID from ${provider.setupUrl} and save it as ${provider.appIdEnv[0]}.`,
+      });
+    }
+    return value;
   }
   throw new BrokerError({
     broker: provider.broker,
@@ -91,6 +102,7 @@ export function resolveOAuthAppId(provider: OAuthProviderConfig): string {
     hint: `Register an application at ${provider.setupUrl} with this app's callback URL, then store its App ID as ${provider.appIdEnv[0]}.`,
   });
 }
+
 
 export function buildAuthorizeUrl(broker: string, redirectUri: string, state: string): string {
   const provider = getOAuthProvider(broker);
