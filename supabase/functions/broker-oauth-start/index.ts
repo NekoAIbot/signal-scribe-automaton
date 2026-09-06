@@ -35,19 +35,33 @@ function errorBody(error: unknown) {
   };
 }
 
-// Live check that the configured Deriv application id is usable.
-async function pingDerivAppId(appId: string): Promise<{ ok: boolean; detail: string }> {
-  if (!/^\d+$/.test(appId)) {
-    return { ok: false, detail: `"${appId}" is not a Deriv App ID. Deriv App IDs are numeric (e.g. 12345).` };
-  }
+// Live check that the configured broker application id is usable: ask the
+// provider's authorize endpoint and treat any non-error response as valid.
+// Deriv App IDs are alphanumeric on the current API, so no format guess here.
+async function pingAppId(provider: { authorizeBase: string; broker: string; scopes: string[] }, appId: string, redirectUri: string) {
   try {
-    const res = await fetch(`https://api.deriv.com/api/v1/website_status?app_id=${encodeURIComponent(appId)}`);
-    if (res.ok) return { ok: true, detail: `Deriv accepted app_id ${appId}` };
-    return { ok: false, detail: `Deriv responded ${res.status} for app_id ${appId}` };
+    const probe = new URL(provider.authorizeBase);
+    probe.searchParams.set("response_type", "code");
+    probe.searchParams.set("client_id", appId);
+    probe.searchParams.set("redirect_uri", redirectUri);
+    probe.searchParams.set("scope", provider.scopes.join(" "));
+    probe.searchParams.set("state", "diagnostic");
+    const res = await fetch(probe.toString(), { redirect: "manual" });
+    const location = res.headers.get("location") || "";
+    const invalid = /error=(invalid_client|unauthorized_client|invalid_request)/i.test(location);
+    if (invalid) {
+      const reason = decodeURIComponent((location.match(/error_description=([^&]+)/) || [, ""])[1] || "").replace(/\+/g, " ");
+      return { ok: false, detail: reason || `${provider.broker} rejected app id ${appId}` };
+    }
+    if (res.status >= 200 && res.status < 400) {
+      return { ok: true, detail: `${provider.broker} accepted app id ${appId} (HTTP ${res.status})` };
+    }
+    return { ok: false, detail: `${provider.broker} responded ${res.status} for app id ${appId}` };
   } catch (e) {
-    return { ok: false, detail: `Could not reach Deriv: ${(e as Error).message}` };
+    return { ok: false, detail: `Could not reach ${provider.broker}: ${(e as Error).message}` };
   }
 }
+
 
 
 serve(async (req) => {
