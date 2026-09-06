@@ -32,6 +32,18 @@ export class DerivAdapter implements BrokerAdapter {
     this.tokens = credentialCandidates(creds.api_token);
   }
 
+  /**
+   * The current Deriv API (REST + OTP WebSocket) is used for OAuth grants and
+   * personal access tokens. Legacy `ws.derivws.com` authorize is only kept for
+   * older manually-pasted API tokens.
+   */
+  private modern(token: string): boolean {
+    if (String((this.creds as any).auth_method || '').toLowerCase() === 'oauth') return true;
+    const meta = (this.creds.metadata || {}) as Record<string, unknown>;
+    if (String(meta.auth_method || '').toLowerCase() === 'oauth') return true;
+    return token.startsWith('pat_');
+  }
+
   private appId(token: string): string {
     const meta = (this.creds.metadata || {}) as Record<string, unknown>;
     const metaId = cleanCredentialValue(meta.deriv_app_id || meta.app_id || '');
@@ -41,7 +53,7 @@ export class DerivAdapter implements BrokerAdapter {
     const legacyId = cleanCredentialValue(Deno.env.get('DERIV_APP_ID') || '');
     // OAuth-issued tokens must be used with the app that authorized them.
     if (String((this.creds as any).auth_method || '') === 'oauth' && oauthId) return oauthId;
-    if (token.startsWith('pat_')) return patId || oauthId || '';
+    if (token.startsWith('pat_')) return patId || oauthId || legacyId || '';
     return legacyId || oauthId || '1089';
   }
 
@@ -114,7 +126,7 @@ export class DerivAdapter implements BrokerAdapter {
   }
 
   /** PAT tokens use the REST trading API to mint a short-lived WS OTP url. */
-  private async patSocketUrl(token: string): Promise<string> {
+  private async otpSocketUrl(token: string): Promise<string> {
     const appId = this.appId(token);
     if (!appId) {
       throw new BrokerError({
@@ -123,7 +135,7 @@ export class DerivAdapter implements BrokerAdapter {
         hint: 'Edit this broker account and add the App ID from the same Deriv application that issued the token.',
       });
     }
-    const accountId = cleanCredentialValue(this.creds.account_id || this.creds.login || '') || await this.resolvePatAccountId(token, appId);
+    const accountId = cleanCredentialValue(this.creds.account_id || this.creds.login || '') || await this.resolveAccountId(token, appId);
     if (!accountId) {
       throw new BrokerError({ broker: this.id, code: 'CONFIG_MISSING', message: 'No active Deriv trading account was found for this token.' });
     }
@@ -140,7 +152,7 @@ export class DerivAdapter implements BrokerAdapter {
     return String(first?.message || raw || '').trim();
   }
 
-  private async resolvePatAccountId(token: string, appId: string): Promise<string> {
+  private async resolveAccountId(token: string, appId: string): Promise<string> {
     const res = await httpRequest('https://api.derivws.com/trading/v1/options/accounts', {
       method: 'GET', headers: { Authorization: `Bearer ${token}`, 'Deriv-App-ID': appId },
     });
@@ -194,9 +206,9 @@ export class DerivAdapter implements BrokerAdapter {
 
   async getAccountInfo(): Promise<AccountInfo> {
     return await this.withToken(async (token) => {
-      if (token.startsWith('pat_')) {
+      if (this.modern(token)) {
         const appId = this.appId(token);
-        const accountId = cleanCredentialValue(this.creds.account_id || this.creds.login || '') || await this.resolvePatAccountId(token, appId);
+        const accountId = cleanCredentialValue(this.creds.account_id || this.creds.login || '') || await this.resolveAccountId(token, appId);
         const res = await httpRequest('https://api.derivws.com/trading/v1/options/accounts', {
           method: 'GET', headers: { Authorization: `Bearer ${token}`, 'Deriv-App-ID': appId },
         });
@@ -272,13 +284,17 @@ export class DerivAdapter implements BrokerAdapter {
 
   async getOpenPositions(): Promise<Position[]> {
     return await this.withToken(async (token) => {
-      if (token.startsWith('pat_')) return [];
+      
       const appId = this.appId(token);
+      const url = this.modern(token)
+        ? await this.otpSocketUrl(token)
+        : `wss://ws.derivws.com/websockets/v3?app_id=${appId}`;
       const [res] = await this.wsSequence(
-        `wss://ws.derivws.com/websockets/v3?app_id=${appId}`,
+        url,
         () => [{ request: { portfolio: 1 }, expect: 'portfolio' }],
-        token,
+        this.modern(token) ? undefined : token,
       );
+
       return (res?.portfolio?.contracts || []).map((c: any) => ({
         positionId: String(c.contract_id),
         symbol: String(c.symbol),
@@ -302,8 +318,8 @@ export class DerivAdapter implements BrokerAdapter {
     const contractType = order.side === 'BUY' ? 'CALL' : 'PUT';
 
     return await this.withToken(async (token) => {
-      if (token.startsWith('pat_')) {
-        const wsUrl = await this.patSocketUrl(token);
+      if (this.modern(token)) {
+        const wsUrl = await this.otpSocketUrl(token);
         const results = await this.wsSequence(wsUrl, () => [
           {
             request: {
@@ -324,7 +340,7 @@ export class DerivAdapter implements BrokerAdapter {
           brokerOrderId: String(buy.contract_id || buy.transaction_id || Date.now()),
           status: 'filled', symbol, side: order.side,
           filledQuantity: amount, price: Number(buy.buy_price ?? null) || null,
-          mode: 'deriv-pat', raw: buy,
+          mode: 'deriv-v1', raw: buy,
         } as OrderResult;
       }
 
@@ -356,11 +372,15 @@ export class DerivAdapter implements BrokerAdapter {
   async closePosition(positionId: string): Promise<OrderResult> {
     return await this.withToken(async (token) => {
       const appId = this.appId(token);
+      const url = this.modern(token)
+        ? await this.otpSocketUrl(token)
+        : `wss://ws.derivws.com/websockets/v3?app_id=${appId}`;
       const results = await this.wsSequence(
-        `wss://ws.derivws.com/websockets/v3?app_id=${appId}`,
+        url,
         () => [{ request: { sell: Number(positionId), price: 0 }, expect: 'sell' }],
-        token,
+        this.modern(token) ? undefined : token,
       );
+
       const sell = results[results.length - 1]?.sell || {};
       return {
         brokerOrderId: String(sell.transaction_id || positionId),
