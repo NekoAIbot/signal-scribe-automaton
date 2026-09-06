@@ -181,18 +181,7 @@ export function supportsOAuth(broker: string): boolean {
 export function resolveOAuthAppId(provider: OAuthProviderConfig): string {
   for (const key of provider.appIdEnv) {
     const value = (Deno.env.get(key) || '').trim();
-    if (!value) continue;
-    // Deriv application ids are numeric. A non-numeric value is almost always an
-    // API token pasted by mistake and would make the authorize URL fail silently.
-    if (provider.broker === 'deriv' && !/^\d+$/.test(value)) {
-      throw new BrokerError({
-        broker: provider.broker,
-        code: 'CONFIG_MISSING',
-        message: `The saved ${provider.displayName} App ID is not valid.`,
-        hint: `${provider.displayName} App IDs are numbers (for example 12345). Copy the numeric App ID from ${provider.setupUrl} and save it as ${provider.appIdEnv[0]}.`,
-      });
-    }
-    return value;
+    if (value) return value;
   }
   throw new BrokerError({
     broker: provider.broker,
@@ -203,7 +192,24 @@ export function resolveOAuthAppId(provider: OAuthProviderConfig): string {
 }
 
 
-export function buildAuthorizeUrl(broker: string, redirectUri: string, state: string): string {
+export function buildAuthorizeUrl(
+  broker: string,
+  redirectUri: string,
+  state: string,
+  codeChallenge?: string | null,
+): string {
+  const provider = requireProvider(broker);
+  const appId = resolveOAuthAppId(provider);
+  return provider.buildAuthorizeUrl({
+    appId,
+    redirectUri,
+    state,
+    codeChallenge: codeChallenge || null,
+    codeChallengeMethod: codeChallenge ? 'S256' : null,
+  });
+}
+
+function requireProvider(broker: string): OAuthProviderConfig {
   const provider = getOAuthProvider(broker);
   if (!provider) {
     throw new BrokerError({
@@ -213,37 +219,56 @@ export function buildAuthorizeUrl(broker: string, redirectUri: string, state: st
       hint: 'Connect this broker with an API key instead.',
     });
   }
-  const appId = resolveOAuthAppId(provider);
-  return provider.buildAuthorizeUrl({ appId, redirectUri, state });
+  return provider;
 }
 
-export function parseOAuthCallback(broker: string, params: Record<string, string>): OAuthLinkedAccount[] {
-  const provider = getOAuthProvider(broker);
-  if (!provider) {
-    throw new BrokerError({ broker, code: 'NOT_SUPPORTED', message: `${broker} does not support OAuth.` });
-  }
-
+/** Surface a provider-side denial before we try to redeem anything. */
+export function assertCallbackOk(broker: string, params: Record<string, string>): void {
+  const provider = requireProvider(broker);
   const denied = params.error || params.error_description;
-  if (denied) {
-    const lower = String(denied).toLowerCase();
-    throw new BrokerError({
-      broker,
-      code: /denied|access_denied|cancel/.test(lower) ? 'PERMISSION_DENIED' : 'AUTH_FAILED',
-      message: /denied|access_denied|cancel/.test(lower)
-        ? `Authorization was denied on ${provider.displayName}.`
-        : `${provider.displayName} rejected the authorization: ${denied}`,
-      hint: 'Start the connection again and approve the requested permissions.',
-    });
-  }
+  if (!denied) return;
+  const lower = String(denied).toLowerCase();
+  throw new BrokerError({
+    broker,
+    code: /denied|access_denied|cancel/.test(lower) ? 'PERMISSION_DENIED' : 'AUTH_FAILED',
+    message: /denied|access_denied|cancel/.test(lower)
+      ? `Authorization was denied on ${provider.displayName}.`
+      : `${provider.displayName} rejected the authorization: ${denied}`,
+    hint: 'Start the connection again and approve the requested permissions.',
+  });
+}
 
-  const accounts = provider.parseCallback(params);
+/**
+ * Full server-side callback redemption: validate, exchange the code for tokens,
+ * then list every trading account the grant covers.
+ */
+export async function redeemOAuthCallback(input: {
+  broker: string;
+  params: Record<string, string>;
+  redirectUri: string;
+  codeVerifier: string;
+}): Promise<{ tokens: OAuthTokenSet; accounts: OAuthLinkedAccount[] }> {
+  const provider = requireProvider(input.broker);
+  assertCallbackOk(input.broker, input.params);
+
+  const appId = resolveOAuthAppId(provider);
+  const code = provider.readCallbackCode(input.params);
+  const tokens = await provider.exchangeCode({
+    appId,
+    code,
+    redirectUri: input.redirectUri,
+    codeVerifier: input.codeVerifier,
+  });
+
+  const accounts = await provider.discoverAccounts({ appId, tokens });
   if (!accounts.length) {
     throw new BrokerError({
-      broker,
+      broker: input.broker,
       code: 'AUTH_FAILED',
-      message: `${provider.displayName} did not return any authorized accounts.`,
-      hint: 'Make sure the redirect URL registered on the broker application matches this app exactly, then retry.',
+      message: `${provider.displayName} did not return any trading accounts.`,
+      hint: 'Open your broker account and make sure at least one trading account is active, then retry.',
     });
   }
-  return accounts;
+  return { tokens, accounts };
 }
+
