@@ -3,7 +3,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 import {
-  parseOAuthCallback,
+  redeemOAuthCallback,
   getOAuthProvider,
   getBrokerAccountInfo,
   encryptSecret,
@@ -140,9 +140,20 @@ serve(async (req) => {
     }
 
     const provider = getOAuthProvider(brokerType)!;
-    const linked = parseOAuthCallback(brokerType, params);
+
+    // Exchange the single-use authorization code for tokens on the server, then
+    // discover every trading account the grant covers.
+    const { tokens, accounts: linked } = await redeemOAuthCallback({
+      broker: brokerType,
+      params,
+      redirectUri: String(stateRow.redirect_uri),
+      codeVerifier,
+    });
     await log("code_exchanged", "success", `${provider.displayName} returned ${linked.length} authorized account(s)`, {
       accounts: linked.map(a => a.accountId),
+      scopes: tokens.scopes,
+      refreshable: !!tokens.refreshToken,
+      expires_at: tokens.expiresAt,
     });
 
     if (!encryptionAvailable()) {
@@ -194,6 +205,7 @@ serve(async (req) => {
         oauth_provider: provider.broker,
         currency: account.currency || info.currency,
         landing_company: landingCompany,
+        balance_currency: account.currency,
         connected_via: "oauth",
         permissions,
         last_test: {
@@ -229,11 +241,12 @@ serve(async (req) => {
         api_token: encryptedToken,
         auth_method: "oauth",
         secrets_encrypted: true,
-        oauth_scopes: provider.scopes,
-        oauth_expires_at: null,
+        oauth_scopes: tokens.scopes.length ? tokens.scopes : provider.scopes,
+        oauth_refresh_token: tokens.refreshToken ? await encryptSecret(tokens.refreshToken) : null,
+        oauth_expires_at: tokens.expiresAt,
         last_connected_at: now,
         last_synced_at: now,
-        balance: Number(info.balance || 0),
+        balance: Number(info.balance ?? account.balance ?? 0),
         currency: account.currency || info.currency || null,
         landing_company: landingCompany,
         is_active: true,
