@@ -81,7 +81,8 @@ serve(async (req) => {
     if (!appId) {
       return json({ ok: false, broker, app_id_configured: false, message: `Missing ${provider.appIdEnv[0]}.`, setup_url: provider.setupUrl });
     }
-    const ping = await pingDerivAppId(appId);
+    const callbackUrl = "https://signal-scribe-automaton.lovable.app/brokers/callback";
+    const ping = await pingAppId(provider, appId, callbackUrl);
     return json({
       ok: ping.ok,
       broker,
@@ -160,7 +161,7 @@ serve(async (req) => {
     });
     if (stateErr) throw new Error(stateErr.message);
 
-    const authorizeUrl = buildAuthorizeUrl(brokerType, parsed.toString(), stateValue);
+    const authorizeUrl = buildAuthorizeUrl(brokerType, parsed.toString(), stateValue, codeChallenge);
 
     await log("authorize_url_generated", "success", "Authorization URL generated", {
       redirect_uri: parsed.toString(), pkce: !!codeChallenge, scopes: provider.scopes,
