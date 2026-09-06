@@ -286,11 +286,15 @@ export class DerivAdapter implements BrokerAdapter {
     return await this.withToken(async (token) => {
       
       const appId = this.appId(token);
+      const url = this.modern(token)
+        ? await this.otpSocketUrl(token)
+        : `wss://ws.derivws.com/websockets/v3?app_id=${appId}`;
       const [res] = await this.wsSequence(
-        `wss://ws.derivws.com/websockets/v3?app_id=${appId}`,
+        url,
         () => [{ request: { portfolio: 1 }, expect: 'portfolio' }],
-        token,
+        this.modern(token) ? undefined : token,
       );
+
       return (res?.portfolio?.contracts || []).map((c: any) => ({
         positionId: String(c.contract_id),
         symbol: String(c.symbol),
