@@ -5,6 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 import {
   buildAuthorizeUrl,
   getOAuthProvider,
+  resolveOAuthAppId,
   describeBroker,
   BrokerError,
   recoveryAction,
@@ -81,7 +82,7 @@ serve(async (req) => {
     if (!appId) {
       return json({ ok: false, broker, app_id_configured: false, message: `Missing ${provider.appIdEnv[0]}.`, setup_url: provider.setupUrl });
     }
-    const callbackUrl = "https://signal-scribe-automaton.lovable.app/brokers/callback";
+    const callbackUrl = (diagUrl.searchParams.get("redirect") || "https://signal-scribe-automaton.lovable.app/brokers/callback").trim();
     const ping = await pingAppId(provider, appId, callbackUrl);
     return json({
       ok: ping.ok,
