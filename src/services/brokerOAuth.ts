@@ -113,6 +113,7 @@ export async function startBrokerOAuth(options: {
       environment: options.environment ?? null,
       returnTo: options.returnTo ?? '/settings',
       codeChallenge,
+      codeVerifier,
       codeChallengeMethod: 'S256',
     },
   });
