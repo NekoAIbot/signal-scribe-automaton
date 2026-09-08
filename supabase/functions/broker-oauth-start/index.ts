@@ -196,6 +196,8 @@ serve(async (req) => {
     console.error("broker-oauth-start failed:", error);
     const payload = errorBody(error);
     await log("authorize_url_failed", "error", String(payload.message), { error_code: payload.error_code });
-    return json(payload, 400);
+    // 200 with ok:false — the client renders the real reason instead of a
+    // generic "edge function returned a non-2xx status code".
+    return json(payload, 200);
   }
 });
