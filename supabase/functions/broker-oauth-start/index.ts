@@ -139,12 +139,21 @@ serve(async (req) => {
       });
     }
 
+    // Brokers only accept the exact callback URL registered on their app, which
+    // is the published address — never the preview/iframe origin. Always send
+    // the registered one and carry the caller's origin in return_to instead.
+    const registeredCallback = (Deno.env.get("BROKER_OAUTH_REDIRECT_URI") || "https://signal-scribe-automaton.lovable.app/brokers/callback").trim();
     let parsed: URL;
-    try { parsed = new URL(redirectUri); } catch {
+    try { parsed = new URL(registeredCallback); } catch {
       throw new BrokerError({ broker: brokerType, code: "INVALID_REDIRECT_URI", message: "A valid callback URL is required." });
     }
     if (!/^https?:$/.test(parsed.protocol)) {
       throw new BrokerError({ broker: brokerType, code: "INVALID_REDIRECT_URI", message: "The callback URL must be http or https." });
+    }
+    if (redirectUri && redirectUri !== parsed.toString()) {
+      await log("redirect_uri_normalized", "info", "Using the registered callback URL", {
+        requested: redirectUri, used: parsed.toString(),
+      });
     }
 
     stateValue = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
