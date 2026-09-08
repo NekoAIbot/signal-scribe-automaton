@@ -244,6 +244,7 @@ export type Database = {
           broker_type: string
           code_challenge: string | null
           code_challenge_method: string | null
+          code_verifier: string | null
           consumed_at: string | null
           created_at: string
           environment: string | null
@@ -259,6 +260,7 @@ export type Database = {
           broker_type: string
           code_challenge?: string | null
           code_challenge_method?: string | null
+          code_verifier?: string | null
           consumed_at?: string | null
           created_at?: string
           environment?: string | null
@@ -274,6 +276,7 @@ export type Database = {
           broker_type?: string
           code_challenge?: string | null
           code_challenge_method?: string | null
+          code_verifier?: string | null
           consumed_at?: string | null
           created_at?: string
           environment?: string | null

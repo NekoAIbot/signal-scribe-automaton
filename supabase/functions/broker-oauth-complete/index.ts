@@ -50,7 +50,7 @@ serve(async (req) => {
     });
   };
 
-  const fail = async (error: unknown, status = 400) => {
+  const fail = async (error: unknown, status = 200) => {
     const err = error instanceof BrokerError
       ? error
       : new BrokerError({ broker: brokerType, code: "OAUTH_CALLBACK_FAILED", message: (error as Error)?.message || String(error) });
@@ -75,7 +75,7 @@ serve(async (req) => {
     for (const [k, v] of Object.entries(body.params || {})) params[k] = String(v ?? "");
 
     stateValue = String(body.state || params.state || "");
-    const codeVerifier = String(body.codeVerifier || "");
+    let codeVerifier = String(body.codeVerifier || "");
 
     await log("callback_received", "info", "OAuth callback received", {
       param_keys: Object.keys(params), has_verifier: !!codeVerifier,
@@ -116,6 +116,12 @@ serve(async (req) => {
       });
     }
     await log("state_validated", "success", "Authorization state validated");
+
+    // The broker may return the user to the published address instead of the tab
+    // the flow started in, so fall back to the verifier we stored at start.
+    if (!codeVerifier && (stateRow as any).code_verifier) {
+      codeVerifier = String((stateRow as any).code_verifier);
+    }
 
     // PKCE verification (app-side proof that the callback belongs to this browser session).
     if (stateRow.code_challenge) {

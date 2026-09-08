@@ -65,3 +65,6 @@ verify_jwt = false
 
 [functions.ensemble-inference]
 verify_jwt = false
+
+[functions.monitor-trades]
+verify_jwt = false
