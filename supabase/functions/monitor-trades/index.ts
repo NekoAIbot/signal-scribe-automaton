@@ -65,8 +65,7 @@ serve(async (req) => {
       const lots = num(trade.lot_size, 0.01);
       const direction = isBuy ? 1 : -1;
       const move = (price - entry) * direction;
-      const pnl = move * lots * 100000 * 0.00001 * 100; // consistent contract scaling
-      const profit = Number((move * lots * 10000).toFixed(2)) || Number(pnl.toFixed(2));
+      const profit = Number((move * lots * 10000).toFixed(2));
 
       let stopLoss = trade.stop_loss == null ? null : num(trade.stop_loss);
       const takeProfit = trade.take_profit == null ? null : num(trade.take_profit);
