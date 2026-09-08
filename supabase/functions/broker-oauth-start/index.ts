@@ -168,24 +168,16 @@ serve(async (req) => {
       return_to: returnTo,
       code_challenge: codeChallenge,
       code_challenge_method: codeChallenge ? codeChallengeMethod : null,
+      // Kept server-side so the flow still completes when the broker returns the
+      // user to the published address rather than the tab they started in.
+      code_verifier: body.codeVerifier ? String(body.codeVerifier) : null,
     });
     if (stateErr) throw new Error(stateErr.message);
 
+    // Fail fast only when the app id itself is missing.
+    resolveOAuthAppId(provider);
     const authorizeUrl = buildAuthorizeUrl(brokerType, parsed.toString(), stateValue, codeChallenge);
 
-    // Pre-flight: catch an unregistered callback URL before sending the user away.
-    const preflight = await pingAppId(provider, resolveOAuthAppId(provider), parsed.toString());
-    if (!preflight.ok) {
-      await log("authorize_url_failed", "error", preflight.detail, { redirect_uri: parsed.toString() });
-      throw new BrokerError({
-        broker: brokerType,
-        code: /redirect/i.test(preflight.detail) ? "INVALID_REDIRECT_URI" : "CONFIG_MISSING",
-        message: /redirect/i.test(preflight.detail)
-          ? `${provider.displayName} does not recognise this app's callback address yet.`
-          : `${provider.displayName} rejected this connection: ${preflight.detail}`,
-        hint: `Add ${parsed.toString()} to the redirect URLs of your ${provider.displayName} application, then try again.`,
-      });
-    }
 
     await log("authorize_url_generated", "success", "Authorization URL generated", {
       redirect_uri: parsed.toString(), pkce: !!codeChallenge, scopes: provider.scopes,
