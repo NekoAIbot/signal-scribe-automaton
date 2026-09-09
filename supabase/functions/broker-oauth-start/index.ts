@@ -36,10 +36,16 @@ function errorBody(error: unknown) {
   };
 }
 
-// Live check that the configured broker application id is usable: ask the
-// provider's authorize endpoint and treat any non-error response as valid.
-// Deriv App IDs are alphanumeric on the current API, so no format guess here.
-async function pingAppId(provider: { authorizeBase: string; broker: string; scopes: string[] }, appId: string, redirectUri: string) {
+// Ask the provider's authorize endpoint whether this app id + callback pair is
+// accepted. Providers answer with a redirect carrying an OAuth error code, so a
+// single unauthenticated probe tells us exactly what is misconfigured.
+type Probe = { ok: boolean; reason: "ok" | "redirect_unregistered" | "invalid_client" | "unknown"; detail: string };
+
+async function probeAuthorize(
+  provider: { authorizeBase: string; broker: string; scopes: string[] },
+  appId: string,
+  redirectUri: string,
+): Promise<Probe> {
   try {
     const probe = new URL(provider.authorizeBase);
     probe.searchParams.set("response_type", "code");
@@ -49,19 +55,25 @@ async function pingAppId(provider: { authorizeBase: string; broker: string; scop
     probe.searchParams.set("state", "diagnostic");
     const res = await fetch(probe.toString(), { redirect: "manual" });
     const location = res.headers.get("location") || "";
-    const invalid = /error=(invalid_client|unauthorized_client|invalid_request)/i.test(location);
-    if (invalid) {
-      const reason = decodeURIComponent((location.match(/error_description=([^&]+)/) || [, ""])[1] || "").replace(/\+/g, " ");
-      return { ok: false, detail: reason || `${provider.broker} rejected app id ${appId}` };
+    const description = decodeURIComponent((location.match(/error_description=([^&]+)/) || [, ""])[1] || "").replace(/\+/g, " ");
+
+    if (/error=invalid_client|unauthorized_client/i.test(location)) {
+      return { ok: false, reason: "invalid_client", detail: description || `${provider.broker} does not recognise this application id.` };
+    }
+    if (/redirect_uri/i.test(description) || /error=invalid_request/i.test(location)) {
+      return { ok: false, reason: "redirect_unregistered", detail: description || `${redirectUri} is not registered on the application.` };
     }
     if (res.status >= 200 && res.status < 400) {
-      return { ok: true, detail: `${provider.broker} accepted app id ${appId} (HTTP ${res.status})` };
+      return { ok: true, reason: "ok", detail: `${provider.broker} accepted ${redirectUri} (HTTP ${res.status})` };
     }
-    return { ok: false, detail: `${provider.broker} responded ${res.status} for app id ${appId}` };
+    return { ok: false, reason: "unknown", detail: `${provider.broker} responded ${res.status}` };
   } catch (e) {
-    return { ok: false, detail: `Could not reach ${provider.broker}: ${(e as Error).message}` };
+    return { ok: false, reason: "unknown", detail: `Could not reach ${provider.broker}: ${(e as Error).message}` };
   }
 }
+
+const pingAppId = probeAuthorize;
+
 
 
 
@@ -139,22 +151,61 @@ serve(async (req) => {
       });
     }
 
-    // Brokers only accept the exact callback URL registered on their app, which
-    // is the published address — never the preview/iframe origin. Always send
-    // the registered one and carry the caller's origin in return_to instead.
-    const registeredCallback = (Deno.env.get("BROKER_OAUTH_REDIRECT_URI") || "https://signal-scribe-automaton.lovable.app/brokers/callback").trim();
-    let parsed: URL;
-    try { parsed = new URL(registeredCallback); } catch {
-      throw new BrokerError({ broker: brokerType, code: "INVALID_REDIRECT_URI", message: "A valid callback URL is required." });
+    // Brokers only accept a callback URL that is pre-registered on their app.
+    // Sending an unregistered one bounces the user to the broker's own error
+    // page (which refuses to be framed), so verify first and pick a URL the
+    // broker actually accepts before we ever send the user away.
+    const appIdForProbe = resolveOAuthAppId(provider);
+    const candidates: string[] = [];
+    const push = (value?: string | null) => {
+      const raw = String(value || "").trim();
+      if (!raw) return;
+      try {
+        const u = new URL(raw);
+        if (!/^https?:$/.test(u.protocol)) return;
+        const normalized = u.toString();
+        if (!candidates.includes(normalized)) candidates.push(normalized);
+      } catch { /* ignore malformed candidate */ }
+    };
+    push(Deno.env.get("BROKER_OAUTH_REDIRECT_URI"));
+    push("https://signal-scribe-automaton.lovable.app/brokers/callback");
+    push(redirectUri);
+
+    let parsed: URL | null = null;
+    const rejected: string[] = [];
+    let lastProbe: Probe | null = null;
+    for (const candidate of candidates) {
+      const probe = await probeAuthorize(provider, appIdForProbe, candidate);
+      lastProbe = probe;
+      if (probe.ok) { parsed = new URL(candidate); break; }
+      if (probe.reason === "invalid_client") {
+        throw new BrokerError({
+          broker: brokerType, code: "CONFIG_MISSING",
+          message: `${provider.displayName} does not recognise the configured application id.`,
+          hint: `Check the App ID on your ${provider.displayName} application at ${provider.setupUrl}.`,
+        });
+      }
+      rejected.push(candidate);
     }
-    if (!/^https?:$/.test(parsed.protocol)) {
-      throw new BrokerError({ broker: brokerType, code: "INVALID_REDIRECT_URI", message: "The callback URL must be http or https." });
+
+    if (!parsed) {
+      const preferred = candidates[0] || "https://signal-scribe-automaton.lovable.app/brokers/callback";
+      await log("redirect_uri_unregistered", "error", "No callback URL is registered on the broker app", {
+        tried: rejected, detail: lastProbe?.detail,
+      });
+      throw new BrokerError({
+        broker: brokerType, code: "INVALID_REDIRECT_URI",
+        message: `${provider.displayName} has not been told where to send you back to.`,
+        hint: `Open your ${provider.displayName} application settings and add this exact return address to its redirect URLs: ${preferred} — then press Continue with ${provider.displayName} again.`,
+      });
     }
+
     if (redirectUri && redirectUri !== parsed.toString()) {
       await log("redirect_uri_normalized", "info", "Using the registered callback URL", {
         requested: redirectUri, used: parsed.toString(),
       });
     }
+
 
     stateValue = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
 
