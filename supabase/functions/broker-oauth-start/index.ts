@@ -36,10 +36,16 @@ function errorBody(error: unknown) {
   };
 }
 
-// Live check that the configured broker application id is usable: ask the
-// provider's authorize endpoint and treat any non-error response as valid.
-// Deriv App IDs are alphanumeric on the current API, so no format guess here.
-async function pingAppId(provider: { authorizeBase: string; broker: string; scopes: string[] }, appId: string, redirectUri: string) {
+// Ask the provider's authorize endpoint whether this app id + callback pair is
+// accepted. Providers answer with a redirect carrying an OAuth error code, so a
+// single unauthenticated probe tells us exactly what is misconfigured.
+type Probe = { ok: boolean; reason: "ok" | "redirect_unregistered" | "invalid_client" | "unknown"; detail: string };
+
+async function probeAuthorize(
+  provider: { authorizeBase: string; broker: string; scopes: string[] },
+  appId: string,
+  redirectUri: string,
+): Promise<Probe> {
   try {
     const probe = new URL(provider.authorizeBase);
     probe.searchParams.set("response_type", "code");
@@ -49,19 +55,25 @@ async function pingAppId(provider: { authorizeBase: string; broker: string; scop
     probe.searchParams.set("state", "diagnostic");
     const res = await fetch(probe.toString(), { redirect: "manual" });
     const location = res.headers.get("location") || "";
-    const invalid = /error=(invalid_client|unauthorized_client|invalid_request)/i.test(location);
-    if (invalid) {
-      const reason = decodeURIComponent((location.match(/error_description=([^&]+)/) || [, ""])[1] || "").replace(/\+/g, " ");
-      return { ok: false, detail: reason || `${provider.broker} rejected app id ${appId}` };
+    const description = decodeURIComponent((location.match(/error_description=([^&]+)/) || [, ""])[1] || "").replace(/\+/g, " ");
+
+    if (/error=invalid_client|unauthorized_client/i.test(location)) {
+      return { ok: false, reason: "invalid_client", detail: description || `${provider.broker} does not recognise this application id.` };
+    }
+    if (/redirect_uri/i.test(description) || /error=invalid_request/i.test(location)) {
+      return { ok: false, reason: "redirect_unregistered", detail: description || `${redirectUri} is not registered on the application.` };
     }
     if (res.status >= 200 && res.status < 400) {
-      return { ok: true, detail: `${provider.broker} accepted app id ${appId} (HTTP ${res.status})` };
+      return { ok: true, reason: "ok", detail: `${provider.broker} accepted ${redirectUri} (HTTP ${res.status})` };
     }
-    return { ok: false, detail: `${provider.broker} responded ${res.status} for app id ${appId}` };
+    return { ok: false, reason: "unknown", detail: `${provider.broker} responded ${res.status}` };
   } catch (e) {
-    return { ok: false, detail: `Could not reach ${provider.broker}: ${(e as Error).message}` };
+    return { ok: false, reason: "unknown", detail: `Could not reach ${provider.broker}: ${(e as Error).message}` };
   }
 }
+
+const pingAppId = probeAuthorize;
+
 
 
 
