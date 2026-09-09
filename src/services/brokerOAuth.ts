@@ -42,12 +42,11 @@ export function callbackUrl(): string {
 }
 
 /**
- * Deriv (and most OAuth providers) send `X-Frame-Options: DENY`, so a plain
- * `location.assign` inside the Lovable preview iframe silently fails. Navigate
- * the top-level window when we can, otherwise open a popup, otherwise fall back
- * to a same-frame redirect.
+ * Deriv (and most OAuth providers) send `X-Frame-Options: DENY`, so the broker
+ * page can never render inside the Lovable preview iframe. Always hand the URL
+ * to a real top-level tab; only navigate in place when we already own the tab.
  */
-export function navigateToAuthorizeUrl(url: string): 'top' | 'popup' | 'self' {
+export function navigateToAuthorizeUrl(url: string): 'tab' | 'top' | 'self' {
   const inIframe = (() => {
     try { return window.self !== window.top; } catch { return true; }
   })();
@@ -57,21 +56,22 @@ export function navigateToAuthorizeUrl(url: string): 'top' | 'popup' | 'self' {
     return 'self';
   }
 
+  // A brand new tab is its own top-level browsing context, so the broker's
+  // frame-blocking headers do not apply.
+  const tab = window.open(url, '_blank', 'noopener,noreferrer');
+  if (tab) { try { tab.focus(); } catch { /* ignore */ } return 'tab'; }
+
+  // Popup blocked: move the whole outer window instead of the framed preview.
   try {
     if (window.top) {
       window.top.location.href = url;
       return 'top';
     }
-  } catch {
-    /* cross-origin parent — fall through to popup */
-  }
+  } catch { /* cross-origin parent */ }
 
-  const popup = window.open(url, '_blank', 'noopener,noreferrer,width=520,height=720');
-  if (popup) return 'popup';
-
-  window.location.assign(url);
-  return 'self';
+  throw new Error('Your browser blocked the broker sign-in window. Allow pop-ups for this site and try again.');
 }
+
 
 
 export function readPending(): PendingOAuth | null {
