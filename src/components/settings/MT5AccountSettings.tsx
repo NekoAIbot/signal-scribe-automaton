@@ -339,11 +339,14 @@ export const MT5AccountSettings = () => {
     setConnecting(true);
     try {
       await startBrokerOAuth({ broker: 'deriv', returnTo: '/settings' });
+      toast.info('Deriv opened in a new tab — approve there and you will be brought back automatically.');
+      setTimeout(() => setConnecting(false), 3000);
     } catch (e: any) {
       setConnecting(false);
-      toast.error(e?.message || 'Could not start the Deriv connection');
+      toast.error(e?.message || 'Could not start the Deriv connection', { duration: 12000 });
     }
   };
+
 
   const handleSyncAccounts = async () => {
     setSyncing(true);
