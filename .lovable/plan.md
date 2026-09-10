@@ -1,92 +1,23 @@
-# Unified AI Trading Enhancement Roadmap
+# Fix sign-in and Deriv return flow
 
-This roadmap extends the existing Signal Scribe Automaton in place. Every item builds on current tables, edge functions, and services — nothing is rewritten from scratch and existing behavior stays working after each phase.
+## Goal
+Make account sign-in work inside the Lovable preview and in normal browsers, and ensure Deriv always returns to the same current Axion AI instance where the connection started.
 
-Because the scope is enormous (~20 major subsystems), I'm proposing 6 sequential phases. Each phase ends in a shippable, testable state. I'll pause for your go-ahead between phases so you can validate on live data before I move on.
+## Changes
+- Trace and remove obsolete fixed project destinations from authentication and Deriv connection handling.
+- Preserve the exact starting location through sign-in, including the full broker callback query.
+- Add a safe callback handoff so a Deriv callback registered on the public Axion AI address can resume inside the current preview without loading Deriv in the embedded frame.
+- Restrict callback destinations to the current Axion AI preview/public origins and validate OAuth state before completing the connection.
+- Make preview authentication initialization deterministic so a valid preview session is not temporarily treated as signed out.
+- Add focused tests for return-location preservation, callback handoff, invalid destinations, and authenticated broker completion.
 
----
+## Verification
+- Verify password sign-in from the embedded preview and from the public app.
+- Start Deriv authorization from the embedded preview and confirm it opens as a true top-level page.
+- Verify the callback returns to the initiating current project, completes once, and reaches Broker Accounts.
+- Confirm account synchronization and broker callback logs, then check the production build and automated tests.
 
-## Phase 1 — Foundations: Workspaces, Signal Hub, Explainability schema
-
-Goal: Put the data model in place that every later phase depends on. No user-visible feature loss.
-
-- Add `trading_workspaces` table (id, user_id, broker_credential_id, name, mode: demo|live, ai_config jsonb, risk_config jsonb, is_active). Backfill one workspace per existing `broker_credentials` row.
-- Add `workspace_id` (nullable, backfilled) to `trades`, `trading_signals`, `execution_audit_log`, `model_versions`.
-- Add `signal_reasoning` table (signal_id, market_regime, strategy_chosen, why_entry, why_sl, why_tp, confidence_breakdown jsonb, features jsonb).
-- Add `signal_events` table = the Universal Signal Hub bus (signal_id, workspace_id, event_type, payload, created_at) with Realtime enabled — every module (dashboard, telegram, monitoring, learning) subscribes here instead of duplicating fan-out.
-- Add `shadow_trades` table mirroring `trades` shape for virtual execution of every generated signal.
-- RLS + GRANTs on all new tables per project rules.
-
-UI: A workspace switcher pill in the header (reuses `useBrokerAccounts`), demo/live badge everywhere trades render. No workflow change if user only has one workspace.
-
-## Phase 2 — Multi-Asset Engine & Market Regime Detection
-
-Goal: Broaden asset coverage and make strategy selection regime-aware.
-
-- Extend `fetch-market-quotes` with asset-class routing (fx, crypto, metals, energy, indices, stocks, ETFs, agri) using existing providers (Yahoo, Binance, Frankfurter, TrueFX) + graceful "unsupported on this broker" fallback.
-- Add `asset_universe` seed table listing symbols, class, session, typical spread, min lot — drives the scanner.
-- New edge function `market-regime-detector` (Lovable AI + indicators) returning `{regime, volatility, liquidity, session_quality, news_risk}`, cached per symbol/timeframe.
-- Rewrite the scan loop in `unifiedSignalService` + `run-trading-bot` to:
-  1. Iterate `asset_universe` filtered by workspace preferences.
-  2. Call regime detector.
-  3. Rank candidates by confidence × R:R × regime-strategy fit.
-  4. Emit only top-N above threshold — quality over quantity.
-
-## Phase 3 — Intelligent Strategy Engine + Dynamic Risk
-
-Goal: Modular strategies + adaptive trade management.
-
-- `strategies/` module in `supabase/functions/_shared/strategies/` with one file per strategy (trend, reversal, breakout, scalp, swing, SMC, ICT, momentum, mean-reversion, S/R, liquidity, session, MTF). Each exports `evaluate(candles, regime) → { signal, confidence, reasoning }`.
-- Strategy selector picks/combines strategies based on regime + historical performance from `execution_audit_log`.
-- Dynamic risk module computes lot, SL, TP1/2/3, runner, BE trigger, trailing rules from balance, volatility (ATR), asset class, prop-firm constraints.
-- New `manage-open-trades` edge function on cron: pulls open trades, applies BE/trailing/partial closes/dynamic TP extension/early exit through the appropriate broker adapter.
-
-## Phase 4 — Safety Layer, Portfolio Risk, News Gate
-
-Goal: Pre-trade validation and account-level guardrails.
-
-- Pre-trade `safety-check` shared module called by `execute-trade`: risk limits, spread, liquidity, margin, broker health, session, news window, strategy confirmation, AI confidence. Rejections logged with reasons.
-- Portfolio risk config per workspace: max daily/weekly/monthly loss, exposure, correlated positions, per-asset/per-strategy caps, emergency pause switch, prop-firm profile.
-- News gate uses existing `fetch-news` + economic calendar to auto-delay/reduce/pause around high-impact events, auto-resume after.
-
-## Phase 5 — Execution Modes, Telegram Copy, MT5 Copier EA
-
-Goal: Decouple decision from delivery.
-
-- Add `execution_mode` on workspace: analysis | signal | manual_confirm | semi_auto | full_auto | telegram_copy | mt5_copier | native.
-- Telegram Copy Trading: extend the existing bot with structured signal messages (entry/SL/TPs/updates) that a downstream copier can parse; sync modifications through `signal_events`.
-- MT5 Copier EA: publish a compact JSON feed endpoint (`copier-feed` edge function) + provide a downloadable EA template in `/public/copier/` (docs only in this phase; EA source in a follow-up).
-- Two Telegram audiences: user bot (trade info) vs admin bot (reasoning, regime, retraining hints) — controlled via existing `TELEGRAM_*` secrets + admin chat id.
-
-## Phase 6 — Learning, Shadow Trading, Analytics, Hardening
-
-Goal: Close the loop and productionize.
-
-- Trade lifecycle tracker records MFE/MAE, duration, entry/exit quality on close (real + shadow).
-- Explainable AI panel on Monitoring/Admin: signal reasoning, confidence breakdown, post-mortem.
-- Analytics page rebuilt on real aggregates (asset, strategy, session, regime, confidence buckets, profit factor, drawdown). Removes remaining mock data.
-- Continuous learning: `run-retraining` extended to use validated dataset from `signal_reasoning` + closed trades; new model versions require backtest pass before `is_active=true`.
-- Hardening pass: move broker API secrets to Supabase Vault, scope CORS to known origins, shared `_shared/brokers/` adapter interface, rate limits on public edge functions, Vitest coverage for execute-trade, safety-check, strategy selector.
-
----
-
-## Technical notes
-
-- All new edge functions follow existing CORS + `verify_jwt=false` pattern with in-code JWT validation.
-- No breaking schema changes — new columns are nullable with backfill; existing pages keep working throughout.
-- `unifiedSignalService` stays the single client entry point; new logic slots into its existing loop.
-- Existing UI (Dashboard = TradingView + TradingBot only, Monitoring, Signals, Audit Log, Settings) stays; new surfaces are additive tabs/panels.
-
----
-
-## What I need from you before I start
-
-1. Confirm the 6-phase order or tell me to reprioritize (e.g. Telegram Copy earlier).
-2. Confirm I should ship each phase and pause for your validation, not batch everything into one giant build.
-3. For Phase 2's asset universe — should I enable all classes by default per workspace, or start with FX + Crypto + Metals + Indices (what your current adapters already handle well) and add the rest as brokers support them?
-
-## Phase 2 — Multi-Asset Engine (in progress)
-- ✅ `asset_universe` table + seed (FX majors, top crypto, XAU/XAG, major indices enabled; energy/stocks/etfs/agri seeded but disabled).
-- ✅ `market-regime-detector` edge function: returns regime / volatility / liquidity / session_quality / news_risk from live candles (via fetch-market-quotes) with adx-slope-compression features.
-- ✅ Fixed Binance "invalid API key" — both `test-broker-connection` and `execute-trade` now try base64-decoded AND raw secret and retry on signature/key errors so legacy plaintext-saved secrets work.
-- Next: wire regime output into `unifiedSignalService` scan loop for confidence × R:R × regime-fit ranking, and expose `asset_class` filter in `fetch-market-quotes`.
+## Technical details
+- Keep the broker-registered public callback as the stable OAuth redirect URI when required by Deriv.
+- Store the initiating app origin with the server-side OAuth state; use a short-lived validated handoff rather than trusting a query-provided URL.
+- Do not expose tokens or accept arbitrary redirect origins.
