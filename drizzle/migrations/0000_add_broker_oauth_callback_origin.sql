@@ -1,0 +1,1 @@
+ALTER TABLE public.broker_oauth_states ADD COLUMN IF NOT EXISTS callback_origin text;
